@@ -167,6 +167,66 @@ class SidecarCore:
         return scaffolding
 
     @staticmethod
+    def refactor_query(raw_query: str) -> Dict[str, Any]:
+        """Intelligently refactors arbitrary 1C query isolating virtual tables."""
+        applied_optimizations = []
+        modified = raw_query.strip()
+
+        vt_pattern = re.compile(
+            r"(ЛЕВОЕ|ПРАВОЕ|ВНУТРЕННЕЕ|ПОЛНОЕ)?\s*СОЕДИНЕНИЕ\s+(Регистр(?:Накопления|Сведений|Бухгалтерии)\.([а-яА-ЯёЁa-zA-Z0-9_]+)\.(Остатки|Обороты|СрезПоследних|СрезПервых)\s*\(([^)]*)\))\s+КАК\s+([а-яА-ЯёЁa-zA-Z0-9_]+)\s+ПО\s+([^\n;]+)",
+            re.IGNORECASE,
+        )
+        match = vt_pattern.search(modified)
+        if match:
+            join_type = match.group(1) or "ЛЕВОЕ"
+            full_vt_expr = match.group(2)
+            reg_name = match.group(3)
+            vt_type = match.group(4)
+            alias = match.group(6)
+            on_cond = match.group(7).strip()
+
+            field_match = re.search(rf"{alias}\.([а-яА-ЯёЁa-zA-Z0-9_]+)", on_cond, re.IGNORECASE)
+            join_field = field_match.group(1) if field_match else "Номенклатура"
+            vt_name = f"ВТ_{alias}"
+
+            temp_table_part = (
+                f"ВЫБРАТЬ\n"
+                f"    {alias}.{join_field} КАК {join_field},\n"
+                f"    {alias}.Количество{'Остаток' if vt_type == 'Остатки' else ''} КАК Количество\n"
+                f"ПОМЕСТИТЬ {vt_name}\n"
+                f"ИЗ\n"
+                f"    {full_vt_expr} КАК {alias}\n"
+                f"ИНДЕКСИРОВАТЬ ПО\n"
+                f"    {join_field}\n"
+                f";\n\n"
+                f"////////////////////////////////////////////////////////////////////////////////\n"
+            )
+            applied_optimizations.append(
+                f"Вынесение виртуальной таблицы {reg_name}.{vt_type} в индексированную временную таблицу {vt_name}"
+            )
+            applied_optimizations.append(f"Добавлена явная инструкция ИНДЕКСИРОВАТЬ ПО {join_field}")
+
+            replacement_join = f"{join_type} СОЕДИНЕНИЕ {vt_name} КАК {alias} ПО {on_cond}"
+            modified = modified[: match.start()] + replacement_join + modified[match.end() :]
+            modified = f"{temp_table_part}{modified}\n\n////////////////////////////////////////////////////////////////////////////////\nУНИЧТОЖИТЬ {vt_name};"
+            applied_optimizations.append(f"Добавлена инструкция УНИЧТОЖИТЬ {vt_name} для освобождения памяти СУБД")
+
+        if re.search(r"ЛЕВОЕ\s+СОЕДИНЕНИЕ", modified, re.IGNORECASE) and not re.search(
+            r"ЕСТЬNULL", modified, re.IGNORECASE
+        ):
+            null_target = re.compile(
+                r"([а-яА-ЯёЁa-zA-Z0-9_]+\.(?:Количество|Сумма|Остаток)[а-яА-ЯёЁa-zA-Z0-9_]*)", re.IGNORECASE
+            )
+            if null_target.search(modified):
+                modified = null_target.sub(r"ЕСТЬNULL(\1, 0)", modified)
+                applied_optimizations.append("Обертывание числовых полей соединения в функцию ЕСТЬNULL(..., 0)")
+
+        return {
+            "refactoredQuery": modified,
+            "appliedOptimizations": applied_optimizations,
+        }
+
+    @staticmethod
     def generate_extension_method(
         method_name: str,
         directive: str,

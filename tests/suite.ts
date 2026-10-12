@@ -6,6 +6,7 @@ import { ExtensionGenerator } from '../src/extensionGenerator';
 import { MetadataScanner } from '../src/metadataScanner';
 import { BDDGenerator } from '../src/bddGenerator';
 import { TechLogAnalyzer } from '../src/techLogAnalyzer';
+import { BSLTokenizer, BSLTokenType, BSLScopeAnalyzer } from '../src/bslTokenizer';
 
 console.log('====================================================');
 console.log('RUNNING SENIOR-GRADE 1C COPILOT UNIT TEST SUITE');
@@ -62,9 +63,13 @@ console.log('\n[1/5] Testing StandardsChecker...');
 // 2. Test BSPHelper
 console.log('\n[2/5] Testing BSPHelper (Библиотека Стандартных Подсистем)...');
 {
-    assert.ok(BSPHelper.STANDARD_MODULES.length >= 8, 'Must have at least 8 standard BSP modules documented');
+    assert.ok(BSPHelper.STANDARD_MODULES.length >= 35, `Must have at least 35 standard BSP modules documented (found ${BSPHelper.STANDARD_MODULES.length})`);
     const hasObjReader = BSPHelper.STANDARD_MODULES.some(m => m.method === 'ЗначениеРеквизитаОбъекта');
     assert.strictEqual(hasObjReader, true, 'Must document ЗначениеРеквизитаОбъекта');
+    const hasTableConvert = BSPHelper.STANDARD_MODULES.some(m => m.method === 'ТаблицаЗначенийВМассив');
+    assert.strictEqual(hasTableConvert, true, 'Must document ТаблицаЗначенийВМассив');
+    const hasLongOps = BSPHelper.STANDARD_MODULES.some(m => m.module === 'ДлительныеОперации');
+    assert.strictEqual(hasLongOps, true, 'Must document ДлительныеОперации');
 
     // Detection of manual ПолучитьОбъект anti-pattern
     const badBspCode = `
@@ -77,7 +82,7 @@ console.log('\n[2/5] Testing BSPHelper (Библиотека Стандартн�
 
     const promptText = BSPHelper.getBSPPromptInjection();
     assert.ok(promptText.includes('Библиотеки Стандартных Подсистем'), 'Prompt injection must contain BSP header');
-    console.log('  ✓ BSP knowledge prompt injection formatted successfully');
+    console.log(`  ✓ BSP knowledge prompt injection formatted successfully (${BSPHelper.STANDARD_MODULES.length} methods)`);
 }
 
 // 3. Test QueryBuilder
@@ -123,6 +128,15 @@ console.log('\n[3/5] Testing QueryBuilder (Пакетные запросы и в
     assert.ok(generatedBatch.includes('Новый МенеджерВременныхТаблиц'), 'Must instantiate МенеджерВременныхТаблиц');
     assert.ok(generatedBatch.includes('ЕСТЬNULL'), 'Must wrap balances with ЕСТЬNULL');
     console.log('  ✓ Batch Query Generation produces fully standards-compliant 1C package');
+
+    // D: Intelligent query refactoring
+    const refactorResult = QueryBuilder.refactorQuery(badJoinQuery);
+    assert.ok(refactorResult.refactoredQuery.includes('ПОМЕСТИТЬ ВТ_Остатки'), 'Refactored query must create temp table ВТ_Остатки');
+    assert.ok(refactorResult.refactoredQuery.includes('ИНДЕКСИРОВАТЬ ПО'), 'Refactored query must index temp table');
+    assert.ok(refactorResult.refactoredQuery.includes('ЕСТЬNULL(Остатки.КоличествоОстаток, 0)'), 'Refactored query must wrap with ЕСТЬNULL');
+    assert.ok(refactorResult.refactoredQuery.includes('УНИЧТОЖИТЬ ВТ_Остатки'), 'Refactored query must destroy temp table');
+    assert.ok(refactorResult.appliedOptimizations.length >= 3, 'Must record applied optimizations');
+    console.log('  ✓ Intelligent query refactoring isolates virtual tables, indexes temp tables and wraps ЕСТЬNULL');
 }
 
 // 4. Test ExtensionGenerator (cfe)
@@ -241,6 +255,64 @@ console.log('\n[7/7] Testing TechLogAnalyzer (Технологический Ж�
     assert.ok(report.includes('Взаимные блокировки (TDEADLOCK)'), 'Report must mention deadlock');
     assert.ok(report.includes('Рекомендации эксперта по High-Load 1С'), 'Report must provide High-Load recommendations');
     console.log('  ✓ TLOCK, TDEADLOCK, EXCP and slow SQL diagnosed with High-Load fixes');
+}
+
+// 8. Test BSLTokenizer & BSLScopeAnalyzer (Flagship Stage 1)
+console.log('\n[8/8] Testing BSLTokenizer & BSLScopeAnalyzer (Flagship AST Engine)...');
+{
+    // A: Test tokenization of complex BSL code with multiline pipes and escaped quotes
+    const complexSource = `
+&НаСервере
+// Комментарий с ложным кодом: Запрос.Выполнить();
+Процедура РассчитатьЦену(Знач Коэффициент, Скидка = 0) Экспорт
+    Перем Итог, ВалютаУчета;
+    СтрокаСоСпецсимволами = "Это ""экранированная кавычка"" в 1С";
+    МногострочныйТекст = "Первая строка"
+        |Вторая строка с кодом Запрос.Выполнить()
+        |Третья строка;
+    
+    Для Каждого Стр Из ТаблицаТоваров Цикл
+        // Закомментированный вызов не должен детектироваться
+        // Запрос = Новый Запрос;
+        // Запрос.Выполнить();
+        ТекстЛожный = "Запрос.Выполнить() внутри строки";
+        Итог = Итог + Стр.Цена;
+    КонецЦикла;
+КонецПроцедуры
+`;
+
+    const tokens = BSLTokenizer.tokenize(complexSource);
+    assert.ok(tokens.length > 20, 'Must produce valid tokens');
+
+    // Verify string literal with escaped quotes
+    const escapedStrToken = tokens.find(t => t.type === BSLTokenType.STRING_LITERAL && t.value.includes('экранированная кавычка'));
+    assert.ok(escapedStrToken, 'Must parse string literal with escaped quotes');
+
+    // Verify multiline pipe string token
+    const pipeTokens = tokens.filter(t => t.type === BSLTokenType.STRING_LITERAL && t.value.startsWith('|'));
+    assert.ok(pipeTokens.length >= 2, 'Must tokenize multiline pipe string literals');
+
+    // Verify Directive token
+    const directiveToken = tokens.find(t => t.type === BSLTokenType.DIRECTIVE);
+    assert.strictEqual(directiveToken?.value, '&НаСервере', 'Must tokenize compilation directive &НаСервере');
+
+    // Verify Scope Analysis inside loop
+    const scopeAtLoop = BSLScopeAnalyzer.analyzeScopeAtPosition(tokens, 15, 10);
+    assert.strictEqual(scopeAtLoop.currentMethod?.name, 'РассчитатьЦену', 'Must identify enclosing method');
+    assert.strictEqual(scopeAtLoop.currentMethod?.isFunction, false, 'Must identify procedure');
+    assert.strictEqual(scopeAtLoop.currentMethod?.isExport, true, 'Must identify export status');
+    assert.strictEqual(scopeAtLoop.compilationDirective, '&НаСервере', 'Must capture active directive');
+    assert.strictEqual(scopeAtLoop.insideLoop, true, 'Must know target is inside loop');
+    assert.ok(scopeAtLoop.localVariables.includes('Коэффициент'), 'Must capture parameters');
+    assert.ok(scopeAtLoop.localVariables.includes('Итог'), 'Must capture Перем variables');
+
+    // Verify StandardsChecker immunity on commented-out or string query
+    const issues = StandardsChecker.auditCode(complexSource);
+    const falsePositives = issues.filter(i => i.rule === 'ITS-PERF-001');
+    assert.strictEqual(falsePositives.length, 0, 'Commented or stringified query calls MUST NOT trigger ITS-PERF-001');
+    console.log('  ✓ Deterministic tokenization of pipes, quotes and directives verified');
+    console.log('  ✓ Scope analysis accurately extracts method, parameters and Перем');
+    console.log('  ✓ StandardsChecker verified 100% immune to commented-out false positives');
 }
 
 console.log('\n====================================================');

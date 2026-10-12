@@ -42,6 +42,20 @@ class TestSidecarCore(unittest.TestCase):
         self.assertIn("УНИЧТОЖИТЬ ВТ_Товары", query)
         self.assertIn("МенеджерВременныхТаблиц", query)
 
+    def test_refactor_query(self):
+        query = """
+        ВЫБРАТЬ Док.Номенклатура, Остатки.КоличествоОстаток
+        ИЗ Документ.РеализацияТоваровУслуг.Товары КАК Док
+        ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.ТоварыНаСкладах.Остатки(&Период, ) КАК Остатки
+            ПО Док.Номенклатура = Остатки.Номенклатура
+        """
+        res = SidecarCore.refactor_query(query)
+        self.assertIn("ПОМЕСТИТЬ ВТ_Остатки", res["refactoredQuery"])
+        self.assertIn("ИНДЕКСИРОВАТЬ ПО", res["refactoredQuery"])
+        self.assertIn("УНИЧТОЖИТЬ ВТ_Остатки", res["refactoredQuery"])
+        self.assertIn("ЕСТЬNULL", res["refactoredQuery"])
+        self.assertGreaterEqual(len(res["appliedOptimizations"]), 3)
+
     def test_generate_extension_method(self):
         ext_vmesto = SidecarCore.generate_extension_method("ОбработкаПроведения", "Вместо")
         self.assertIn('&Вместо("ОбработкаПроведения")', ext_vmesto)
@@ -148,6 +162,20 @@ class TestSidecarHTTPServer(unittest.TestCase):
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode("utf-8"))
             self.assertIn("ПОМЕСТИТЬ ВТ_Товары", data["code"])
+
+    def test_query_refactor_endpoint(self):
+        url = f"http://127.0.0.1:{self.port}/v1/query/refactor"
+        raw_query = """
+        ВЫБРАТЬ Док.Номенклатура ИЗ Документ.Реализация.Товары КАК Док
+        ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.ТоварыНаСкладах.Остатки(&Период, ) КАК Остатки ПО Док.Номенклатура = Остатки.Номенклатура
+        """
+        payload = json.dumps({"query": raw_query}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertIn("ПОМЕСТИТЬ ВТ_Остатки", data["refactoredQuery"])
+            self.assertIn("ИНДЕКСИРОВАТЬ ПО", data["refactoredQuery"])
 
     def test_extension_endpoint(self):
         url = f"http://127.0.0.1:{self.port}/v1/extension"

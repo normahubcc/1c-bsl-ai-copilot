@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { NormaHubClient } from './normahubClient';
 import { MetadataScanner } from './metadataScanner';
 import { BSPHelper } from './bspHelper';
+import { BSLTokenizer, BSLScopeAnalyzer } from './bslTokenizer';
 
 /**
  * Native VS Code Inline Completion Provider for 1C:Enterprise (BSL) - Senior Grade.
@@ -65,14 +66,36 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
         const metadataSummary = MetadataScanner.formatForPrompt(metadata);
         const bspSummary = BSPHelper.getBSPPromptInjection();
 
+        // Extract rich AST Scope context using BSLTokenizer
+        const fullDocText = document.getText();
+        const tokens = BSLTokenizer.tokenize(fullDocText);
+        const scope = BSLScopeAnalyzer.analyzeScopeAtPosition(tokens, position.line + 1, position.character + 1);
+
         const model = config.get<string>('autocompleteModel', 'deepseek-v4.1-flash');
+
+        // Scope description for LLM
+        let methodScopeDesc = 'Глобальный контекст модуля';
+        if (scope.currentMethod) {
+            const paramsStr = scope.currentMethod.parameters.map(p => `${p.isVal ? 'Знач ' : ''}${p.name}`).join(', ');
+            const typeStr = scope.currentMethod.isFunction ? 'Функция' : 'Процедура';
+            methodScopeDesc = `${scope.compilationDirective ? scope.compilationDirective + '\n' : ''}${typeStr} ${scope.currentMethod.name}(${paramsStr})`;
+        }
+
+        const localVarsStr = scope.localVariables.length > 0 ? scope.localVariables.join(', ') : 'Не объявлены';
+
         const systemPrompt = `Ты — ведущий системный архитектор 1С:Предприятие 8.3 (Стандарты фирмы «1С» и БСП).
 Твоя задача — мгновенно дописать код BSL (1C:Enterprise) на позиции курсора.
+
+ТЕКУЩИЙ КОНТЕКСТ ВЫПОЛНЕНИЯ (AST SCOPE):
+- Метод: ${methodScopeDesc}
+- Доступные переменные и параметры: ${localVarsStr}
+- Внутри цикла: ${scope.insideLoop ? 'Да' : 'Нет'}
+- Внутри попытки: ${scope.insideTry ? 'Да' : 'Нет'}
 
 ТРЕБОВАНИЯ СТАНДАРТОВ 1С:
 1. Выводи ТОЛЬКО прямое продолжение кода. Никаких markdown блоков, никаких пояснений, никаких обратных кавычек.
 2. Синтаксис: Ключевые слова на русском (Если, Тогда, Иначе, КонецЕсли, Для Каждого, Цикл, КонецЦикла, Новый, Процедура, Функция, Возврат).
-3. Соблюдай контекст директив компиляции (&НаКлиенте, &НаСервере, &НаСервереБезКонтекста, &Вместо, &Перед, &После, &ИзменениеИКонтроль).
+3. Строго соблюдай директиву компиляции (${scope.compilationDirective || 'Сервер'}).
 4. Запрещено передавать мутабельные объекты (ТаблицаЗначений) между клиентом и сервером.
 5. При чтении реквизитов использовать функции БСП (ОбщегоНазначения.ЗначениеРеквизитаОбъекта), а не ПолучитьОбъект().
 
@@ -81,13 +104,8 @@ ${metadataSummary}
 
 ${bspSummary}`;
 
-        const userPrompt = `Код ДО курсора:
-${prefixText}
-
-Код ПОСЛЕ курсора:
-${suffixText}
-
-Допиши код с позиции курсора:`;
+        // True FIM (Fill-In-The-Middle) prompt formatting
+        const userPrompt = `<fim_prefix>${prefixText}<fim_suffix>${suffixText}<fim_middle>`;
 
         try {
             if (token.isCancellationRequested) {

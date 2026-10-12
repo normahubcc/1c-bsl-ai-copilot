@@ -257,6 +257,20 @@ export class McpServer1C {
                     },
                     required: ['rawLog']
                 }
+            },
+            {
+                name: '1c_refactor_query',
+                description: 'Интеллектуальный рефакторинг текста запроса 1С по стандартам ИТС: вынесение прямых соединений с виртуальными таблицами во временные таблицы с индексированием, оборачивание полей в ЕСТЬNULL и уничтожение ВТ.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        rawQuery: {
+                            type: 'string',
+                            description: 'Исходный текст запроса 1С для оптимизации'
+                        }
+                    },
+                    required: ['rawQuery']
+                }
             }
         ];
     }
@@ -299,6 +313,13 @@ export class McpServer1C {
                 case '1c_inspect_query': {
                     const queryText = args.queryText || '';
                     const result = QueryBuilder.inspectQuery(queryText);
+                    this.sendToolResponse(id, result);
+                    break;
+                }
+
+                case '1c_refactor_query': {
+                    const rawQuery = args.rawQuery || '';
+                    const result = QueryBuilder.refactorQuery(rawQuery);
                     this.sendToolResponse(id, result);
                     break;
                 }

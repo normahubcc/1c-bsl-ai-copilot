@@ -192,4 +192,74 @@ export class QueryBuilder {
     );
 КонецЦикла;`;
     }
+
+    /**
+     * Intelligently refactors an arbitrary 1C query according to ITS standards:
+     * - Isolates virtual table JOINs into temporary indexed tables
+     * - Wraps numeric fields from LEFT JOINs with ЕСТЬNULL(..., 0)
+     * - Appends УНИЧТОЖИТЬ ВТ_... to release server memory
+     */
+    public static refactorQuery(rawQuery: string): { refactoredQuery: string; appliedOptimizations: string[] } {
+        const appliedOptimizations: string[] = [];
+        let modified = rawQuery.trim();
+
+        // 1. Detect Direct Virtual Table Join
+        const vtJoinRegex = /(ЛЕВОЕ|ПРАВОЕ|ВНУТРЕННЕЕ|ПОЛНОЕ)?\s*СОЕДИНЕНИЕ\s+(Регистр(?:Накопления|Сведений|Бухгалтерии)\.([а-яА-ЯёЁa-zA-Z0-9_]+)\.(Остатки|Обороты|СрезПоследних|СрезПервых)\s*\(([^)]*)\))\s+КАК\s+([а-яА-ЯёЁa-zA-Z0-9_]+)\s+ПО\s+([^\n;]+)/i;
+        const match = modified.match(vtJoinRegex);
+
+        if (match) {
+            const joinType = match[1] || 'ЛЕВОЕ';
+            const fullVtExpr = match[2];
+            const registerName = match[3];
+            const vtType = match[4];
+            const alias = match[6];
+            const onCondition = match[7].trim();
+
+            let joinField = 'Номенклатура';
+            const fieldMatch = onCondition.match(new RegExp(`${alias}\\.([а-яА-ЯёЁa-zA-Z0-9_]+)`, 'i'));
+            if (fieldMatch) {
+                joinField = fieldMatch[1];
+            }
+
+            const vtName = `ВТ_${alias}`;
+
+            // Build temp table extraction query
+            const tempTablePart = `ВЫБРАТЬ
+    ${alias}.${joinField} КАК ${joinField},
+    ${alias}.Количество${vtType === 'Остатки' ? 'Остаток' : ''} КАК Количество
+ПОМЕСТИТЬ ${vtName}
+ИЗ
+    ${fullVtExpr} КАК ${alias}
+ИНДЕКСИРОВАТЬ ПО
+    ${joinField}
+;
+
+////////////////////////////////////////////////////////////////////////////////
+`;
+            appliedOptimizations.push(`Вынесение виртуальной таблицы ${registerName}.${vtType} в индексированную временную таблицу ${vtName}`);
+            appliedOptimizations.push(`Добавлена явная инструкция ИНДЕКСИРОВАТЬ ПО ${joinField}`);
+
+            // Replace direct join in the main query
+            const replacementJoin = `${joinType} СОЕДИНЕНИЕ ${vtName} КАК ${alias} ПО ${onCondition}`;
+            modified = modified.replace(match[0], replacementJoin);
+
+            // Wrap query with temp table and destruction
+            modified = `${tempTablePart}${modified}\n\n////////////////////////////////////////////////////////////////////////////////\nУНИЧТОЖИТЬ ${vtName};`;
+            appliedOptimizations.push(`Добавлена инструкция УНИЧТОЖИТЬ ${vtName} для освобождения памяти СУБД`);
+        }
+
+        // 2. Ensure ЕСТЬNULL wrapping on LEFT JOIN numeric/aggregate fields if not present
+        if (/ЛЕВОЕ\s+СОЕДИНЕНИЕ/i.test(modified) && !/ЕСТЬNULL/i.test(modified)) {
+            const nullTarget = /([а-яА-ЯёЁa-zA-Z0-9_]+\.(?:Количество|Сумма|Остаток)[а-яА-ЯёЁa-zA-Z0-9_]*)/gi;
+            if (nullTarget.test(modified)) {
+                modified = modified.replace(nullTarget, 'ЕСТЬNULL($1, 0)');
+                appliedOptimizations.push('Обертывание числовых полей соединения в функцию ЕСТЬNULL(..., 0)');
+            }
+        }
+
+        return {
+            refactoredQuery: modified,
+            appliedOptimizations
+        };
+    }
 }

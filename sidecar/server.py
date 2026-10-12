@@ -69,6 +69,12 @@ class SidecarHandler(BaseHTTPRequestHandler):
             self._set_headers(200)
             self.wfile.write(json.dumps({"code": query_code}, ensure_ascii=False).encode("utf-8"))
 
+        elif self.path == "/v1/query/refactor":
+            raw_query = payload.get("query", "")
+            refactor_result = SidecarCore.refactor_query(raw_query)
+            self._set_headers(200)
+            self.wfile.write(json.dumps(refactor_result, ensure_ascii=False).encode("utf-8"))
+
         elif self.path == "/v1/extension":
             method = payload.get("method", "ОбработкаПроведения")
             directive = payload.get("directive", "Вместо")
