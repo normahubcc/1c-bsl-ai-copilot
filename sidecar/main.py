@@ -1,7 +1,13 @@
-"""CLI entrypoint for 1C Configurator Global Sidecar."""
-
 import argparse
+import sys
 import threading
+from pathlib import Path
+
+# Ensure project root is in sys.path when invoked directly as python3 sidecar/main.py
+_root = str(Path(__file__).resolve().parent.parent)
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
 from sidecar.config import load_config
 from sidecar.core import SidecarCore
 from sidecar.server import run_server

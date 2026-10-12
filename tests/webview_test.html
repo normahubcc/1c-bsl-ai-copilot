@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1C BSL AI Copilot</title>
+    <style>
+        :root {
+            /* Palette 1: Warm Sand (Песочно-бежевая) */
+            --sand-bg: #F7F4EE;
+            --sand-card-bg: #FFFFFF;
+            --sand-sub-bg: #EFE9DF;
+            --sand-border: #DDD5C7;
+            --sand-border-focus: #B87333;
+            --sand-primary: #B87333;
+            --sand-primary-hover: #9E6028;
+            --sand-secondary: #8B5E34;
+            --sand-secondary-hover: #734B28;
+            --sand-text: #2B2621;
+            --sand-muted: #6E6259;
+            --sand-code-bg: #EAE3D6;
+            
+            /* Palette 2: Warm Dark (Espresso Obsidian) */
+            --dark-bg: #181513;
+            --dark-card-bg: #221E1B;
+            --dark-sub-bg: #1C1916;
+            --dark-border: #38302A;
+            --dark-border-focus: #E5A93C;
+            --dark-primary: #E5A93C;
+            --dark-primary-hover: #F5B84C;
+            --dark-secondary: #2D2723;
+            --dark-secondary-hover: #38302A;
+            --dark-text: #EDE6DE;
+            --dark-muted: #9C9289;
+            --dark-code-bg: #141210;
+        }
+
+        body.theme-warm-sand {
+            --bg-main: var(--sand-bg);
+            --bg-card: var(--sand-card-bg);
+            --bg-sub: var(--sand-sub-bg);
+            --border-color: var(--sand-border);
+            --border-focus: var(--sand-border-focus);
+            --btn-primary: var(--sand-primary);
+            --btn-primary-hover: var(--sand-primary-hover);
+            --btn-primary-text: #FFFFFF;
+            --btn-sec: var(--sand-sub-bg);
+            --btn-sec-hover: #E3DBCF;
+            --btn-sec-text: var(--sand-text);
+            --text-main: var(--sand-text);
+            --text-muted: var(--sand-muted);
+            --code-bg: var(--sand-code-bg);
+            --code-text: #2B2621;
+            --accent-badge: #8B5E34;
+            --badge-crit-bg: #FDE8E8;
+            --badge-crit-text: #9B1C1C;
+            --badge-warn-bg: #FEF3C7;
+            --badge-warn-text: #92400E;
+            --badge-ok-bg: #DEF7EC;
+            --badge-ok-text: #03543F;
+        }
+
+        body.theme-espresso {
+            --bg-main: var(--dark-bg);
+            --bg-card: var(--dark-card-bg);
+            --bg-sub: var(--dark-sub-bg);
+            --border-color: var(--dark-border);
+            --border-focus: var(--dark-border-focus);
+            --btn-primary: var(--dark-primary);
+            --btn-primary-hover: var(--dark-primary-hover);
+            --btn-primary-text: #181513;
+            --btn-sec: var(--dark-secondary);
+            --btn-sec-hover: var(--dark-secondary-hover);
+            --btn-sec-text: var(--dark-text);
+            --text-main: var(--dark-text);
+            --text-muted: var(--dark-muted);
+            --code-bg: var(--dark-code-bg);
+            --code-text: #F3EFEA;
+            --accent-badge: #E5A93C;
+            --badge-crit-bg: #3B1818;
+            --badge-crit-text: #F87171;
+            --badge-warn-bg: #382A13;
+            --badge-warn-text: #FBBF24;
+            --badge-ok-bg: #132B1F;
+            --badge-ok-text: #34D399;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+            font-size: var(--vscode-font-size, 13px);
+            color: var(--text-main);
+            background-color: var(--bg-main);
+            padding: 8px 6px;
+            margin: 0;
+            line-height: 1.45;
+            max-width: 100%;
+            overflow-x: hidden;
+            word-wrap: break-word;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        /* Header bar */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .logo-badge {
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            font-weight: 700;
+            font-size: 11px;
+            padding: 1px 5px;
+            border-radius: 2px;
+            letter-spacing: 0.5px;
+            font-family: var(--vscode-editor-font-family, monospace);
+        }
+        .title {
+            font-weight: 600;
+            font-size: 12px;
+            letter-spacing: 0.2px;
+        }
+        .theme-toggle-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            cursor: pointer;
+            border-radius: 3px;
+            padding: 2px 7px;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 500;
+            transition: border-color 0.15s ease;
+        }
+        .theme-toggle-btn:hover {
+            border-color: var(--border-focus);
+        }
+
+        /* Project & Multi-Tab Context Bar */
+        .context-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+            background: var(--bg-sub);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            padding: 4px 6px;
+            margin-bottom: 8px;
+            font-size: 10px;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        .context-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.online { background-color: #10B981; }
+        .status-dot.idle { background-color: #9CA3AF; }
+
+        kbd {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+            padding: 1px 4px;
+            font-size: 9.5px;
+            font-family: monospace;
+            color: var(--text-muted);
+        }
+
+        /* Navigation tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 10px;
+            gap: 2px;
+            overflow-x: auto;
+            white-space: nowrap;
+            max-width: 100%;
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tabs::-webkit-scrollbar {
+            height: 3px;
+        }
+        .tabs::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+        .tab {
+            font-size: 11px;
+            padding: 5px 7px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted);
+            user-select: none;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.15s ease;
+            font-weight: 500;
+        }
+        .tab:hover {
+            color: var(--text-main);
+        }
+        .tab.active {
+            color: var(--text-main);
+            border-bottom-color: var(--btn-primary);
+            font-weight: 600;
+        }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.15s ease-in-out;
+        }
+        .tab-panel.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(2px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Card blocks */
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            max-width: 100%;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .card-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .card-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            word-break: break-word;
+        }
+
+        /* Inputs & Textareas */
+        input[type="text"], input[type="password"], textarea, select {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            background-color: var(--bg-sub);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            outline: none;
+            font-family: inherit;
+            margin-bottom: 6px;
+            text-overflow: ellipsis;
+            transition: border-color 0.15s ease;
+        }
+        input:focus, textarea:focus, select:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 1px var(--border-focus);
+        }
+        textarea {
+            resize: vertical;
+            min-height: 60px;
+            font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        /* Buttons */
+        .btn-group {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+            flex-wrap: wrap;
+        }
+        .btn-group button {
+            flex: 1 1 calc(50% - 4px);
+            min-width: 80px;
+            width: auto;
+            margin-top: 0;
+        }
+        button {
+            background-color: var(--btn-primary);
+            color: var(--btn-primary-text);
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            margin-top: 4px;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            white-space: normal;
+            word-break: break-word;
+            text-align: center;
+        }
+        button:hover {
+            background-color: var(--btn-primary-hover);
+            transform: translateY(-1px);
+        }
+        button.secondary {
+            background-color: var(--btn-sec);
+            color: var(--btn-sec-text);
+            border: 1px solid var(--border-color);
+        }
+        button.secondary:hover {
+            background-color: var(--btn-sec-hover);
+            border-color: var(--border-focus);
+        }
+        button.sm {
+            padding: 3px 6px;
+            font-size: 10px;
+            width: auto;
+            flex: initial;
+            margin-top: 0;
+        }
+
+        /* Chips */
+        .chips-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .chip {
+            background: var(--bg-sub);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 12px;
+            padding: 2px 7px;
+            font-size: 10px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+        }
+        .chip:hover {
+            border-color: var(--border-focus);
+            background: var(--bg-card);
+        }
+
+        /* Code box */
+        .code-box {
+            background-color: var(--code-bg);
+            color: var(--code-text);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 8px;
+            font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+            max-height: 220px;
+            overflow-y: auto;
+            margin-top: 6px;
+            line-height: 1.45;
+            word-break: break-all;
+        }
+
+        /* Badges */
+        .badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .badge-crit { background: var(--badge-crit-bg); color: var(--badge-crit-text); border: 1px solid var(--badge-crit-text); }
+        .badge-warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); border: 1px solid var(--badge-warn-text); }
+        .badge-ok { background: var(--badge-ok-bg); color: var(--badge-ok-text); border: 1px solid var(--badge-ok-text); }
+        .badge-context { background: var(--bg-sub); color: var(--text-main); border: 1px solid var(--border-color); font-size: 9px; }
+
+        /* BSP Item Card */
+        .bsp-item {
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 7px;
+            margin-bottom: 6px;
+            background: var(--bg-card);
+            transition: border-color 0.15s ease;
+        }
+        .bsp-item:hover {
+            border-color: var(--border-focus);
+        }
+        .bsp-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 4px;
+        }
+        .bsp-method-name {
+            font-size: 11px;
+            font-weight: 600;
+            word-break: break-word;
+        }
+        .bsp-module-tag {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 1px;
+        }
+        .bsp-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            word-break: break-word;
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10B981;
+            color: #FFFFFF;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 9999;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-2px);
+        }
+
+        /* Issue list item */
+        .issue-card {
+            border-left: 3px solid;
+            padding: 6px 8px;
+            margin-bottom: 6px;
+            background: var(--bg-sub);
+            border-radius: 0 4px 4px 0;
+            font-size: 11px;
+        }
+        .issue-card.error { border-color: #EF4444; }
+        .issue-card.warning { border-color: #F59E0B; }
+        .issue-card.info { border-color: #3B82F6; }
+        .issue-link {
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body class="theme-espresso">
+    <div class="header">
+        <div class="header-left">
+            <div class="logo-badge">1C</div>
+            <div class="title">BSL Studio</div>
+        </div>
+        <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeBtn" title="Переключить тему оформления">
+            <span id="themeLabel">Песочная</span>
+        </button>
+    </div>
+
+    <!-- Индикатор активного инженерного контекста -->
+    <div class="context-bar">
+        <div class="context-item" title="Структура метаданных конфигурации 1С">
+            <span class="status-dot online"></span> 1С:8.3 Метаданные (50)
+        </div>
+        <div class="context-item" title="Смежные открытые BSL-модули в рабочей области">
+            <span class="status-dot online"></span> Вкладок в контексте: 2
+        </div>
+    </div>
+
+    <!-- Навигационные вкладки -->
+    <div class="tabs">
+        <div id="tab-btn-queries" class="tab active" onclick="switchTab('queries')">Запросы</div>
+        <div id="tab-btn-bsp" class="tab" onclick="switchTab('bsp')">БСП 3.1</div>
+        <div id="tab-btn-extensions" class="tab" onclick="switchTab('extensions')">&cfe</div>
+        <div id="tab-btn-audit" class="tab" onclick="switchTab('audit')">ИТС Аудит</div>
+        <div id="tab-btn-bdd" class="tab" onclick="switchTab('bdd')">Vanessa BDD</div>
+        <div id="tab-btn-techlog" class="tab" onclick="switchTab('techlog')">ТЖ Лог</div>
+        <div id="tab-btn-metadata" class="tab" onclick="switchTab('metadata')">Метаданные</div>
+        <div id="tab-btn-sidecar" class="tab" onclick="switchTab('sidecar')">Sidecar</div>
+        <div id="tab-btn-settings" class="tab" onclick="switchTab('settings')">Баланс</div>
+    </div>
+
+    <!-- ТАБ 1: ЗАПРОСЫ (AI + REFACTOR + BATCH) -->
+    <div id="tab-queries" class="tab-panel active">
+        <!-- Рефакторинг существующих запросов 1С -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Оптимизация запроса (ИТС)</div>
+                <span class="badge badge-ok">ИТС Стандарт</span>
+            </div>
+            <div class="card-desc">Выносит прямые соединения с виртуальными таблицами во временные таблицы с индексацией и ЕСТЬNULL.</div>
+            <textarea id="refactorInput" placeholder="Вставьте текст запроса 1С или соединение с виртуальной таблицей..."></textarea>
+            <button onclick="refactorQuery()">Оптимизировать запрос <kbd>Ctrl+Enter</kbd></button>
+            <div id="refactorStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
+            <div id="refactorOutput" class="code-box" style="display:none;"></div>
+            <div class="btn-group" id="refactorActions" style="display:none;">
+                <button class="secondary" onclick="insertCodeFrom('refactorOutput')">Вставить в модуль</button>
+                <button class="secondary" onclick="copyCodeFrom('refactorOutput')">Копировать</button>
+            </div>
+        </div>
+
+        <!-- AI Генератор по описанию -->
+        <div class="card">
+            <div class="card-title">Генерация пакета запроса</div>
+            <div class="chips-row">
+                <div class="chip" onclick="setQueryIntent('Остатки товаров на складах на дату документа с ценами')">Остатки на дату</div>
+                <div class="chip" onclick="setQueryIntent('Обороты продаж номенклатуры за период по клиентам')">Обороты продаж</div>
+                <div class="chip" onclick="setQueryIntent('Срез последних цен номенклатуры на дату')">Срез цен</div>
+                <div class="chip" onclick="setQueryIntent('Контроль отрицательных остатков при проведении')">Контроль остатков</div>
+            </div>
+            <textarea id="queryIntent" placeholder="Опишите задачу на русском языке (например: Выбрать остатки номенклатуры из регистра с фильтром по организации)..."></textarea>
+            <button onclick="generateQuery()">Сформировать BSL-код запроса <kbd>Ctrl+Alt+Q</kbd></button>
+            <div id="queryStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
+            <div id="queryOutput" class="code-box" style="display:none;"></div>
+            <div class="btn-group" id="queryActions" style="display:none;">
+                <button class="secondary" onclick="insertCodeFrom('queryOutput')">Вставить в модуль</button>
+                <button class="secondary" onclick="copyCodeFrom('queryOutput')">Копировать</button>
+            </div>
+        </div>
+
+        <!-- Шаблонизатор проведения -->
+        <div class="card">
+            <div class="card-title">Конструктор движений проведения</div>
+            <input type="text" id="batchEntity" placeholder="Документ" value="РеализацияТоваровУслуг" />
+            <input type="text" id="batchTabular" placeholder="Табличная часть" value="Товары" />
+            <input type="text" id="batchRegister" placeholder="Регистр накопления" value="ТоварыНаСкладах" />
+            <select id="batchRegisterType">
+                <option value="Остатки">Виртуальная таблица: Остатки</option>
+                <option value="Обороты">Виртуальная таблица: Обороты</option>
+                <option value="СрезПоследних">Виртуальная таблица: СрезПоследних</option>
+            </select>
+            <button class="secondary" onclick="generateBatch()">Вставить пакетный запрос проведения</button>
+        </div>
+    </div>
+
+    <!-- ТАБ 2: БСП 3.1 КАТАЛОГ И ИНСПЕКТОР -->
+    <div id="tab-bsp" class="tab-panel">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">База знаний БСП 3.1</div>
+                <span id="bspCountBadge" class="badge badge-ok">40 методов</span>
+            </div>
+            <input type="text" id="bspSearchInput" placeholder="Поиск метода, модуля или действия..." oninput="filterBsp()" />
+            <div class="chips-row" id="bspFilters">
+                <div class="chip active" onclick="setBspSubsystem('', this)">Все</div>
+                <div class="chip" onclick="setBspSubsystem('ОбщегоНазначения', this)">ОбщегоНазначения</div>
+                <div class="chip" onclick="setBspSubsystem('СтроковыеФункции', this)">Строки</div>
+                <div class="chip" onclick="setBspSubsystem('ДлительныеОперации', this)">Длительные</div>
+                <div class="chip" onclick="setBspSubsystem('Пользователи', this)">Пользователи</div>
+                <div class="chip" onclick="setBspSubsystem('УправлениеДоступом', this)">Доступ/RLS</div>
+            </div>
+            <div id="bspListContainer" style="max-height:360px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- ТАБ 3: РАСШИРЕНИЯ (&CFE) -->
+    <div id="tab-extensions" class="tab-panel">
+        <div class="card">
+            <div class="card-title">Перехват метода в расширении</div>
+            <input type="text" id="extMethod" placeholder="Имя процедуры" value="ОбработкаПроведения" />
+            <select id="extDirective">
+                <option value="Вместо">&Вместо (с вызовом ПродолжитьВызов)</option>
+                <option value="Перед">&Перед (с контролем Отказ)</option>
+                <option value="После">&После (постобработка после типового кода)</option>
+                <option value="ИзменениеИКонтроль">&ИзменениеИКонтроль (#Вставка/#КонецВставки)</option>
+            </select>
+            <input type="text" id="extParams" placeholder="Параметры" value="Отказ, РежимПроведения" />
+            <button onclick="generateExt()">Сгенерировать перехватчик</button>
+            <div id="extOutput" class="code-box" style="display:none;"></div>
+            <div class="btn-group" id="extActions" style="display:none;">
+                <button class="secondary" onclick="insertCodeFrom('extOutput')">Вставить в модуль</button>
+                <button class="secondary" onclick="copyCodeFrom('extOutput')">Копировать</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Динамическая кнопка в форме</div>
+            <input type="text" id="btnFormName" placeholder="Имя элемента" value="КнопкаПечать" />
+            <input type="text" id="btnFormTitle" placeholder="Заголовок кнопки" value="Печать УПД" />
+            <input type="text" id="btnFormCmd" placeholder="Имя команды" value="ПечатьУПД" />
+            <button class="secondary" onclick="generateFormBtn()">Сгенерировать код ПриСозданииНаСервере</button>
+        </div>
+    </div>
+
+    <!-- ТАБ 4: ИТС АУДИТ КАЧЕСТВА И БЕЗОПАСНОСТИ -->
+    <div id="tab-audit" class="tab-panel">
+        <div class="card">
+            <div class="card-title">Аудит стандартов ИТС и БСП</div>
+            <div class="card-desc">Проверяет запросы в циклах, управляемые блокировки, модальные окна, мутабельные типы и SQL-инъекции.</div>
+            <button onclick="auditActiveFile()">Проверить открытый файл модуля</button>
+            <textarea id="auditSnippetInput" style="margin-top:6px;" placeholder="Или вставьте сюда любой фрагмент BSL для экспресс-аудита..."></textarea>
+            <button class="secondary" onclick="auditSnippet()">Проверить фрагмент</button>
+            <div id="auditOutputContainer" style="margin-top:8px;"></div>
+        </div>
+    </div>
+
+    <!-- ТАБ 5: VANESSA BDD -->
+    <div id="tab-bdd" class="tab-panel">
+        <div class="card">
+            <div class="card-title">Генератор тестов Vanessa-Automation</div>
+            <div class="card-desc">Создает сценарии сквозного тестирования документов на русском языке Gherkin.</div>
+            <input type="text" id="bddEntity" placeholder="Документ" value="РеализацияТоваровУслуг" />
+            <input type="text" id="bddTabular" placeholder="Табличная часть" value="Товары" />
+            <input type="text" id="bddRegister" placeholder="Регистр остатков" value="ТоварыНаСкладах" />
+            <textarea id="bddPrompt" placeholder="Или опишите тест словами: Проверить проведение при превышении остатка..." style="min-height:50px;"></textarea>
+            <button onclick="generateBdd(true)">Сгенерировать и открыть .feature</button>
+            <button class="secondary" onclick="generateBdd(false)">Сгенерировать в буфер</button>
+            <div id="bddOutput" class="code-box" style="display:none;"></div>
+            <div class="btn-group" id="bddActions" style="display:none;">
+                <button class="secondary" onclick="copyCodeFrom('bddOutput')">Копировать .feature</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ТАБ 6: АНАЛИЗ ТЕХНОЛОГИЧЕСКОГО ЖУРНАЛА (ТЖ) -->
+    <div id="tab-techlog" class="tab-panel">
+        <div class="card">
+            <div class="card-title">Диагностика Технологического Журнала</div>
+            <div class="card-desc">Экспертный анализ инцидентов TLOCK, TDEADLOCK, EXCP и медленных SQL-запросов.</div>
+            <div class="chips-row">
+                <div class="chip" onclick="loadDemoTLog('TLOCK')">TLOCK</div>
+                <div class="chip" onclick="loadDemoTLog('TDEADLOCK')">TDEADLOCK</div>
+                <div class="chip" onclick="loadDemoTLog('EXCP')">EXCP</div>
+                <div class="chip" onclick="loadDemoTLog('DBPOSTGR')">DBPOSTGR</div>
+            </div>
+            <textarea id="techlogInput" style="min-height:90px;" placeholder="Вставьте строку или фрагмент лога ТЖ..."></textarea>
+            <button onclick="analyzeTechLog()">Диагностировать инциденты</button>
+            <div id="techlogStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
+            <div id="techlogOutput" class="code-box" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- ТАБ 7: МЕТАДАННЫЕ КОНФИГУРАЦИИ -->
+    <div id="tab-metadata" class="tab-panel">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Граф метаданных 1С</div>
+                <button class="sm secondary" onclick="scanMetadata()">Сканировать</button>
+            </div>
+            <div class="card-desc">Кэширует структуру объектов конфигурации для точной генерации запросов и реквизитов.</div>
+            <div id="metadataSummaryBox" class="code-box" style="max-height:160px;">Нажмите «Сканировать», чтобы прочитать структуру проекта или выгрузки.</div>
+            <div class="btn-group" style="margin-top:6px;">
+                <button class="secondary" onclick="openWorkspaceFile('metadata.json')">Открыть metadata.json</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ТАБ 8: SIDECAR И КОНФИГУРАТОР (EPF + TURBOCONF) -->
+    <div id="tab-sidecar" class="tab-panel">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Статус 1C Global Sidecar</div>
+                <button class="sm secondary" onclick="checkSidecar()">Проверить</button>
+            </div>
+            <div id="sidecarStatusIndicator" style="font-size:11px; margin-bottom:8px;">
+                <span class="badge badge-warn">Опрос статуса...</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">
+                Sidecar слушает <code>http://127.0.0.1:18833</code> для работы внутри Конфигуратора 1С и TurboConf.
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Интеграция с Конфигуратором 1С</div>
+            <div class="card-desc">Запускайте обработку внутри 1С или используйте скрипт TurboConf по хоткею <code>Ctrl+Alt+Space</code>.</div>
+            <div class="btn-group">
+                <button class="secondary" onclick="openWorkspaceFile('epf/README.md')">Внешняя обработка (.epf)</button>
+                <button class="secondary" onclick="openWorkspaceFile('turboconf/README.md')">TurboConf скрипт</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ТАБ 9: НАСТРОЙКИ, БАЛАНС И ШЛЮЗ -->
+    <div id="tab-settings" class="tab-panel">
+        <div class="card">
+            <div class="card-title">Баланс NormaHub</div>
+            <div style="font-size:18px; font-weight:700; color:#10B981; margin: 4px 0 8px 0;">1450.50 ₽</div>
+            <div class="btn-group">
+                <button onclick="openBilling()">Пополнить (СБП / МИР)</button>
+                <button class="secondary" onclick="openB2B()">Счет с НДС 20%</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Модель автокомплита / генерации</div>
+            <select id="modelSelector" onchange="changeModel()">
+                <option value="deepseek-v4.1-flash" selected>DeepSeek v4.1 Flash (★ Рекомендуется для 1С, ~0.04 ₽)</option>
+                <option value="gpt-6.1-sol" >GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика)</option>
+                <option value="gpt-6-sol" >GPT-6 Sol (Высокая точность и рассуждения)</option>
+                <option value="gpt-6-astra" >GPT-6 Astra (Баланс скорости и интеллекта)</option>
+                <option value="glm-5.3-flash" >GLM 5.3 Flash (Сверхскоростная Z.ai)</option>
+                <option value="muse-spark-1.3" >Muse Spark 1.3 (Креативность и документация)</option>
+                <option value="claude-sonnet-5-5" >Claude 3.5 Sonnet (Максимальный интеллект для ТЖ)</option>
+            </select>
+        </div>
+
+        <div class="card">
+            <div class="card-title">API-ключ NormaHub</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Текущий: nr_hub_l...y_99</div>
+            <input type="password" id="apiKeyInput" placeholder="nr_hub_..." />
+            <button class="secondary" onclick="saveKey()">Сохранить ключ в SecretStorage</button>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">✓ Скопировано в буфер обмена!</div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        const bspModules = [{"module":"ОбщегоНазначения","method":"ЗначениеРеквизитаОбъекта","signature":"ЗначениеРеквизитаОбъекта(Ссылка, ИмяРеквизита, ВыбратьЗащищенныеРеквизиты = Ложь)","context":"Сервер","description":"Получает значение реквизита ссылки быстрым точечным запросом без создания и блокировки тяжелого объекта в памяти.","example":"СтавкаНДС = ОбщегоНазначения.ЗначениеРеквизитаОбъекта(НоменклатураСсылка, \"СтавкаНДС\");"},{"module":"ОбщегоНазначения","method":"ЗначенияРеквизитовОбъектов","signature":"ЗначенияРеквизитовОбъектов(Ссылки, ИменаРеквизитов)","context":"Сервер","description":"Пакетно считывает значения нескольких реквизитов для массива ссылок одним запросом с кэшированием.","example":"Данные = ОбщегоНазначения.ЗначенияРеквизитовОбъектов(МассивСсылок, \"Артикул, ЕдиницаИзмерения\");"},{"module":"ОбщегоНазначения","method":"ТаблицаЗначенийВМассив","signature":"ТаблицаЗначенийВМассив(Таблица, СписокКолонок = Неопределено)","context":"Сервер","description":"Преобразует серверную ТаблицуЗначений в сериализуемый массив структур для безопасной передачи на клиент.","example":"МассивДанных = ОбщегоНазначения.ТаблицаЗначенийВМассив(ТЗ, \"Номенклатура, Количество\");"},{"module":"ОбщегоНазначения","method":"СкопироватьСтруктуру","signature":"СкопироватьСтруктуру(СтруктураИсточник)","context":"Сервер","description":"Создает независимую копию структуры в памяти.","example":"НоваяСтруктура = ОбщегоНазначения.СкопироватьСтруктуру(ИсходнаяСтруктура);"},{"module":"ОбщегоНазначения","method":"ЕстьРеквизитИлиСвойство","signature":"ЕстьРеквизитИлиСвойство(Объект, ИмяРеквизита)","context":"Сервер","description":"Проверяет существование реквизита у объекта метаданных или ключа в структуре без вызова исключения.","example":"Если ОбщегоНазначения.ЕстьРеквизитИлиСвойство(ДокументОбъект, \"Договор\") Тогда"},{"module":"ОбщегоНазначения","method":"ВыгрузитьКолонку","signature":"ВыгрузитьКолонку(ТаблицаИлиМассив, ИмяКолонки, ТолькоУникальные = Истина)","context":"Сервер","description":"Выгружает значения указанной колонки таблицы или массива структур в одномерный массив.","example":"МассивНоменклатуры = ОбщегоНазначения.ВыгрузитьКолонку(ТоварыТЗ, \"Номенклатура\", Истина);"},{"module":"ОбщегоНазначения","method":"ЗафиксироватьОшибку","signature":"ЗафиксироватьОшибку(ИмяСобытия, ИнформацияОбОшибке, Комментарий = \"\")","context":"Сервер","description":"Безопасно записывает ошибку в Журнал Регистрации в стандартизированном формате БСП.","example":"ОбщегоНазначения.ЗафиксироватьОшибку(\"ОбменДанными\", ИнформацияОбОшибке(), \"Сбой загрузки накладной\");"},{"module":"ОбщегоНазначения","method":"МенеджерОбъектаПоСсылке","signature":"МенеджерОбъектаПоСсылке(Ссылка)","context":"Сервер","description":"Динамически возвращает менеджер объекта метаданных по произвольной ссылке.","example":"Менеджер = ОбщегоНазначения.МенеджерОбъектаПоСсылке(Ссылка);"},{"module":"ОбщегоНазначенияКлиентСервер","method":"Свойство","signature":"Свойство(Структура, Ключ, ЗначениеПоУмолчанию = Неопределено)","context":"Клиент, Сервер","description":"Безопасно извлекает значение из Структуры или Соответствия без падения с исключением, если ключ отсутствует.","example":"Склад = ОбщегоНазначенияКлиентСервер.Свойство(ПараметрыОперации, \"Склад\", Справочники.Склады.ПустаяСсылка());"},{"module":"ОбщегоНазначенияКлиентСервер","method":"ЗначениеВМассив","signature":"ЗначениеВМассив(Значение)","context":"Клиент, Сервер","description":"Оборачивает единичное значение в массив (или оставляет массивом, если уже массив).","example":"Список = ОбщегоНазначенияКлиентСервер.ЗначениеВМассив(ПараметрФильтра);"},{"module":"ОбщегоНазначенияКлиентСервер","method":"МассивСодержитЗначение","signature":"МассивСодержитЗначение(Массив, ИскомоеЗначение)","context":"Клиент, Сервер","description":"Проверяет наличие элемента в массиве без необходимости ручного цикла.","example":"Если ОбщегоНазначенияКлиентСервер.МассивСодержитЗначение(РазрешенныеСклады, ТекущийСклад) Тогда"},{"module":"ОбщегоНазначенияКлиентСервер","method":"ДополнитьМассив","signature":"ДополнитьМассив(МассивПриемник, МассивИсточник, ТолькоУникальные = Ложь)","context":"Клиент, Сервер","description":"Добавляет все элементы одного массива в другой массив с опциональной дедупликацией.","example":"ОбщегоНазначенияКлиентСервер.ДополнитьМассив(ОбщийСписок, НовыйСписок, Истина);"},{"module":"ОбщегоНазначенияКлиентСервер","method":"СравнитьВерсии","signature":"СравнитьВерсии(Версия1, Версия2)","context":"Клиент, Сервер","description":"Сравнивает строки номеров версий конфигурации (возвращает 1, 0 или -1).","example":"Результат = ОбщегоНазначенияКлиентСервер.СравнитьВерсии(\"8.3.25.1200\", \"8.3.24.1500\");"},{"module":"ОбщегоНазначенияКлиентСервер","method":"СообщитьПользователю","signature":"СообщитьПользователю(ТекстСообщения, КлючДанных = Неопределено, Поле = \"\", ПутьКДанным = \"\")","context":"Клиент, Сервер","description":"Выводит сообщение пользователю с привязкой к конкретному полю формы или реквизиту объекта.","example":"ОбщегоНазначенияКлиентСервер.СообщитьПользователю(\"Не заполнено поле\", Объект.Ссылка, \"Склад\");"},{"module":"ОбщегоНазначенияКлиентСервер","method":"ЗаполнитьСтруктуруПоСтрокеТаблицы","signature":"ЗаполнитьСтруктуруПоСтрокеТаблицы(СтруктураПриемник, СтрокаТаблицы)","context":"Клиент, Сервер","description":"Копирует совпавшие колонки из строки таблицы в структуру параметров.","example":"ОбщегоНазначенияКлиентСервер.ЗаполнитьСтруктуруПоСтрокеТаблицы(Параметры, ТекущаяСтрока);"},{"module":"СтроковыеФункцииКлиентСервер","method":"РазложитьСтрокуВМассивПодстрок","signature":"РазложитьСтрокуВМассивПодстрок(Знач Строка, Знач Разделитель = \",\", Знач СокращатьНепечатаемыеСимволы = Истина)","context":"Клиент, Сервер","description":"Разбивает строку на массив элементов по разделителю с автоматической очисткой пробелов.","example":"МассивКодов = СтроковыеФункцииКлиентСервер.РазложитьСтрокуВМассивПодстрок(СтрокаИНН, \";\");"},{"module":"СтроковыеФункцииКлиентСервер","method":"ВставитьПараметрыВСтроку","signature":"ВставитьПараметрыВСтроку(Знач Шаблон, Знач Параметр1, Знач Параметр2 = Неопределено...)","context":"Клиент, Сервер","description":"Форматирует строку шаблона с подстановкой параметров (%1, %2), аналог string.format / sprintf.","example":"ТекстОшибки = СтроковыеФункцииКлиентСервер.ВставитьПараметрыВСтроку(НСтр(\"ru = 'Документ %1 от %2 не проведен'\"), Номер, Дата);"},{"module":"СтроковыеФункцииКлиентСервер","method":"СтрокаЗаполнена","signature":"СтрокаЗаполнена(Строка)","context":"Клиент, Сервер","description":"Проверяет, содержит ли строка значащие символы (не пустая и не пробельная).","example":"Если СтроковыеФункцииКлиентСервер.СтрокаЗаполнена(Комментарий) Тогда"},{"module":"СтроковыеФункцииКлиентСервер","method":"СоединитьСтроки","signature":"СоединитьСтроки(МассивСтрок, Разделитель = \", \")","context":"Клиент, Сервер","description":"Объединяет массив строк в одну строку с разделителем (аналог Array.join).","example":"Результат = СтроковыеФункцииКлиентСервер.СоединитьСтроки(МассивАртикулов, \"; \");"},{"module":"СтроковыеФункцииКлиентСервер","method":"ТолькоЦифрыВСтроке","signature":"ТолькоЦифрыВСтроке(Знач Строка)","context":"Клиент, Сервер","description":"Оставляет в строке только цифровые символы (очищает от пробелов, скобок, дефисов в телефонах и ИНН).","example":"ЧистыйТелефон = СтроковыеФункцииКлиентСервер.ТолькоЦифрыВСтроке(СтрокаТелефона);"},{"module":"СтроковыеФункцииКлиентСервер","method":"СтрокаВФорматеUUID","signature":"СтрокаВФорматеUUID(Знач Строка)","context":"Клиент, Сервер","description":"Проверяет соответствие строки стандарту GUID (8-4-4-4-12).","example":"ЭтоГуид = СтроковыеФункцииКлиентСервер.СтрокаВФорматеUUID(Идентификатор);"},{"module":"ДлительныеОперации","method":"ЗапуститьВыполнениеВФоне","signature":"ЗапуститьВыполнениеВФоне(ИдентификаторФормы, ИмяПроцедуры, ПараметрыВыполнения, ПараметрыПроцедуры)","context":"Сервер","description":"Запускает длительный серверный процесс в отдельном фоновом задании без зависания интерфейса пользователя.","example":"Операция = ДлительныеОперации.ЗапуститьВыполнениеВФоне(УникальныйИдентификатор, \"МойМодуль.ТяжелыйРасчет\", Параметры);"},{"module":"ДлительныеОперации","method":"ОперацияВыполнена","signature":"ОперацияВыполнена(ИдентификаторЗадания)","context":"Сервер","description":"Опрашивает статус выполнения активного фонового задания.","example":"Если ДлительныеОперации.ОперацияВыполнена(ЗаданиеИД) Тогда"},{"module":"ДлительныеОперации","method":"ОтменитьВыполнение","signature":"ОтменитьВыполнение(ИдентификаторЗадания)","context":"Сервер","description":"Корректно останавливает и прерывает зависшее фоновое задание.","example":"ДлительныеОперации.ОтменитьВыполнение(Операция.ИдентификаторЗадания);"},{"module":"ДлительныеОперацииКлиент","method":"ОжидатьЗавершение","signature":"ОжидатьЗавершение(Операция, ОповещениеОЗавершении, ПараметрыОжидания = Неопределено)","context":"Клиент","description":"Отображает стандартный диалог ожидания БСП и вызывает оповещение при завершении фонового задания.","example":"ДлительныеОперацииКлиент.ОжидатьЗавершение(Операция, Новый ОписаниеОповещения(\"ПослеЗавершенияРасчета\", ЭтотОбъект));"},{"module":"ДлительныеОперацииКлиент","method":"ОткрытьФормуОжидания","signature":"ОткрытьФормуОжидания(Операция, ФормаВладелец = Неопределено)","context":"Клиент","description":"Открывает модальную форму прогресс-бара с отображением хода длительной процедуры.","example":"ДлительныеОперацииКлиент.ОткрытьФормуОжидания(Операция, ЭтотОбъект);"},{"module":"Пользователи","method":"АвторизованныйПользователь","signature":"АвторизованныйПользователь()","context":"Сервер","description":"Возвращает ссылку на текущего авторизованного пользователя из справочника Пользователи (не системный строковый логин).","example":"ТекущийСотрудник = Пользователи.АвторизованныйПользователь();"},{"module":"Пользователи","method":"ТекущийПользователь","signature":"ТекущийПользователь()","context":"Сервер","description":"Возвращает ссылку на текущего пользователя или пустую ссылку для регламентных заданий.","example":"ПользовательСсылка = Пользователи.ТекущийПользователь();"},{"module":"Пользователи","method":"ЭтоПолноправныйПользователь","signature":"ЭтоПолноправныйПользователь(Пользователь = Неопределено)","context":"Сервер","description":"Проверяет наличие у пользователя полных административных прав в системе.","example":"Если Пользователи.ЭтоПолноправныйПользователь() Тогда"},{"module":"УправлениеДоступом","method":"ПроверитьДоступ","signature":"ПроверитьДоступ(Право, Объект = Неопределено, ВызыватьИсключение = Истина)","context":"Сервер","description":"Проверяет RLS-права текущего пользователя по матрице прав БСП перед выполнением чувствительной операции.","example":"УправлениеДоступом.ПроверитьДоступ(\"Чтение\", ДокументСсылка);"},{"module":"УправлениеДоступом","method":"ДоступностьОбъекта","signature":"ДоступностьОбъекта(Ссылка, Пользователь = Неопределено)","context":"Сервер","description":"Возвращает Истина, если объект доступен пользователю с учетом всех групп доступа.","example":"Доступен = УправлениеДоступом.ДоступностьОбъекта(СкладСсылка);"},{"module":"УправлениеДоступом","method":"УстановитьРазделениеДоступаВЗапросе","signature":"УстановитьРазделениеДоступаВЗапросе(Запрос)","context":"Сервер","description":"Активирует строгие параметры RLS для объекта Запрос перед выполнением.","example":"УправлениеДоступом.УстановитьРазделениеДоступаВЗапросе(Запрос);"},{"module":"ПрефиксацияОбъектовКлиентСервер","method":"НомерНаПечать","signature":"НомерНаПечать(Знач Номер, УдалитьПрефикс = Истина, УдалитьЛидирующиеНули = Истина)","context":"Клиент, Сервер","description":"Преобразует системный 1С-номер документа (e.g. УТ00-000451) в красивый печатный вид (№ 451).","example":"ПечатныйНомер = ПрефиксацияОбъектовКлиентСервер.НомерНаПечать(Документ.Номер);"},{"module":"ПрефиксацияОбъектовКлиентСервер","method":"УдалитьПрефиксыИзНомера","signature":"УдалитьПрефиксыИзНомера(Знач Номер)","context":"Клиент, Сервер","description":"Очищает префиксы узлов РИБ и организации из номера объекта.","example":"ЧистыйНомер = ПрефиксацияОбъектовКлиентСервер.УдалитьПрефиксыИзНомера(Номер);"},{"module":"РаботаСФайлами","method":"ПрикрепитьФайл","signature":"ПрикрепитьФайл(ВладелецФайла, ИмяФайла, ДвоичныеДанные, Описание = \"\")","context":"Сервер","description":"Сохраняет двоичные данные файла и привязывает их к объекту-владельцу в подсистеме файлов БСП.","example":"СсылкаНаФайл = РаботаСФайлами.ПрикрепитьФайл(ЗаказСсылка, \"Спецификация.pdf\", Данные);"},{"module":"РаботаСФайлами","method":"ДвоичныеДанныеФайла","signature":"ДвоичныеДанныеФайла(СсылкаНаФайл)","context":"Сервер","description":"Считывает двоичные данные прикрепленного файла из тома на диске или базы данных.","example":"Данные = РаботаСФайлами.ДвоичныеДанныеФайла(ФайлСсылка);"},{"module":"ДатыКлиентСервер","method":"НачалоКвартала","signature":"НачалоКвартала(Дата)","context":"Клиент, Сервер","description":"Возвращает начало квартала для переданной даты.","example":"ДатаНачала = ДатыКлиентСервер.НачалоКвартала(ТекущаяДатаСеанса());"},{"module":"ДатыКлиентСервер","method":"ИнтервалВСекундах","signature":"ИнтервалВСекундах(ДатаНачала, ДатаОкончания)","context":"Клиент, Сервер","description":"Вычисляет точную разницу в секундах между двумя датами.","example":"Секунды = ДатыКлиентСервер.ИнтервалВСекундах(ВремяСтарта, ВремяФиниша);"},{"module":"РегламентныеЗаданияСервер","method":"НайтиЗаданиеПоИмени","signature":"НайтиЗаданиеПоИмени(ИмяМетаданных)","context":"Сервер","description":"Находит экземпляр регламентного задания по системному имени объекта метаданных.","example":"Задание = РегламентныеЗаданияСервер.НайтиЗаданиеПоИмени(\"СинхронизацияДанных\");"},{"module":"РегламентныеЗаданияСервер","method":"ЗапуститьРегламентноеЗадание","signature":"ЗапуститьРегламентноеЗадание(Задание)","context":"Сервер","description":"Программно инициирует немедленное внеочередное выполнение регламентного задания.","example":"РегламентныеЗаданияСервер.ЗапуститьРегламентноеЗадание(Задание);"}];
+        let activeBspSubsystem = '';
+
+        // Theme management
+        function initTheme() {
+            let saved = 'espresso';
+            try {
+                saved = localStorage.getItem('normahub_1c_theme') || 'espresso';
+            } catch (_) {}
+            applyTheme(saved);
+        }
+
+        function toggleTheme() {
+            const current = document.body.classList.contains('theme-warm-sand') ? 'warm-sand' : 'espresso';
+            const next = current === 'warm-sand' ? 'espresso' : 'warm-sand';
+            applyTheme(next);
+            try {
+                localStorage.setItem('normahub_1c_theme', next);
+            } catch (_) {}
+        }
+
+        function applyTheme(theme) {
+            document.body.classList.remove('theme-warm-sand', 'theme-espresso');
+            const label = document.getElementById('themeLabel');
+
+            if (theme === 'warm-sand') {
+                document.body.classList.add('theme-warm-sand');
+                if (label) { label.innerText = 'Тёмная'; }
+            } else {
+                document.body.classList.add('theme-espresso');
+                if (label) { label.innerText = 'Песочная'; }
+            }
+        }
+
+        initTheme();
+
+        // Toast feedback
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            if (!t) return;
+            t.innerText = msg || '✓ Скопировано в буфер обмена!';
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 1500);
+        }
+
+        // Tabs
+        function switchTab(name) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            const btn = document.getElementById('tab-btn-' + name);
+            if (btn) btn.classList.add('active');
+            const panel = document.getElementById('tab-' + name);
+            if (panel) panel.classList.add('active');
+
+            if (name === 'bsp') {
+                const bspContainer = document.getElementById('bspListContainer');
+                if (bspContainer && bspContainer.children.length === 0) {
+                    renderBspList();
+                }
+            }
+            if (name === 'sidecar') {
+                checkSidecar();
+            }
+        }
+
+        // Code Box helpers
+        function insertCodeFrom(id) {
+            const code = document.getElementById(id).innerText;
+            if (code) {
+                vscode.postMessage({ type: 'insertCode', code });
+            }
+        }
+
+        function copyCodeFrom(id) {
+            const text = document.getElementById(id).innerText;
+            if (text) {
+                vscode.postMessage({ type: 'copyToClipboard', text });
+                showToast('✓ Скопировано в буфер!');
+            }
+        }
+
+        // Queries Tab
+        function setQueryIntent(text) {
+            document.getElementById('queryIntent').value = text;
+        }
+
+        function generateQuery() {
+            const intent = document.getElementById('queryIntent').value;
+            if (!intent.trim()) return;
+            document.getElementById('queryStatus').innerText = 'Генерация через NormaHub...';
+            vscode.postMessage({ type: 'generateQuery', intent });
+        }
+
+        function refactorQuery() {
+            const rawQuery = document.getElementById('refactorInput').value;
+            if (!rawQuery.trim()) return;
+            document.getElementById('refactorStatus').innerText = 'Рефакторинг по стандартам ИТС...';
+            vscode.postMessage({ type: 'refactorQuery', rawQuery });
+        }
+
+        function generateBatch() {
+            const entity = document.getElementById('batchEntity').value;
+            const tabular = document.getElementById('batchTabular').value;
+            const register = document.getElementById('batchRegister').value;
+            const registerType = document.getElementById('batchRegisterType').value;
+            vscode.postMessage({ type: 'generateBatchTemplate', entity, tabular, register, registerType });
+        }
+
+        // BSP Tab
+        function renderBspList() {
+            const query = (document.getElementById('bspSearchInput').value || '').toLowerCase().trim();
+            const container = document.getElementById('bspListContainer');
+            container.innerHTML = '';
+
+            const filtered = bspModules.filter(m => {
+                if (activeBspSubsystem && !m.module.toLowerCase().includes(activeBspSubsystem.toLowerCase())) {
+                    return false;
+                }
+                if (!query) return true;
+                return m.module.toLowerCase().includes(query) ||
+                       m.method.toLowerCase().includes(query) ||
+                       m.description.toLowerCase().includes(query);
+            });
+
+            document.getElementById('bspCountBadge').innerText = filtered.length + ' методов';
+
+            filtered.forEach(m => {
+                const item = document.createElement('div');
+                item.className = 'bsp-item';
+                item.innerHTML = `
+                    <div class="bsp-header">
+                        <div>
+                            <div class="bsp-method-name">${m.module}.${m.method}</div>
+                            <div class="bsp-module-tag">${m.signature}</div>
+                        </div>
+                        <span class="badge badge-context">${m.context}</span>
+                    </div>
+                    <div class="bsp-desc">${m.description}</div>
+                    <div class="btn-group" style="margin-top:4px;">
+                        <button class="sm" onclick="insertBspSnippet('${encodeURIComponent(m.example)}')">Вставить</button>
+                        <button class="sm secondary" onclick="copySnippet('${encodeURIComponent(m.example)}')">Копировать</button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function filterBsp() { renderBspList(); }
+
+        function setBspSubsystem(sub, el) {
+            activeBspSubsystem = sub;
+            document.querySelectorAll('#bspFilters .chip').forEach(c => c.classList.remove('active'));
+            if (el) {
+                el.classList.add('active');
+            }
+            renderBspList();
+        }
+
+        function insertBspSnippet(enc) {
+            const code = decodeURIComponent(enc);
+            vscode.postMessage({ type: 'insertCode', code });
+        }
+
+        function copySnippet(enc) {
+            const code = decodeURIComponent(enc);
+            vscode.postMessage({ type: 'copyToClipboard', text: code });
+            showToast('✓ Сниппет скопирован!');
+        }
+
+        // Extensions Tab
+        function generateExt() {
+            const method = document.getElementById('extMethod').value;
+            const directive = document.getElementById('extDirective').value;
+            const params = document.getElementById('extParams').value;
+            vscode.postMessage({ type: 'generateExtension', method, directive, params });
+        }
+
+        function generateFormBtn() {
+            const buttonName = document.getElementById('btnFormName').value;
+            const title = document.getElementById('btnFormTitle').value;
+            const commandName = document.getElementById('btnFormCmd').value;
+            vscode.postMessage({ type: 'generateFormButton', buttonName, title, commandName });
+        }
+
+        // Audit Tab
+        function auditActiveFile() {
+            vscode.postMessage({ type: 'auditSelection' });
+        }
+
+        function auditSnippet() {
+            const code = document.getElementById('auditSnippetInput').value;
+            vscode.postMessage({ type: 'auditCodeSnippet', code });
+        }
+
+        function jumpTo(line) {
+            vscode.postMessage({ type: 'jumpToLine', line });
+        }
+
+        // Vanessa BDD
+        function generateBdd(openEditor) {
+            const entity = document.getElementById('bddEntity').value;
+            const tabular = document.getElementById('bddTabular').value;
+            const register = document.getElementById('bddRegister').value;
+            const prompt = document.getElementById('bddPrompt').value;
+            vscode.postMessage({ type: 'generateBdd', entity, tabular, register, prompt, openEditor });
+        }
+
+        // Tech Log
+        function loadDemoTLog(type) {
+            const samples = {
+                'TLOCK': '04:12.123000-1420000,TLOCK,3,process=rphost,t:clientID=12,Regions=AccumRegister.ТоварыНаСкладах,WaitConnections=14,Context=Документ.РеализацияТоваровУслуг.МодульОбъекта : 142',
+                'TDEADLOCK': '12:45.892000-0,TDEADLOCK,4,process=rphost,WaitConnections=18,Context=Документ.ЗаказКлиента.МодульОбъекта : 88,Regions=Doc.ЗаказКлиента,AccumRegister.ТоварыНаСкладах',
+                'EXCP': '08:15.004000-0,EXCP,2,process=rphost,ClientID=9,Exception=RuntimeError,Descr="Попытка передачи мутабельного значения типа ТаблицаЗначений с клиента на сервер",Context=Форма.ФормаДокумента.Модуль : 54',
+                'DBPOSTGR': '19:22.451000-8450000,DBPOSTGR,3,process=rphost,Sql="SELECT * FROM _AccumReg1234 WHERE _Period >= \'2026-01-01\'",Context=РегистрНакопления.ТоварыНаСкладах.МодульМенеджера : 110'
+            };
+            document.getElementById('techlogInput').value = samples[type] || '';
+        }
+
+        function analyzeTechLog() {
+            const rawLog = document.getElementById('techlogInput').value;
+            document.getElementById('techlogStatus').innerText = 'Анализ событий ТЖ...';
+            vscode.postMessage({ type: 'analyzeTechLog', rawLog });
+        }
+
+        // Metadata
+        function scanMetadata() {
+            vscode.postMessage({ type: 'scanMetadata' });
+        }
+
+        // Sidecar
+        function checkSidecar() {
+            vscode.postMessage({ type: 'checkSidecarStatus' });
+        }
+
+        function openWorkspaceFile(relPath) {
+            vscode.postMessage({ type: 'openWorkspaceFile', relativePath: relPath });
+        }
+
+        // Settings
+        function saveKey() {
+            const val = document.getElementById('apiKeyInput').value;
+            if (val) vscode.postMessage({ type: 'saveKey', value: val });
+        }
+        function changeModel() {
+            const model = document.getElementById('modelSelector').value;
+            vscode.postMessage({ type: 'changeModel', model });
+        }
+        function openBilling() { vscode.postMessage({ type: 'openBilling' }); }
+        function openB2B() { vscode.postMessage({ type: 'openB2B' }); }
+
+        // Host Message Listener
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message.type === 'queryResult') {
+                document.getElementById('queryStatus').innerText = '';
+                const box = document.getElementById('queryOutput');
+                box.style.display = 'block';
+                box.innerText = message.code || message.error || '';
+                document.getElementById('queryActions').style.display = message.code ? 'flex' : 'none';
+            } else if (message.type === 'refactorResult') {
+                document.getElementById('refactorStatus').innerText = '';
+                const box = document.getElementById('refactorOutput');
+                box.style.display = 'block';
+                if (message.error) {
+                    box.innerText = message.error;
+                } else {
+                    let out = message.code;
+                    if (message.optimizations && message.optimizations.length) {
+                        out = '// ПРИМЕНЕННЫЕ ОПТИМИЗАЦИИ ИТС:\n// ' + message.optimizations.join('\n// ') + '\n\n' + out;
+                    }
+                    box.innerText = out;
+                    document.getElementById('refactorActions').style.display = 'flex';
+                }
+            } else if (message.type === 'extensionResult') {
+                const box = document.getElementById('extOutput');
+                box.style.display = 'block';
+                box.innerText = message.code || '';
+                document.getElementById('extActions').style.display = 'flex';
+            } else if (message.type === 'auditResult') {
+                const container = document.getElementById('auditOutputContainer');
+                container.innerHTML = '';
+
+                if (message.issues && message.issues.length) {
+                    message.issues.forEach(iss => {
+                        const card = document.createElement('div');
+                        card.className = 'issue-card ' + (iss.severity || 'info');
+                        card.innerHTML = `
+                            <div>
+                                <span class="badge ${iss.severity === 'error' ? 'badge-crit' : iss.severity === 'warning' ? 'badge-warn' : 'badge-ok'}">${iss.rule}</span>
+                                <span class="issue-link" onclick="jumpTo(${iss.line})">Строка ${iss.line}</span>
+                            </div>
+                            <div style="margin-top:3px; font-weight:500;">${iss.message}</div>
+                            <div style="margin-top:2px; color:var(--text-muted); font-size:10px;">Рекомендация: ${iss.suggestion}</div>
+                        `;
+                        container.appendChild(card);
+                    });
+                } else {
+                    const okBox = document.createElement('div');
+                    okBox.className = 'code-box';
+                    okBox.innerText = message.report || '✓ Замечаний не обнаружено!';
+                    container.appendChild(okBox);
+                }
+            } else if (message.type === 'bddResult') {
+                const box = document.getElementById('bddOutput');
+                box.style.display = 'block';
+                box.innerText = message.feature || '';
+                document.getElementById('bddActions').style.display = 'flex';
+            } else if (message.type === 'techLogResult') {
+                document.getElementById('techlogStatus').innerText = '';
+                const box = document.getElementById('techlogOutput');
+                box.style.display = 'block';
+                box.innerText = message.report || '';
+            } else if (message.type === 'metadataResult') {
+                const box = document.getElementById('metadataSummaryBox');
+                box.innerText = message.summary || `Обнаружено объектов: ${message.objectsCount}`;
+            } else if (message.type === 'sidecarStatus') {
+                const ind = document.getElementById('sidecarStatusIndicator');
+                if (message.online) {
+                    ind.innerHTML = '<span class="badge badge-ok">● Онлайн (:18833)</span> ' +
+                                    '<span style="color:var(--text-muted); font-size:10px;">Версия: ' + (message.info.version || '1.0.0') + '</span>';
+                } else {
+                    ind.innerHTML = '<span class="badge badge-crit">● Офлайн</span> ' +
+                                    '<span style="color:var(--text-muted); font-size:10px;">' + (message.error || 'Запустите: python3 -m sidecar.main') + '</span>';
+                }
+            }
+        });
+    </script>
+</body>
+</html>

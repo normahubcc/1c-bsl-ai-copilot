@@ -27,7 +27,7 @@ class SidecarHandler(BaseHTTPRequestHandler):
         self._set_headers(204)
 
     def do_GET(self):
-        if self.path in ("/health", "/status", "/"):
+        if self.path in ("/health", "/status", "/", "/v1/health", "/v1/status"):
             resp = {
                 "status": "ok",
                 "service": "1c-configurator-sidecar",
