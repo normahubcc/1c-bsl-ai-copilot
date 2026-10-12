@@ -107,8 +107,10 @@ ${multiTabContext ? '\n' + multiTabContext : ''}
 
 ${bspSummary}`;
 
-        // True FIM (Fill-In-The-Middle) prompt formatting
-        const userPrompt = `<fim_prefix>${prefixText}<fim_suffix>${suffixText}<fim_middle>`;
+        // Context-aware prompt compatible with both chat & reasoning models
+        const userPrompt = suffixText.trim()
+            ? `КОД ДО КУРСОРА:\n${prefixText}\n\nКОД ПОСЛЕ КУРСОРА:\n${suffixText}\n\nНапиши ТОЛЬКО код для вставки на позиции курсора без обратных кавычек.`
+            : `КОД ДО КУРСОРА:\n${prefixText}\n\nНапиши ТОЛЬКО код продолжения на позиции курсора без обратных кавычек.`;
 
         try {
             if (token.isCancellationRequested) {
@@ -121,7 +123,7 @@ ${bspSummary}`;
                 systemPrompt,
                 userPrompt,
                 0.1,
-                200
+                800
             );
 
             if (token.isCancellationRequested || !completion.trim()) {
