@@ -1,0 +1,23 @@
+# 1C BSL AI Copilot: Full Technical Specification
+
+## Technical Architecture
+- Language: TypeScript 5.3+ targeting Node 18+ / VS Code Extension API 1.85+.
+- Build Pipeline: esbuild bundle -> OPC VSIX archive packager.
+- Transport: HTTPS streaming to https://api.normahub.cc/v1/chat/completions.
+- Key Vault: Native VS Code SecretStorage API (OS Keychain / Secret Service).
+
+## Supported Language Identifiers
+- bsl (1C:Enterprise Business Server Language)
+- 1c
+- oscript (OneScript)
+
+## Rules & Standards Enforced
+- ITS-PERF-001: Prohibition of query execution inside iteration loops.
+- ITS-PERF-002: Mandatory parameterization of virtual tables in accumulation and information registers.
+- ITS-LOCK-001: Mandatory explicit DataLock (БлокировкаДанных) in document posting handlers.
+- ITS-UI-003: Deprecation of synchronous modal alerts in web-client compatible modules.
+
+## Authentication
+- Environment: NORMAHUB_API_KEY
+- SecretStorage: normahub1c.apiKey
+- Gateway Base: https://api.normahub.cc/v1

@@ -1,0 +1,167 @@
+{
+  "name": "1c-bsl-ai-copilot",
+  "displayName": "1C BSL AI Copilot (NormaHub)",
+  "description": "Бесплатный AI-ассистент для разработчиков 1С:Предприятие (BSL) в VS Code и Cursor. Умный автокомплит на лету, конструктор запросов 1С и аудит стандартов ИТС без VPN.",
+  "version": "1.0.0",
+  "publisher": "normahub",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/normahubcc/1c-bsl-ai-copilot"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "1c",
+    "bsl",
+    "1c-enterprise",
+    "onescript",
+    "copilot",
+    "normahub",
+    "cursor",
+    "vsc-language-1c-bsl"
+  ],
+  "activationEvents": [
+    "onLanguage:bsl",
+    "onLanguage:1c",
+    "onLanguage:oscript",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "package": "python3 build_vsix.py",
+    "test": "node ./dist/test-runner.js"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "normahub-1c-sidebar",
+          "title": "1C Copilot",
+          "icon": "media/1c-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "normahub-1c-sidebar": [
+        {
+          "type": "webview",
+          "id": "normahub1c.mainView",
+          "name": "1С:Ассистент"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "normahub1c.generateQuery",
+        "title": "1С: Сгенерировать запрос по описанию"
+      },
+      {
+        "command": "normahub1c.auditStandards",
+        "title": "1С: Проверить код по стандартам ИТС"
+      },
+      {
+        "command": "normahub1c.explainCode",
+        "title": "1С: Объяснить фрагмент кода BSL"
+      },
+      {
+        "command": "normahub1c.scanMetadata",
+        "title": "1С: Просканировать метаданные конфигурации"
+      },
+      {
+        "command": "normahub1c.topupBalance",
+        "title": "1С: Пополнить баланс NormaHub (СБП/Диадок)"
+      },
+      {
+        "command": "normahub1c.setApiKey",
+        "title": "1С: Настроить API-ключ NormaHub"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "normahub1c.generateQuery",
+          "when": "editorTextFocus",
+          "group": "normahub1c@1"
+        },
+        {
+          "command": "normahub1c.auditStandards",
+          "when": "editorHasSelection",
+          "group": "normahub1c@2"
+        },
+        {
+          "command": "normahub1c.explainCode",
+          "when": "editorHasSelection",
+          "group": "normahub1c@3"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "normahub1c.generateQuery",
+        "key": "ctrl+alt+q",
+        "mac": "cmd+alt+q",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "normahub1c.auditStandards",
+        "key": "ctrl+alt+i",
+        "mac": "cmd+alt+i",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "1C BSL AI Copilot (NormaHub)",
+      "properties": {
+        "normahub1c.baseUrl": {
+          "type": "string",
+          "default": "https://api.normahub.cc/v1",
+          "description": "Эндпоинт API-шлюза NormaHub"
+        },
+        "normahub1c.autocompleteModel": {
+          "type": "string",
+          "default": "deepseek-v4.1-flash",
+          "description": "Модель для мгновенного автокомплита BSL (быстрая и экономичная)"
+        },
+        "normahub1c.reasoningModel": {
+          "type": "string",
+          "default": "claude-sonnet-5-5",
+          "enum": [
+            "claude-sonnet-5-5",
+            "gpt-6-astra",
+            "deepseek-v4.1-flash",
+            "claude-opus-5"
+          ],
+          "description": "Модель для генерации сложных запросов 1С и глубокого рефакторинга"
+        },
+        "normahub1c.enableInlineCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Включить умное автодополнение Ghost Text на лету"
+        },
+        "normahub1c.debounceMs": {
+          "type": "number",
+          "default": 250,
+          "description": "Задержка дебаунсинга автокомплита в мс перед отправкой в сеть"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  }
+}

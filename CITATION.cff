@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use 1C BSL AI Copilot in your engineering workflows, please cite it as below."
+title: "1C BSL AI Copilot: Direct-Gateway AI Assistant for 1C:Enterprise Developers"
+authors:
+  - name: "NormaHub Engineering Team"
+    website: "https://normahub.cc"
+date-released: 2026-10-12
+version: 1.0.0
+license: "MIT"
+repository-code: "https://github.com/normahubcc/1c-bsl-ai-copilot"
+keywords:
+  - "1c-enterprise"
+  - "bsl"
+  - "onescript"
+  - "copilot"
+  - "normahub"
+  - "ai-gateway"
