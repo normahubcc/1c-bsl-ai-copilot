@@ -788,7 +788,7 @@ ${bspSummary}`;
 
         .btn-group button {
             flex: 1 1 calc(50% - 5px);
-            min-width: 80px;
+            min-width: 110px;
             width: auto;
             margin-top: 0;
         }
@@ -899,12 +899,13 @@ ${bspSummary}`;
             padding: 9px;
             font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
             font-size: 11px;
-            white-space: pre-wrap;
-            max-height: 230px;
+            white-space: pre;
+            max-height: 250px;
+            overflow-x: auto;
             overflow-y: auto;
             margin-top: 7px;
             line-height: 1.5;
-            word-break: break-all;
+            word-break: normal;
             box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
         }
 
@@ -1014,6 +1015,54 @@ ${bspSummary}`;
             text-decoration: underline;
         }
 
+                .form-group {
+            margin-bottom: 7px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 10.5px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 3px;
+            letter-spacing: 0.1px;
+        }
+
+        .form-hint {
+            font-size: 9.5px;
+            color: var(--text-muted);
+            margin-top: -3px;
+            margin-bottom: 5px;
+            line-height: 1.35;
+        }
+
+        .bsp-signature {
+            background: rgba(128, 128, 128, 0.08);
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-main);
+            margin: 4px 0;
+            white-space: pre-wrap;
+            word-break: normal;
+            overflow-wrap: break-word;
+        }
+
+        .bsp-example {
+            background: var(--code-bg);
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--code-text);
+            margin-top: 5px;
+            white-space: pre;
+            overflow-x: auto;
+            word-break: normal;
+            border-left: 2px solid var(--border-focus);
+        }
+
         .tab-panel {
             display: none;
             animation: fadeIn 0.15s ease-in-out;
@@ -1092,7 +1141,10 @@ ${bspSummary}`;
                 <span class="badge badge-ok">ИТС Стандарт</span>
             </div>
             <div class="card-desc">Выносит прямые соединения с виртуальными таблицами во временные таблицы с индексацией и ЕСТЬNULL.</div>
-            <textarea id="refactorInput" placeholder="Вставьте текст запроса 1С или соединение с виртуальной таблицей..."></textarea>
+            <div class="form-group">
+                <label class="form-label" for="refactorInput">Текст исходного запроса 1С:</label>
+                <textarea id="refactorInput" placeholder="Вставьте текст неоптимального запроса или соединение с виртуальной таблицей..."></textarea>
+            </div>
             <button onclick="refactorQuery()">Оптимизировать запрос <kbd>Ctrl+Enter</kbd></button>
             <div id="refactorStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
             <div id="refactorOutput" class="code-box" style="display:none;"></div>
@@ -1104,14 +1156,20 @@ ${bspSummary}`;
 
         <!-- AI Генератор по описанию -->
         <div class="card">
-            <div class="card-title">Генерация пакета запроса</div>
+            <div class="card-header">
+                <div class="card-title">Генерация пакета запроса</div>
+                <span class="badge badge-context">Нейросеть</span>
+            </div>
             <div class="chips-row">
                 <div class="chip" onclick="setQueryIntent('Остатки товаров на складах на дату документа с ценами')">Остатки на дату</div>
                 <div class="chip" onclick="setQueryIntent('Обороты продаж номенклатуры за период по клиентам')">Обороты продаж</div>
                 <div class="chip" onclick="setQueryIntent('Срез последних цен номенклатуры на дату')">Срез цен</div>
                 <div class="chip" onclick="setQueryIntent('Контроль отрицательных остатков при проведении')">Контроль остатков</div>
             </div>
-            <textarea id="queryIntent" placeholder="Опишите задачу на русском языке (например: Выбрать остатки номенклатуры из регистра с фильтром по организации)..."></textarea>
+            <div class="form-group">
+                <label class="form-label" for="queryIntent">Описание задачи на русском языке:</label>
+                <textarea id="queryIntent" placeholder="Например: Выбрать остатки номенклатуры из регистра с фильтром по организации и сгруппировать по складам..."></textarea>
+            </div>
             <button onclick="generateQuery()">Сформировать BSL-код запроса <kbd>Ctrl+Alt+Q</kbd></button>
             <div id="queryStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
             <div id="queryOutput" class="code-box" style="display:none;"></div>
@@ -1123,15 +1181,36 @@ ${bspSummary}`;
 
         <!-- Шаблонизатор проведения -->
         <div class="card">
-            <div class="card-title">Конструктор движений проведения</div>
-            <input type="text" id="batchEntity" placeholder="Документ" value="РеализацияТоваровУслуг" />
-            <input type="text" id="batchTabular" placeholder="Табличная часть" value="Товары" />
-            <input type="text" id="batchRegister" placeholder="Регистр накопления" value="ТоварыНаСкладах" />
-            <select id="batchRegisterType">
-                <option value="Остатки">Виртуальная таблица: Остатки</option>
-                <option value="Обороты">Виртуальная таблица: Обороты</option>
-                <option value="СрезПоследних">Виртуальная таблица: СрезПоследних</option>
-            </select>
+            <div class="card-header">
+                <div class="card-title">Конструктор движений проведения</div>
+                <span class="badge badge-ok">Шаблон ИТС</span>
+            </div>
+            <div class="card-desc">Генерирует процедуру ОбработкаПроведения с блокировкой данных, выборкой табличной части во временную таблицу и остатками.</div>
+            
+            <div class="form-group">
+                <label class="form-label" for="batchEntity">Документ конфигурации:</label>
+                <input type="text" id="batchEntity" placeholder="Например: РеализацияТоваровУслуг" value="РеализацияТоваровУслуг" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="batchTabular">Табличная часть документа:</label>
+                <input type="text" id="batchTabular" placeholder="Например: Товары" value="Товары" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="batchRegister">Регистр накопления:</label>
+                <input type="text" id="batchRegister" placeholder="Например: ТоварыНаСкладах" value="ТоварыНаСкладах" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="batchRegisterType">Вид виртуальной таблицы:</label>
+                <select id="batchRegisterType">
+                    <option value="Остатки">Виртуальная таблица: Остатки (контроль остатков)</option>
+                    <option value="Обороты">Виртуальная таблица: Обороты (учет партий/продаж)</option>
+                    <option value="СрезПоследних">Виртуальная таблица: СрезПоследних (цены/курсы)</option>
+                </select>
+            </div>
+
             <button class="secondary" onclick="generateBatch()">Вставить пакетный запрос проведения</button>
         </div>
     </div>
@@ -1143,44 +1222,83 @@ ${bspSummary}`;
                 <div class="card-title">База знаний БСП 3.1</div>
                 <span id="bspCountBadge" class="badge badge-ok">40 методов</span>
             </div>
-            <input type="text" id="bspSearchInput" placeholder="Поиск метода, модуля или действия..." oninput="filterBsp()" />
+            <div class="card-desc">Типовые функции Библиотеки Стандартных Подсистем. Исключают избыточные запросы и создание тяжелых объектов в памяти.</div>
+            <div class="form-group">
+                <label class="form-label" for="bspSearchInput">Быстрый поиск по методам и описанию:</label>
+                <input type="text" id="bspSearchInput" placeholder="Введите имя метода, реквизит или действие..." oninput="filterBsp()" />
+            </div>
             <div class="chips-row" id="bspFilters">
-                <div class="chip active" onclick="setBspSubsystem('', this)">Все</div>
+                <div class="chip active" onclick="setBspSubsystem('', this)">Все подсистемы</div>
                 <div class="chip" onclick="setBspSubsystem('ОбщегоНазначения', this)">ОбщегоНазначения</div>
                 <div class="chip" onclick="setBspSubsystem('СтроковыеФункции', this)">Строки</div>
                 <div class="chip" onclick="setBspSubsystem('ДлительныеОперации', this)">Длительные</div>
                 <div class="chip" onclick="setBspSubsystem('Пользователи', this)">Пользователи</div>
                 <div class="chip" onclick="setBspSubsystem('УправлениеДоступом', this)">Доступ/RLS</div>
             </div>
-            <div id="bspListContainer" style="max-height:360px; overflow-y:auto;"></div>
+            <div id="bspListContainer" style="max-height:380px; overflow-y:auto;"></div>
         </div>
     </div>
 
     <!-- ТАБ 3: РАСШИРЕНИЯ (&CFE) -->
     <div id="tab-extensions" class="tab-panel">
         <div class="card">
-            <div class="card-title">Перехват метода в расширении</div>
-            <input type="text" id="extMethod" placeholder="Имя процедуры" value="ОбработкаПроведения" />
-            <select id="extDirective">
-                <option value="Вместо">&Вместо (с вызовом ПродолжитьВызов)</option>
-                <option value="Перед">&Перед (с контролем Отказ)</option>
-                <option value="После">&После (постобработка после типового кода)</option>
-                <option value="ИзменениеИКонтроль">&ИзменениеИКонтроль (#Вставка/#КонецВставки)</option>
-            </select>
-            <input type="text" id="extParams" placeholder="Параметры" value="Отказ, РежимПроведения" />
+            <div class="card-header">
+                <div class="card-title">Конструктор перехвата в расширении</div>
+                <span class="badge badge-ok">&cfe</span>
+            </div>
+            <div class="card-desc">Генерация безопасных аннотаций перехвата (&Вместо, &Перед, &После, &ИзменениеИКонтроль) для модулей расширения без снятия типовой конфигурации с поддержки.</div>
+            
+            <div class="form-group">
+                <label class="form-label" for="extMethod">Имя перехватываемой процедуры или функции:</label>
+                <input type="text" id="extMethod" placeholder="Например: ОбработкаПроведения" value="ОбработкаПроведения" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="extDirective">Директива перехвата (аннотация):</label>
+                <select id="extDirective">
+                    <option value="Вместо">&Вместо (с обязательным вызовом ПродолжитьВызов)</option>
+                    <option value="Перед">&Перед (с контролем флага Отказ = Истина)</option>
+                    <option value="После">&После (постобработка после исполнения типового кода)</option>
+                    <option value="ИзменениеИКонтроль">&ИзменениеИКонтроль (#Вставка/#КонецВставки)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="extParams">Входные параметры метода (через запятую):</label>
+                <input type="text" id="extParams" placeholder="Например: Отказ, РежимПроведения" value="Отказ, РежимПроведения" />
+                <div class="form-hint">Параметры должны точно совпадать с сигнатурой типового метода.</div>
+            </div>
+
             <button onclick="generateExt()">Сгенерировать перехватчик</button>
             <div id="extOutput" class="code-box" style="display:none;"></div>
             <div class="btn-group" id="extActions" style="display:none;">
-                <button class="secondary" onclick="insertCodeFrom('extOutput')">Вставить в модуль</button>
+                <button class="secondary" onclick="insertCodeFrom('extOutput')">Вставить в модуль расширения</button>
                 <button class="secondary" onclick="copyCodeFrom('extOutput')">Копировать</button>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-title">Динамическая кнопка в форме</div>
-            <input type="text" id="btnFormName" placeholder="Имя элемента" value="КнопкаПечать" />
-            <input type="text" id="btnFormTitle" placeholder="Заголовок кнопки" value="Печать УПД" />
-            <input type="text" id="btnFormCmd" placeholder="Имя команды" value="ПечатьУПД" />
+            <div class="card-header">
+                <div class="card-title">Динамическая кнопка в управляемой форме</div>
+                <span class="badge badge-context">Форма</span>
+            </div>
+            <div class="card-desc">Программное создание команды и кнопки в командной панели управляемой формы внутри обработчика ПриСозданииНаСервере.</div>
+            
+            <div class="form-group">
+                <label class="form-label" for="btnFormName">Имя элемента кнопки:</label>
+                <input type="text" id="btnFormName" placeholder="Например: КнопкаПечать" value="КнопкаПечать" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="btnFormTitle">Заголовок кнопки на экране:</label>
+                <input type="text" id="btnFormTitle" placeholder="Например: Печать УПД" value="Печать УПД" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="btnFormCmd">Имя команды формы:</label>
+                <input type="text" id="btnFormCmd" placeholder="Например: ПечатьУПД" value="ПечатьУПД" />
+            </div>
+
             <button class="secondary" onclick="generateFormBtn()">Сгенерировать код ПриСозданииНаСервере</button>
         </div>
     </div>
@@ -1188,10 +1306,17 @@ ${bspSummary}`;
     <!-- ТАБ 4: ИТС АУДИТ КАЧЕСТВА И БЕЗОПАСНОСТИ -->
     <div id="tab-audit" class="tab-panel">
         <div class="card">
-            <div class="card-title">Аудит стандартов ИТС и БСП</div>
-            <div class="card-desc">Проверяет запросы в циклах, управляемые блокировки, модальные окна, мутабельные типы и SQL-инъекции.</div>
+            <div class="card-header">
+                <div class="card-title">Аудит стандартов ИТС и БСП</div>
+                <span class="badge badge-ok">Linter</span>
+            </div>
+            <div class="card-desc">Автоматическая проверка кода на критические антипаттерны: запросы в циклах, управляемые блокировки, устаревшие модальные вызовы и мутабельные типы.</div>
             <button onclick="auditActiveFile()">Проверить открытый файл модуля</button>
-            <textarea id="auditSnippetInput" style="margin-top:6px;" placeholder="Или вставьте сюда любой фрагмент BSL для экспресс-аудита..."></textarea>
+            
+            <div class="form-group" style="margin-top:8px;">
+                <label class="form-label" for="auditSnippetInput">Или вставьте BSL-фрагмент для экспресс-проверки:</label>
+                <textarea id="auditSnippetInput" placeholder="Вставьте процедуры, функции или запросы для экспресс-аудита..."></textarea>
+            </div>
             <button class="secondary" onclick="auditSnippet()">Проверить фрагмент</button>
             <div id="auditOutputContainer" style="margin-top:8px;"></div>
         </div>
@@ -1200,14 +1325,36 @@ ${bspSummary}`;
     <!-- ТАБ 5: VANESSA BDD -->
     <div id="tab-bdd" class="tab-panel">
         <div class="card">
-            <div class="card-title">Генератор тестов Vanessa-Automation</div>
-            <div class="card-desc">Создает сценарии сквозного тестирования документов на русском языке Gherkin.</div>
-            <input type="text" id="bddEntity" placeholder="Документ" value="РеализацияТоваровУслуг" />
-            <input type="text" id="bddTabular" placeholder="Табличная часть" value="Товары" />
-            <input type="text" id="bddRegister" placeholder="Регистр остатков" value="ТоварыНаСкладах" />
-            <textarea id="bddPrompt" placeholder="Или опишите тест словами: Проверить проведение при превышении остатка..." style="min-height:50px;"></textarea>
-            <button onclick="generateBdd(true)">Сгенерировать и открыть .feature</button>
-            <button class="secondary" onclick="generateBdd(false)">Сгенерировать в буфер</button>
+            <div class="card-header">
+                <div class="card-title">Генератор тестов Vanessa Automation</div>
+                <span class="badge badge-ok">BDD Gherkin</span>
+            </div>
+            <div class="card-desc">Формирование сценариев сквозного тестирования поведения документов на русском языке Gherkin для фреймворка Vanessa Automation.</div>
+            
+            <div class="form-group">
+                <label class="form-label" for="bddEntity">Имя проверяемого документа:</label>
+                <input type="text" id="bddEntity" placeholder="Например: РеализацияТоваровУслуг" value="РеализацияТоваровУслуг" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="bddTabular">Табличная часть документа:</label>
+                <input type="text" id="bddTabular" placeholder="Например: Товары" value="Товары" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="bddRegister">Контролируемый регистр накопления:</label>
+                <input type="text" id="bddRegister" placeholder="Например: ТоварыНаСкладах" value="ТоварыНаСкладах" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="bddPrompt">Условие теста или поведение системы:</label>
+                <textarea id="bddPrompt" placeholder="Например: Проверить отказ проведения при превышении остатка товара на складе Основной..." style="min-height:55px;">Проверить отказ проведения при превышении остатка товара на складе Основной</textarea>
+            </div>
+
+            <div class="btn-group">
+                <button onclick="generateBdd(true)">Сгенерировать .feature</button>
+                <button class="secondary" onclick="generateBdd(false)">В буфер обмена</button>
+            </div>
             <div id="bddOutput" class="code-box" style="display:none;"></div>
             <div class="btn-group" id="bddActions" style="display:none;">
                 <button class="secondary" onclick="copyCodeFrom('bddOutput')">Копировать .feature</button>
@@ -1218,15 +1365,21 @@ ${bspSummary}`;
     <!-- ТАБ 6: АНАЛИЗ ТЕХНОЛОГИЧЕСКОГО ЖУРНАЛА (ТЖ) -->
     <div id="tab-techlog" class="tab-panel">
         <div class="card">
-            <div class="card-title">Диагностика Технологического Журнала</div>
-            <div class="card-desc">Экспертный анализ инцидентов TLOCK, TDEADLOCK, EXCP и медленных SQL-запросов.</div>
+            <div class="card-header">
+                <div class="card-title">Диагностика Технологического Журнала</div>
+                <span class="badge badge-warn">High-Load</span>
+            </div>
+            <div class="card-desc">Экспертный анализ инцидентов TLOCK (блокировки), TDEADLOCK (дедлоки), EXCP (исключения) и DBPOSTGR (медленные запросы PostgreSQL).</div>
             <div class="chips-row">
                 <div class="chip" onclick="loadDemoTLog('TLOCK')">TLOCK</div>
                 <div class="chip" onclick="loadDemoTLog('TDEADLOCK')">TDEADLOCK</div>
                 <div class="chip" onclick="loadDemoTLog('EXCP')">EXCP</div>
                 <div class="chip" onclick="loadDemoTLog('DBPOSTGR')">DBPOSTGR</div>
             </div>
-            <textarea id="techlogInput" style="min-height:90px;" placeholder="Вставьте строку или фрагмент лога ТЖ..."></textarea>
+            <div class="form-group">
+                <label class="form-label" for="techlogInput">Фрагмент лога технологического журнала:</label>
+                <textarea id="techlogInput" style="min-height:90px;" placeholder="Вставьте строку или фрагмент лога ТЖ..."></textarea>
+            </div>
             <button onclick="analyzeTechLog()">Диагностировать инциденты</button>
             <div id="techlogStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
             <div id="techlogOutput" class="code-box" style="display:none;"></div>
@@ -1240,7 +1393,7 @@ ${bspSummary}`;
                 <div class="card-title">Граф метаданных 1С</div>
                 <button class="sm secondary" onclick="scanMetadata()">Сканировать</button>
             </div>
-            <div class="card-desc">Кэширует структуру объектов конфигурации для точной генерации запросов и реквизитов.</div>
+            <div class="card-desc">Кэширует структуру объектов конфигурации (справочники, документы, регистры) для точной генерации запросов и реквизитов.</div>
             <div id="metadataSummaryBox" class="code-box" style="max-height:160px;">Нажмите «Сканировать», чтобы прочитать структуру проекта или выгрузки.</div>
             <div class="btn-group" style="margin-top:6px;">
                 <button class="secondary" onclick="openWorkspaceFile('metadata.json')">Открыть metadata.json</button>
@@ -1264,7 +1417,10 @@ ${bspSummary}`;
         </div>
 
         <div class="card">
-            <div class="card-title">Интеграция с Конфигуратором 1С</div>
+            <div class="card-header">
+                <div class="card-title">Интеграция с Конфигуратором 1С</div>
+                <span class="badge badge-context">EPF / TurboConf</span>
+            </div>
             <div class="card-desc">Запускайте обработку внутри 1С или используйте скрипт TurboConf по хоткею <code>Ctrl+Alt+Space</code>.</div>
             <div class="btn-group">
                 <button class="secondary" onclick="openWorkspaceFile('epf/README.md')">Внешняя обработка (.epf)</button>
@@ -1276,37 +1432,343 @@ ${bspSummary}`;
     <!-- ТАБ 9: НАСТРОЙКИ, БАЛАНС И ШЛЮЗ -->
     <div id="tab-settings" class="tab-panel">
         <div class="card">
-            <div class="card-title">Баланс NormaHub</div>
-            <div style="font-size:18px; font-weight:700; color:#10B981; margin: 4px 0 8px 0;">${balanceDisplay}</div>
+            <div class="card-header">
+                <div class="card-title">Баланс NormaHub</div>
+                <span class="badge badge-ok">Pay-As-You-Go</span>
+            </div>
+            <div style="font-size:19px; font-weight:800; color:#10B981; margin: 4px 0 8px 0; font-family:'JetBrains Mono', monospace;">${balanceDisplay}</div>
             <div class="btn-group">
                 <button onclick="openBilling()">Пополнить баланс</button>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-title">Модель автокомплита / генерации</div>
-            <select id="modelSelector" onchange="changeModel()">
-                <option value="deepseek-v4.1-flash" ${selectedModel === 'deepseek-v4.1-flash' ? 'selected' : ''}>DeepSeek v4.1 Flash (★ Рекомендуется для 1С, ~0.04 ₽)</option>
-                <option value="gpt-6.1-sol" ${selectedModel === 'gpt-6.1-sol' ? 'selected' : ''}>GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика)</option>
-                <option value="gpt-6-sol" ${selectedModel === 'gpt-6-sol' ? 'selected' : ''}>GPT-6 Sol (Высокая точность и рассуждения)</option>
-                <option value="gpt-6-astra" ${selectedModel === 'gpt-6-astra' ? 'selected' : ''}>GPT-6 Astra (Баланс скорости и интеллекта)</option>
-                <option value="glm-5.3-flash" ${selectedModel === 'glm-5.3-flash' ? 'selected' : ''}>GLM 5.3 Flash (Сверхскоростная Z.ai)</option>
-                <option value="muse-spark-1.3" ${selectedModel === 'muse-spark-1.3' ? 'selected' : ''}>Muse Spark 1.3 (Креативность и документация)</option>
-            </select>
+            <div class="card-header">
+                <div class="card-title">Выбор рабочей модели ИИ</div>
+                <span class="badge badge-context">LLM Gateway</span>
+            </div>
+            <div class="card-desc">Выберите нейросеть для автодополнения и генерации кода в зависимости от сложности задачи.</div>
+            <div class="form-group">
+                <select id="modelSelector" onchange="changeModel()">
+                    <option value="deepseek-v4.1-flash" ${selectedModel === 'deepseek-v4.1-flash' ? 'selected' : ''}>DeepSeek v4.1 Flash (★ Рекомендуется для 1С, ~0.04 ₽)</option>
+                    <option value="gpt-6.1-sol" ${selectedModel === 'gpt-6.1-sol' ? 'selected' : ''}>GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика)</option>
+                    <option value="gpt-6-sol" ${selectedModel === 'gpt-6-sol' ? 'selected' : ''}>GPT-6 Sol (Высокая точность и рассуждения)</option>
+                    <option value="gpt-6-astra" ${selectedModel === 'gpt-6-astra' ? 'selected' : ''}>GPT-6 Astra (Баланс скорости и интеллекта)</option>
+                    <option value="glm-5.3-flash" ${selectedModel === 'glm-5.3-flash' ? 'selected' : ''}>GLM 5.3 Flash (Сверхскоростная Z.ai)</option>
+                    <option value="muse-spark-1.3" ${selectedModel === 'muse-spark-1.3' ? 'selected' : ''}>Muse Spark 1.3 (Креативность и документация)</option>
+                </select>
+            </div>
         </div>
 
         <div class="card">
-            <div class="card-title">API-ключ NormaHub</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Текущий: ${maskedKey}</div>
-            <input type="password" id="apiKeyInput" placeholder="nr_hub_..." />
+            <div class="card-header">
+                <div class="card-title">API-ключ NormaHub</div>
+                <span class="badge badge-context">Шифрование</span>
+            </div>
+            <div class="card-desc">Ключ сохраняется строго локально в зашифрованном системном хранилище VS Code SecretStorage.</div>
+            <div class="form-group">
+                <div class="form-label">Текущий ключ: <code>${maskedKey}</code></div>
+                <input type="password" id="apiKeyInput" placeholder="Вставьте ключ вида nr_hub_..." />
+            </div>
             <button class="secondary" onclick="saveKey()">Сохранить ключ в SecretStorage</button>
         </div>
     </div>
-
-    <div id="toast" class="toast">✓ Скопировано в буфер обмена!</div>
+    </div>
+<div id="toast" class="toast">✓ Скопировано в буфер обмена!</div>
 
     <script>
-        const vscode = acquireVsCodeApi();
+        const NL = String.fromCharCode(10);
+        const vscode = (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : {
+            postMessage: function(msg) {
+                console.log('[1C Copilot Preview Action]', msg);
+                if (typeof handleMockPreviewAction === 'function') {
+                    handleMockPreviewAction(msg);
+                }
+            },
+            getState: function() { return {}; },
+            setState: function() {}
+        };
+
+        function handleMockPreviewAction(msg) {
+            if (msg.type === 'copyToClipboard') {
+                if (navigator.clipboard) { navigator.clipboard.writeText(msg.text); }
+                showToast('✓ Скопировано в буфер обмена!');
+            } else if (msg.type === 'insertCode') {
+                showToast('✓ Вставка в активный BSL-модуль');
+            } else if (msg.type === 'saveKey') {
+                showToast('✓ Ключ сохранен в SecretStorage');
+            } else if (msg.type === 'changeModel') {
+                showToast('✓ Модель переключена: ' + msg.model);
+            } else if (msg.type === 'refactorQuery') {
+                setTimeout(() => {
+                    const lines = [
+                        '// ====================================================================',
+                        '// ОПТИМИЗИРОВАННЫЙ ПАКЕТ ЗАПРОСОВ (ПО СТАНДАРТАМ ИТС 1С)',
+                        '// 1. Создана временная таблица ВТ_Товары с явной индексацией',
+                        '// 2. Исключено прямое соединение с виртуальной таблицей',
+                        '// 3. Результат выборки защищен конструкцией ЕСТЬNULL',
+                        '// ====================================================================',
+                        '',
+                        'ВЫБРАТЬ',
+                        '    ДокументТаблица.Номенклатура КАК Номенклатура,',
+                        '    ДокументТаблица.Количество КАК Количество',
+                        'ПОМЕСТИТЬ ВТ_Товары',
+                        'ИЗ',
+                        '    &ТаблицаТовары КАК ДокументТаблица',
+                        'ИНДЕКСИРОВАТЬ ПО',
+                        '    Номенклатура',
+                        ';',
+                        '',
+                        '////////////////////////////////////////////////////////////////////////////////',
+                        'ВЫБРАТЬ',
+                        '    ВТ.Номенклатура КАК Номенклатура,',
+                        '    ВТ.Количество КАК ТребуемоеКоличество,',
+                        '    ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК ТекущийОстаток',
+                        'ИЗ',
+                        '    ВТ_Товары КАК ВТ',
+                        '    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.ТоварыНаСкладах.Остатки(',
+                        '        &МоментВремени,',
+                        '        Номенклатура В (ВЫБРАТЬ ВТ.Номенклатура ИЗ ВТ_Товары КАК ВТ)',
+                        '    ) КАК Остатки',
+                        '    ПО ВТ.Номенклатура = Остатки.Номенклатура;'
+                    ];
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'refactorResult',
+                            code: lines.join(NL),
+                            optimizations: ['Виртуальная таблица параметризована', 'Создана ВТ_Товары с ИНДЕКСИРОВАТЬ ПО', 'Добавлена защита ЕСТЬNULL']
+                        }
+                    }));
+                }, 120);
+            } else if (msg.type === 'generateQuery') {
+                setTimeout(() => {
+                    const lines = [
+                        '// Сформированный пакет запроса по стандартам ИТС 1С',
+                        'Запрос = Новый Запрос;',
+                        'Запрос.Текст = ',
+                        '    "ВЫБРАТЬ',
+                        '    |    ТЧ.Номенклатура КАК Номенклатура,',
+                        '    |    ТЧ.Склад КАК Склад,',
+                        '    |    СУММА(ТЧ.Количество) КАК Количество',
+                        '    |ПОМЕСТИТЬ ВТ_ТоварыДокумента',
+                        '    |ИЗ',
+                        '    |    &ТабличнаяЧасть КАК ТЧ',
+                        '    |СГРУППИРОВАТЬ ПО',
+                        '    |    ТЧ.Номенклатура,',
+                        '    |    ТЧ.Склад',
+                        '    |ИНДЕКСИРОВАТЬ ПО',
+                        '    |    Номенклатура,',
+                        '    |    Склад',
+                        '    |;',
+                        '    |////////////////////////////////////////////////////////////////////////////////',
+                        '    |ВЫБРАТЬ',
+                        '    |    ВТ.Номенклатура КАК Номенклатура,',
+                        '    |    ВТ.Склад КАК Склад,',
+                        '    |    ВТ.Количество КАК КоличествоПлан,',
+                        '    |    ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК КоличествоФакт',
+                        '    |ИЗ',
+                        '    |    ВТ_ТоварыДокумента КАК ВТ',
+                        '    |    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.ТоварыНаСкладах.Остатки(',
+                        '    |        &ГраницаОстатков,',
+                        '    |        (Номенклатура, Склад) В (',
+                        '    |            ВЫБРАТЬ ВТ.Номенклатура, ВТ.Склад ИЗ ВТ_ТоварыДокумента КАК ВТ',
+                        '    |        )',
+                        '    |    ) КАК Остатки',
+                        '    |    ПО ВТ.Номенклатура = Остатки.Номенклатура',
+                        '    |    И ВТ.Склад = Остатки.Склад";',
+                        '',
+                        'Запрос.УстановитьПараметр("ГраницаОстатков", ?(РежимПроведения = РежимПроведенияДокумента.Оперативный, Неопределено, МоментВремени()));',
+                        'Запрос.УстановитьПараметр("ТабличнаяЧасть", Товары.Выгрузить());',
+                        'Результат = Запрос.Выполнить();'
+                    ];
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'queryResult',
+                            code: lines.join(NL)
+                        }
+                    }));
+                }, 120);
+            } else if (msg.type === 'generateBatchTemplate') {
+                setTimeout(() => {
+                    const lines = [
+                        '// Шаблон проведения документа ' + (msg.entity || 'РеализацияТоваровУслуг'),
+                        'Движения.' + (msg.register || 'ТоварыНаСкладах') + '.Записывать = Истина;',
+                        'Движения.' + (msg.register || 'ТоварыНаСкладах') + '.БлокироватьДляИзменения = Истина;',
+                        '',
+                        'Запрос = Новый Запрос;',
+                        'Запрос.МенеджерВременныхТаблиц = Новый МенеджерВременныхТаблиц;',
+                        'Запрос.Текст = ',
+                        '    "ВЫБРАТЬ',
+                        '    |    ДокументТаблица.Номенклатура КАК Номенклатура,',
+                        '    |    СУММА(ДокументТаблица.Количество) КАК Количество',
+                        '    |ПОМЕСТИТЬ ВТ_Товары',
+                        '    |ИЗ',
+                        '    |    Документ.' + (msg.entity || 'РеализацияТоваровУслуг') + '.' + (msg.tabular || 'Товары') + ' КАК ДокументТаблица',
+                        '    |ГДЕ',
+                        '    |    ДокументТаблица.Ссылка = &Ссылка',
+                        '    |СГРУППИРОВАТЬ ПО',
+                        '    |    ДокументТаблица.Номенклатура',
+                        '    |ИНДЕКСИРОВАТЬ ПО',
+                        '    |    Номенклатура',
+                        '    |;',
+                        '    |////////////////////////////////////////////////////////////////////////////////',
+                        '    |ВЫБРАТЬ',
+                        '    |    ВТ.Номенклатура КАК Номенклатура,',
+                        '    |    ВТ.Количество КАК Требуется,',
+                        '    |    ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК Остаток',
+                        '    |ИЗ',
+                        '    |    ВТ_Товары КАК ВТ',
+                        '    |    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.' + (msg.register || 'ТоварыНаСкладах') + '.' + (msg.registerType || 'Остатки') + '(',
+                        '    |        &МоментВремени,',
+                        '    |        Номенклатура В (ВЫБРАТЬ ВТ.Номенклатура ИЗ ВТ_Товары КАК ВТ)',
+                        '    |    ) КАК Остатки',
+                        '    |    ПО ВТ.Номенклатура = Остатки.Номенклатура";',
+                        '',
+                        'Запрос.УстановитьПараметр("Ссылка", ЭтотОбъект.Ссылка);',
+                        'Запрос.УстановитьПараметр("МоментВремени", ЭтотОбъект.МоментВремени());',
+                        'Выборка = Запрос.Выполнить().Выбрать();'
+                    ];
+                    showToast('✓ Шаблон проведения сформирован');
+                }, 100);
+            } else if (msg.type === 'generateExtension') {
+                setTimeout(() => {
+                    const lines = [
+                        '&' + (msg.directive || 'Вместо') + '("' + (msg.method || 'ОбработкаПроведения') + '")',
+                        'Процедура Расш_' + (msg.method || 'ОбработкаПроведения') + '(' + (msg.params || 'Отказ, РежимПроведения') + ')',
+                        '    // Контроль условий перед вызовом типовой процедуры',
+                        '    Если Отказ Тогда',
+                        '        Возврат;',
+                        '    КонецЕсли;',
+                        '',
+                        '    // Безопасный вызов типовой процедуры платформы',
+                        '    ПродолжитьВызов(' + (msg.params || 'Отказ, РежимПроведения') + ');',
+                        '',
+                        '    // Пользовательский алгоритм расширения (&cfe)',
+                        '    // Дополнительные движения и заполнение реквизитов...',
+                        'КонецПроцедуры'
+                    ];
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'extensionResult',
+                            code: lines.join(NL)
+                        }
+                    }));
+                }, 120);
+            } else if (msg.type === 'generateFormButton') {
+                setTimeout(() => {
+                    const lines = [
+                        '&НаСервере',
+                        'Процедура ПриСозданииНаСервере(Отказ, СтандартнаяОбработка)',
+                        '    // Программное добавление команды формы',
+                        '    Команда = ЭтаФорма.Команды.Добавить("' + (msg.commandName || 'ПечатьУПД') + '");',
+                        '    Команда.Действие = "Обработчик_' + (msg.commandName || 'ПечатьУПД') + '";',
+                        '    Команда.Заголовок = "' + (msg.title || 'Печать УПД') + '";',
+                        '',
+                        '    // Программное добавление кнопки в командную панель формы',
+                        '    Кнопка = ЭтаФорма.Элементы.Добавить("' + (msg.buttonName || 'КнопкаПечать') + '", Тип("КнопкаФормы"), ЭтаФорма.КоманднаяПанель);',
+                        '    Кнопка.ИмяКоманды = "' + (msg.commandName || 'ПечатьУПД') + '";',
+                        '    Кнопка.Вид = ВидКнопкиФормы.КнопкаКоманднойПанели;',
+                        'КонецПроцедуры'
+                    ];
+                    const out = document.getElementById('extOutput');
+                    if (out) {
+                        out.style.display = 'block';
+                        out.innerText = lines.join(NL);
+                        const act = document.getElementById('extActions');
+                        if (act) act.style.display = 'flex';
+                    }
+                    showToast('✓ Код кнопки формы сформирован');
+                }, 120);
+            } else if (msg.type === 'auditSelection' || msg.type === 'auditCodeSnippet') {
+                setTimeout(() => {
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'auditResult',
+                            issues: [
+                                { rule: 'ITS-PERF-001', severity: 'error', line: 2, message: 'Запрос внутри цикла: создание и выполнение запроса в цикле «Для Каждого» создает квадратичную нагрузку на СУБД.', suggestion: 'Выгрузите ссылки в массив и выполните один пакетный запрос с временной таблицей за пределами цикла.' },
+                                { rule: 'ITS-LOCK-001', severity: 'warning', line: 7, message: 'Отсутствует управляемая блокировка данных БлокировкаДанных перед записью движений документа.', suggestion: 'Добавьте Блокировка = Новый БлокировкаДанных; Элемент = Блокировка.Добавить("РегистрНакопления.ТоварыНаСкладах");' },
+                                { rule: 'ITS-BSP-001', severity: 'info', line: 12, message: 'Использование прямого обращения Ссылка.ПолучитьОбъект() вместо вызова БСП.', suggestion: 'Замените на ОбщегоНазначения.ЗначениеРеквизитаОбъекта(Ссылка, "Артикул").' }
+                            ]
+                        }
+                    }));
+                }, 120);
+            } else if (msg.type === 'generateBdd') {
+                setTimeout(() => {
+                    const lines = [
+                        '# language: ru',
+                        '',
+                        'Функционал: Проведение документа ' + (msg.entity || 'Реализация товаров и услуг'),
+                        '',
+                        '  Контекст:',
+                        '    Дано Я открыл сеанс пользователя "Администратор"',
+                        '    И Я открыл навигационную панель',
+                        '',
+                        '  Сценарий: Проверка контроля отрицательных остатков при проведении',
+                        '    Допустим Я создал новый документ "' + (msg.entity || 'Реализация товаров и услуг') + '"',
+                        '    И В табличной части "' + (msg.tabular || 'Товары') + '" добавил строки:',
+                        '      | Номенклатура       | Количество | Склад            |',
+                        '      | "Кофе зерновой"    | 100        | "Основной склад" |',
+                        '    Когда Я нажимаю на кнопку "Провести"',
+                        '    Тогда открылось окно предупреждения "Недостаточно остатка по регистру ' + (msg.register || 'ТоварыНаСкладах') + '"',
+                        '    И Документ не проведен в информационной базе'
+                    ];
+                    const out = document.getElementById('bddOutput');
+                    if (out) {
+                        out.style.display = 'block';
+                        out.innerText = lines.join(NL);
+                        const act = document.getElementById('bddActions');
+                        if (act) act.style.display = 'flex';
+                    }
+                    showToast('✓ BDD сценарий сформирован');
+                }, 120);
+            } else if (msg.type === 'analyzeTechLog') {
+                setTimeout(() => {
+                    const st = document.getElementById('techlogStatus');
+                    if (st) st.innerText = 'Анализ завершен (2 события локализовано)';
+                    const lines = [
+                        '=== РЕЗУЛЬТАТ ДИАГНОСТИКИ ТЕХНОЛОГИЧЕСКОГО ЖУРНАЛА ===',
+                        '',
+                        '1. Инцидент: TLOCK (Транзакционная блокировка данных)',
+                        '   - Ресурс: AccumRegister.ТоварыНаСкладах',
+                        '   - Режим: Exclusive (Монопольная блокировка на запись)',
+                        '   - Длительность ожидания: 1.42 сек (КРИТИЧЕСКИ ВЫСОКАЯ)',
+                        '   - Очередь ожидающих сеансов: 14 пользователей',
+                        '   - Модуль: Документ.РеализацияТоваровУслуг.МодульОбъекта : 142',
+                        '',
+                        '2. Архитектурные рекомендации по устранению:',
+                        '   • Перевести регистр в управляемый режим блокировок данных;',
+                        '   • Добавить сортировку строк табличной части документа по Номенклатуре перед записью движений;',
+                        '   • Вынести чтение остатков в самое начало транзакции с предварительной установкой БлокировкаДанных.'
+                    ];
+                    const out = document.getElementById('techlogOutput');
+                    if (out) {
+                        out.style.display = 'block';
+                        out.innerText = lines.join(NL);
+                    }
+                }, 120);
+            } else if (msg.type === 'scanMetadata') {
+                const box = document.getElementById('metadataSummaryBox');
+                if (box) {
+                    box.innerText = [
+                    '✓ Структура метаданных конфигурации просканирована:',
+                    '  • Справочники: 18 объектов',
+                    '  • Документы: 14 объектов',
+                    '  • Регистры накопления: 18 объектов',
+                    '  • Регистры сведений: 5 объектов',
+                    '  • Общие модули: 40 объектов БСП'
+                ].join(NL);
+                }
+                showToast('✓ Метаданные загружены в контекст');
+            } else if (msg.type === 'checkSidecarStatus') {
+                const ind = document.getElementById('sidecarStatusIndicator');
+                if (ind) {
+                    ind.innerHTML = '<span class="badge badge-ok">● Sidecar активен и принимает запросы (127.0.0.1:18833)</span>';
+                }
+                showToast('✓ 1C Sidecar на связи');
+            } else if (msg.type === 'openBilling') {
+                window.open('https://normahub.cc/billing', '_blank');
+            }
+        }
         const bspModules = ${bspModulesJson};
         let activeBspSubsystem = '';
 
@@ -1442,17 +1904,19 @@ ${bspSummary}`;
                 const item = document.createElement('div');
                 item.className = 'bsp-item';
                 item.innerHTML = \`
-                    <div class="bsp-header">
-                        <div>
-                            <div class="bsp-method-name">\${m.module}.\${m.method}</div>
-                            <div class="bsp-module-tag">\${m.signature}</div>
+                    <div class="bsp-header" style="display:block;">
+                        <div class="bsp-method-name">\${m.method}()</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px;">
+                            <div class="bsp-module-tag">Общий модуль: <b>\${m.module}</b></div>
+                            <span class="badge badge-context">\${m.context}</span>
                         </div>
-                        <span class="badge badge-context">\${m.context}</span>
                     </div>
+                    <div class="bsp-signature"><code>\${m.signature}</code></div>
                     <div class="bsp-desc">\${m.description}</div>
-                    <div class="btn-group" style="margin-top:4px;">
-                        <button class="sm" onclick="insertBspSnippet('\${encodeURIComponent(m.example)}')">Вставить</button>
-                        <button class="sm secondary" onclick="copySnippet('\${encodeURIComponent(m.example)}')">Копировать</button>
+                    <div class="bsp-example"><code>\${m.example}</code></div>
+                    <div class="btn-group" style="margin-top:6px;">
+                        <button class="sm" onclick="insertBspSnippet('\${encodeURIComponent(m.example)}')">Вставить в код</button>
+                        <button class="sm secondary" onclick="copySnippet('\${encodeURIComponent(m.example)}')">Копировать вызов</button>
                     </div>
                 \`;
                 container.appendChild(item);
@@ -1580,7 +2044,7 @@ ${bspSummary}`;
                 } else {
                     let out = message.code;
                     if (message.optimizations && message.optimizations.length) {
-                        out = '// ПРИМЕНЕННЫЕ ОПТИМИЗАЦИИ ИТС:\\n// ' + message.optimizations.join('\\n// ') + '\\n\\n' + out;
+                        out = '// ПРИМЕНЕННЫЕ ОПТИМИЗАЦИИ ИТС:' + NL + '// ' + message.optimizations.join(NL + '// ') + NL + NL + out;
                     }
                     box.innerText = out;
                     document.getElementById('refactorActions').style.display = 'flex';
