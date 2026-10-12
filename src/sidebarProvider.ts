@@ -125,6 +125,7 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
     private async _handleChangeModel(model: string) {
         const config = vscode.workspace.getConfiguration('normahub1c');
         await config.update('autocompleteModel', model, vscode.ConfigurationTarget.Global);
+        await config.update('reasoningModel', model, vscode.ConfigurationTarget.Global);
         vscode.window.showInformationMessage(`Модель NormaHub изменена на ${model}`);
     }
 
@@ -1040,9 +1041,13 @@ ${bspSummary}`;
         <div class="card">
             <div class="card-title">Модель автокомплита / генерации</div>
             <select id="modelSelector" onchange="changeModel()">
-                <option value="deepseek-v4.1-flash" ${selectedModel === 'deepseek-v4.1-flash' ? 'selected' : ''}>DeepSeek v4.1 Flash (Оптимально для 1С, ~0.04 ₽)</option>
+                <option value="deepseek-v4.1-flash" ${selectedModel === 'deepseek-v4.1-flash' ? 'selected' : ''}>DeepSeek v4.1 Flash (★ Рекомендуется для 1С, ~0.04 ₽)</option>
+                <option value="gpt-6.1-sol" ${selectedModel === 'gpt-6.1-sol' ? 'selected' : ''}>GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика)</option>
+                <option value="gpt-6-sol" ${selectedModel === 'gpt-6-sol' ? 'selected' : ''}>GPT-6 Sol (Высокая точность и рассуждения)</option>
+                <option value="gpt-6-astra" ${selectedModel === 'gpt-6-astra' ? 'selected' : ''}>GPT-6 Astra (Баланс скорости и интеллекта)</option>
+                <option value="glm-5.3-flash" ${selectedModel === 'glm-5.3-flash' ? 'selected' : ''}>GLM 5.3 Flash (Сверхскоростная Z.ai)</option>
+                <option value="muse-spark-1.3" ${selectedModel === 'muse-spark-1.3' ? 'selected' : ''}>Muse Spark 1.3 (Креативность и документация)</option>
                 <option value="claude-sonnet-5-5" ${selectedModel === 'claude-sonnet-5-5' ? 'selected' : ''}>Claude 3.5 Sonnet (Максимальный интеллект для ТЖ)</option>
-                <option value="qwen-2.5-coder" ${selectedModel === 'qwen-2.5-coder' ? 'selected' : ''}>Qwen 2.5 Coder 32B (Высокая скорость)</option>
             </select>
         </div>
 

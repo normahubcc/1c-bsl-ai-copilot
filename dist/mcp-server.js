@@ -765,8 +765,7 @@ var BSLTokenizer = class {
         while (i < source.length && source[i] !== "'" && source[i] !== "\n") {
           i++;
         }
-        if (source[i] === "'")
-          i++;
+        if (source[i] === "'") i++;
         tokens.push({
           type: "DATE_LITERAL" /* DATE_LITERAL */,
           value: source.substring(start, i),
@@ -1438,8 +1437,7 @@ var TechLogAnalyzer = class {
       if (/^\d{2}:\d{2}\.\d{4,6}-\d+,\w+,\d+/.test(line.trim())) {
         if (currentEventText) {
           const parsed = this.parseSingleEvent(currentEventText);
-          if (parsed)
-            events.push(parsed);
+          if (parsed) events.push(parsed);
         }
         currentEventText = line.trim();
       } else if (currentEventText) {
@@ -1448,15 +1446,13 @@ var TechLogAnalyzer = class {
     }
     if (currentEventText) {
       const parsed = this.parseSingleEvent(currentEventText);
-      if (parsed)
-        events.push(parsed);
+      if (parsed) events.push(parsed);
     }
     return events;
   }
   static parseSingleEvent(eventText) {
     const headerMatch = eventText.match(/^(\d{2}:\d{2}\.\d{4,6})-(\d+),(\w+),(\d+),(.*)/s);
-    if (!headerMatch)
-      return null;
+    if (!headerMatch) return null;
     const timestamp = headerMatch[1];
     const durationMicrosec = parseInt(headerMatch[2], 10);
     const durationSec = durationMicrosec / 1e6;
@@ -1653,8 +1649,7 @@ var McpServer1C = class {
   start() {
     this.rl.on("line", (line) => {
       const trimmed = line.trim();
-      if (!trimmed)
-        return;
+      if (!trimmed) return;
       try {
         const request = JSON.parse(trimmed);
         this.handleRequest(request);
