@@ -2,7 +2,7 @@
   "name": "1c-bsl-ai-copilot",
   "displayName": "1C BSL AI Copilot (NormaHub)",
   "description": "Бесплатный AI-ассистент для разработчиков 1С:Предприятие (BSL) в VS Code и Cursor. Умный автокомплит на лету, конструктор запросов 1С и аудит стандартов ИТС без VPN.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "normahub",
   "icon": "icon.png",
   "license": "MIT",

@@ -53,7 +53,7 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
                     break;
 
                 case 'openBilling':
-                    vscode.env.openExternal(vscode.Uri.parse('https://normahub.cc/billing'));
+                    vscode.env.openExternal(vscode.Uri.parse('https://normahub.cc'));
                     break;
 
                 case 'openB2B':
@@ -201,7 +201,7 @@ ${bspSummary}`;
             });
             vscode.window.showInformationMessage('Шаблон пакетного запроса вставлен в редактор.');
         } else {
-            this._view?.webview.postMessage({ type: 'queryResult', code });
+            this._view?.webview.postMessage({ type: 'batchResult', code });
         }
     }
 
@@ -228,9 +228,9 @@ ${bspSummary}`;
 
     private async _handleGenerateFormButton(buttonName: string, title: string, commandName: string) {
         const code = ExtensionGenerator.generateFormButtonExtension(
-            buttonName || 'КнопкаПечать',
-            title || 'Печать документа',
-            commandName || 'КомандаПечать'
+            buttonName || 'КнопкаПечатиАкта',
+            title || 'Печать акта',
+            commandName || 'КомандаПечатиАкта'
         );
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -239,7 +239,7 @@ ${bspSummary}`;
             });
             vscode.window.showInformationMessage('Код формы расширения вставлен в редактор.');
         } else {
-            this._view?.webview.postMessage({ type: 'extensionResult', code });
+            this._view?.webview.postMessage({ type: 'formBtnResult', code });
         }
     }
 
@@ -1189,17 +1189,17 @@ ${bspSummary}`;
             
             <div class="form-group">
                 <label class="form-label" for="batchEntity">Документ конфигурации:</label>
-                <input type="text" id="batchEntity" placeholder="Например: РеализацияТоваровУслуг" value="РеализацияТоваровУслуг" />
+                <input type="text" id="batchEntity" placeholder="Например: РеализацияТоваровУслуг или ЗаказКлиента" />
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="batchTabular">Табличная часть документа:</label>
-                <input type="text" id="batchTabular" placeholder="Например: Товары" value="Товары" />
+                <input type="text" id="batchTabular" placeholder="Например: Товары или Состав" />
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="batchRegister">Регистр накопления:</label>
-                <input type="text" id="batchRegister" placeholder="Например: ТоварыНаСкладах" value="ТоварыНаСкладах" />
+                <input type="text" id="batchRegister" placeholder="Например: ТоварыНаСкладах или Взаиморасчеты" />
             </div>
 
             <div class="form-group">
@@ -1211,7 +1211,12 @@ ${bspSummary}`;
                 </select>
             </div>
 
-            <button class="secondary" onclick="generateBatch()">Вставить пакетный запрос проведения</button>
+            <button class="secondary" onclick="generateBatch()">Сформировать шаблон проведения</button>
+            <div id="batchOutput" class="code-box" style="display:none;"></div>
+            <div class="btn-group" id="batchActions" style="display:none;">
+                <button class="secondary" onclick="insertCodeFrom('batchOutput')">Вставить в модуль</button>
+                <button class="secondary" onclick="copyCodeFrom('batchOutput')">Копировать</button>
+            </div>
         </div>
     </div>
 
@@ -1223,17 +1228,20 @@ ${bspSummary}`;
                 <span id="bspCountBadge" class="badge badge-ok">40 методов</span>
             </div>
             <div class="card-desc">Типовые функции Библиотеки Стандартных Подсистем. Исключают избыточные запросы и создание тяжелых объектов в памяти.</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; line-height:1.4;">
+                Имена общих модулей и функций соответствуют стандартам платформы 1С:Предприятие (формат <code>ИмяМодуля.ИмяМетода</code>).
+            </div>
             <div class="form-group">
                 <label class="form-label" for="bspSearchInput">Быстрый поиск по методам и описанию:</label>
                 <input type="text" id="bspSearchInput" placeholder="Введите имя метода, реквизит или действие..." oninput="filterBsp()" />
             </div>
             <div class="chips-row" id="bspFilters">
-                <div class="chip active" onclick="setBspSubsystem('', this)">Все подсистемы</div>
-                <div class="chip" onclick="setBspSubsystem('ОбщегоНазначения', this)">ОбщегоНазначения</div>
-                <div class="chip" onclick="setBspSubsystem('СтроковыеФункции', this)">Строки</div>
-                <div class="chip" onclick="setBspSubsystem('ДлительныеОперации', this)">Длительные</div>
+                <div class="chip active" onclick="setBspSubsystem('', this)">Все методы</div>
+                <div class="chip" onclick="setBspSubsystem('ОбщегоНазначения', this)">Общего назначения</div>
+                <div class="chip" onclick="setBspSubsystem('СтроковыеФункции', this)">Строковые функции</div>
+                <div class="chip" onclick="setBspSubsystem('ДлительныеОперации', this)">Длительные операции</div>
                 <div class="chip" onclick="setBspSubsystem('Пользователи', this)">Пользователи</div>
-                <div class="chip" onclick="setBspSubsystem('УправлениеДоступом', this)">Доступ/RLS</div>
+                <div class="chip" onclick="setBspSubsystem('УправлениеДоступом', this)">Управление доступом</div>
             </div>
             <div id="bspListContainer" style="max-height:380px; overflow-y:auto;"></div>
         </div>
@@ -1250,7 +1258,7 @@ ${bspSummary}`;
             
             <div class="form-group">
                 <label class="form-label" for="extMethod">Имя перехватываемой процедуры или функции:</label>
-                <input type="text" id="extMethod" placeholder="Например: ОбработкаПроведения" value="ОбработкаПроведения" />
+                <input type="text" id="extMethod" placeholder="Например: ОбработкаПроведения или ПриЗаписи" />
             </div>
 
             <div class="form-group">
@@ -1265,7 +1273,7 @@ ${bspSummary}`;
 
             <div class="form-group">
                 <label class="form-label" for="extParams">Входные параметры метода (через запятую):</label>
-                <input type="text" id="extParams" placeholder="Например: Отказ, РежимПроведения" value="Отказ, РежимПроведения" />
+                <input type="text" id="extParams" placeholder="Например: Отказ, РежимПроведения" />
                 <div class="form-hint">Параметры должны точно совпадать с сигнатурой типового метода.</div>
             </div>
 
@@ -1279,27 +1287,32 @@ ${bspSummary}`;
 
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Динамическая кнопка в управляемой форме</div>
+                <div class="card-title">Добавление кнопки в командную панель</div>
                 <span class="badge badge-context">Форма</span>
             </div>
             <div class="card-desc">Программное создание команды и кнопки в командной панели управляемой формы внутри обработчика ПриСозданииНаСервере.</div>
             
             <div class="form-group">
                 <label class="form-label" for="btnFormName">Имя элемента кнопки:</label>
-                <input type="text" id="btnFormName" placeholder="Например: КнопкаПечать" value="КнопкаПечать" />
+                <input type="text" id="btnFormName" placeholder="Например: КнопкаПечатиАкта или КнопкаЗаполнить" />
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="btnFormTitle">Заголовок кнопки на экране:</label>
-                <input type="text" id="btnFormTitle" placeholder="Например: Печать УПД" value="Печать УПД" />
+                <label class="form-label" for="btnFormTitle">Заголовок кнопки на форме:</label>
+                <input type="text" id="btnFormTitle" placeholder="Например: Печать акта или Заполнить по остаткам" />
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="btnFormCmd">Имя команды формы:</label>
-                <input type="text" id="btnFormCmd" placeholder="Например: ПечатьУПД" value="ПечатьУПД" />
+                <input type="text" id="btnFormCmd" placeholder="Например: КомандаПечатиАкта или КомандаЗаполнить" />
             </div>
 
             <button class="secondary" onclick="generateFormBtn()">Сгенерировать код ПриСозданииНаСервере</button>
+            <div id="btnFormOutput" class="code-box" style="display:none;"></div>
+            <div class="btn-group" id="btnFormActions" style="display:none;">
+                <button class="secondary" onclick="insertCodeFrom('btnFormOutput')">Вставить в модуль</button>
+                <button class="secondary" onclick="copyCodeFrom('btnFormOutput')">Копировать</button>
+            </div>
         </div>
     </div>
 
@@ -1333,22 +1346,22 @@ ${bspSummary}`;
             
             <div class="form-group">
                 <label class="form-label" for="bddEntity">Имя проверяемого документа:</label>
-                <input type="text" id="bddEntity" placeholder="Например: РеализацияТоваровУслуг" value="РеализацияТоваровУслуг" />
+                <input type="text" id="bddEntity" placeholder="Например: Реализация товаров и услуг или Заказ клиента" />
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="bddTabular">Табличная часть документа:</label>
-                <input type="text" id="bddTabular" placeholder="Например: Товары" value="Товары" />
+                <input type="text" id="bddTabular" placeholder="Например: Товары или Материалы" />
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="bddRegister">Контролируемый регистр накопления:</label>
-                <input type="text" id="bddRegister" placeholder="Например: ТоварыНаСкладах" value="ТоварыНаСкладах" />
+                <input type="text" id="bddRegister" placeholder="Например: ТоварыНаСкладах или Взаиморасчеты" />
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="bddPrompt">Условие теста или поведение системы:</label>
-                <textarea id="bddPrompt" placeholder="Например: Проверить отказ проведения при превышении остатка товара на складе Основной..." style="min-height:55px;">Проверить отказ проведения при превышении остатка товара на складе Основной</textarea>
+                <textarea id="bddPrompt" placeholder="Например: Проверить отказ проведения при превышении остатка товара на складе Основной..." style="min-height:55px;"></textarea>
             </div>
 
             <div class="btn-group">
@@ -1590,10 +1603,14 @@ ${bspSummary}`;
                 }, 120);
             } else if (msg.type === 'generateBatchTemplate') {
                 setTimeout(() => {
+                    const entity = msg.entity || 'РеализацияТоваровУслуг';
+                    const tabular = msg.tabular || 'Товары';
+                    const register = msg.register || 'ТоварыНаСкладах';
+                    const registerType = msg.registerType || 'Остатки';
                     const lines = [
-                        '// Шаблон проведения документа ' + (msg.entity || 'РеализацияТоваровУслуг'),
-                        'Движения.' + (msg.register || 'ТоварыНаСкладах') + '.Записывать = Истина;',
-                        'Движения.' + (msg.register || 'ТоварыНаСкладах') + '.БлокироватьДляИзменения = Истина;',
+                        '// Шаблон проведения документа ' + entity,
+                        'Движения.' + register + '.Записывать = Истина;',
+                        'Движения.' + register + '.БлокироватьДляИзменения = Истина;',
                         '',
                         'Запрос = Новый Запрос;',
                         'Запрос.МенеджерВременныхТаблиц = Новый МенеджерВременныхТаблиц;',
@@ -1603,7 +1620,7 @@ ${bspSummary}`;
                         '    |    СУММА(ДокументТаблица.Количество) КАК Количество',
                         '    |ПОМЕСТИТЬ ВТ_Товары',
                         '    |ИЗ',
-                        '    |    Документ.' + (msg.entity || 'РеализацияТоваровУслуг') + '.' + (msg.tabular || 'Товары') + ' КАК ДокументТаблица',
+                        '    |    Документ.' + entity + '.' + tabular + ' КАК ДокументТаблица',
                         '    |ГДЕ',
                         '    |    ДокументТаблица.Ссылка = &Ссылка',
                         '    |СГРУППИРОВАТЬ ПО',
@@ -1618,7 +1635,7 @@ ${bspSummary}`;
                         '    |    ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК Остаток',
                         '    |ИЗ',
                         '    |    ВТ_Товары КАК ВТ',
-                        '    |    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.' + (msg.register || 'ТоварыНаСкладах') + '.' + (msg.registerType || 'Остатки') + '(',
+                        '    |    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.' + register + '.' + registerType + '(',
                         '    |        &МоментВремени,',
                         '    |        Номенклатура В (ВЫБРАТЬ ВТ.Номенклатура ИЗ ВТ_Товары КАК ВТ)',
                         '    |    ) КАК Остатки',
@@ -1628,6 +1645,13 @@ ${bspSummary}`;
                         'Запрос.УстановитьПараметр("МоментВремени", ЭтотОбъект.МоментВремени());',
                         'Выборка = Запрос.Выполнить().Выбрать();'
                     ];
+                    const out = document.getElementById('batchOutput');
+                    if (out) {
+                        out.style.display = 'block';
+                        out.innerText = lines.join(NL);
+                        const act = document.getElementById('batchActions');
+                        if (act) act.style.display = 'flex';
+                    }
                     showToast('✓ Шаблон проведения сформирован');
                 }, 100);
             } else if (msg.type === 'generateExtension') {
@@ -1656,25 +1680,34 @@ ${bspSummary}`;
                 }, 120);
             } else if (msg.type === 'generateFormButton') {
                 setTimeout(() => {
+                    const cmd = msg.commandName || 'КомандаПечатиАкта';
+                    const title = msg.title || 'Печать акта';
+                    const btn = msg.buttonName || 'КнопкаПечатиАкта';
                     const lines = [
                         '&НаСервере',
-                        'Процедура ПриСозданииНаСервере(Отказ, СтандартнаяОбработка)',
-                        '    // Программное добавление команды формы',
-                        '    Команда = ЭтаФорма.Команды.Добавить("' + (msg.commandName || 'ПечатьУПД') + '");',
-                        '    Команда.Действие = "Обработчик_' + (msg.commandName || 'ПечатьУПД') + '";',
-                        '    Команда.Заголовок = "' + (msg.title || 'Печать УПД') + '";',
+                        'Процедура Расш_ПриСозданииНаСервере(Отказ, СтандартнаяОбработка)',
+                        '    // Программное добавление команды формы в расширении',
+                        '    Команда = ЭтаФорма.Команды.Добавить("' + cmd + '");',
+                        '    Команда.Действие = "Расш_' + cmd + '";',
+                        '    Команда.Заголовок = "' + title + '";',
                         '',
                         '    // Программное добавление кнопки в командную панель формы',
-                        '    Кнопка = ЭтаФорма.Элементы.Добавить("' + (msg.buttonName || 'КнопкаПечать') + '", Тип("КнопкаФормы"), ЭтаФорма.КоманднаяПанель);',
-                        '    Кнопка.ИмяКоманды = "' + (msg.commandName || 'ПечатьУПД') + '";',
+                        '    Кнопка = ЭтаФорма.Элементы.Добавить("' + btn + '", Тип("КнопкаФормы"), ЭтаФорма.КоманднаяПанель);',
+                        '    Кнопка.ИмяКоманды = "' + cmd + '";',
                         '    Кнопка.Вид = ВидКнопкиФормы.КнопкаКоманднойПанели;',
+                        'КонецПроцедуры',
+                        '',
+                        '&НаКлиенте',
+                        'Процедура Расш_' + cmd + '(Команда)',
+                        '    // Обработчик команды формы',
+                        '    ПоказатьОповещениеПользователя("' + title + '", , "Команда успешно выполнена.");',
                         'КонецПроцедуры'
                     ];
-                    const out = document.getElementById('extOutput');
+                    const out = document.getElementById('btnFormOutput');
                     if (out) {
                         out.style.display = 'block';
                         out.innerText = lines.join(NL);
-                        const act = document.getElementById('extActions');
+                        const act = document.getElementById('btnFormActions');
                         if (act) act.style.display = 'flex';
                     }
                     showToast('✓ Код кнопки формы сформирован');
@@ -1694,22 +1727,29 @@ ${bspSummary}`;
                 }, 120);
             } else if (msg.type === 'generateBdd') {
                 setTimeout(() => {
+                    const entity = msg.entity || 'Реализация товаров и услуг';
+                    const tabular = msg.tabular || 'Товары';
+                    const register = msg.register || 'ТоварыНаСкладах';
                     const lines = [
                         '# language: ru',
                         '',
-                        'Функционал: Проведение документа ' + (msg.entity || 'Реализация товаров и услуг'),
+                        'Функционал: Проведение документа ' + entity,
+                        '  Как Менеджер по продажам',
+                        '  Я хочу проводить документы с контролем остатков номенклатуры',
+                        '  Чтобы исключить образование отрицательных остатков на складе',
                         '',
                         '  Контекст:',
                         '    Дано Я открыл сеанс пользователя "Администратор"',
                         '    И Я открыл навигационную панель',
                         '',
-                        '  Сценарий: Проверка контроля отрицательных остатков при проведении',
-                        '    Допустим Я создал новый документ "' + (msg.entity || 'Реализация товаров и услуг') + '"',
-                        '    И В табличной части "' + (msg.tabular || 'Товары') + '" добавил строки:',
-                        '      | Номенклатура       | Количество | Склад            |',
-                        '      | "Кофе зерновой"    | 100        | "Основной склад" |',
-                        '    Когда Я нажимаю на кнопку "Провести"',
-                        '    Тогда открылось окно предупреждения "Недостаточно остатка по регистру ' + (msg.register || 'ТоварыНаСкладах') + '"',
+                        '  Сценарий: Проверка контроля отрицательных остатков при оперативном проведении',
+                        '    Когда в командном интерфейсе я выбираю "Продажи" -> "Документы реализации"',
+                        '    И Я нажимаю на кнопку "Создать"',
+                        '    И В табличной части "' + tabular + '" добавляю строки:',
+                        '      | Номенклатура     | Количество | Склад            |',
+                        '      | "Товар тестовый" | 100        | "Основной склад" |',
+                        '    И Я нажимаю на кнопку "Провести"',
+                        '    Тогда открылось окно предупреждения "Недостаточно остатка по регистру ' + register + '"',
                         '    И Документ не проведен в информационной базе'
                     ];
                     const out = document.getElementById('bddOutput');
@@ -1766,7 +1806,7 @@ ${bspSummary}`;
                 }
                 showToast('✓ 1C Sidecar на связи');
             } else if (msg.type === 'openBilling') {
-                window.open('https://normahub.cc/billing', '_blank');
+                window.open('https://normahub.cc', '_blank');
             }
         }
         const bspModules = ${bspModulesJson};
@@ -1875,9 +1915,9 @@ ${bspSummary}`;
         }
 
         function generateBatch() {
-            const entity = document.getElementById('batchEntity').value;
-            const tabular = document.getElementById('batchTabular').value;
-            const register = document.getElementById('batchRegister').value;
+            const entity = document.getElementById('batchEntity').value.trim() || 'РеализацияТоваровУслуг';
+            const tabular = document.getElementById('batchTabular').value.trim() || 'Товары';
+            const register = document.getElementById('batchRegister').value.trim() || 'ТоварыНаСкладах';
             const registerType = document.getElementById('batchRegisterType').value;
             vscode.postMessage({ type: 'generateBatchTemplate', entity, tabular, register, registerType });
         }
@@ -1947,16 +1987,16 @@ ${bspSummary}`;
 
         // Extensions Tab
         function generateExt() {
-            const method = document.getElementById('extMethod').value;
+            const method = document.getElementById('extMethod').value.trim() || 'ОбработкаПроведения';
             const directive = document.getElementById('extDirective').value;
-            const params = document.getElementById('extParams').value;
+            const params = document.getElementById('extParams').value.trim() || 'Отказ, РежимПроведения';
             vscode.postMessage({ type: 'generateExtension', method, directive, params });
         }
 
         function generateFormBtn() {
-            const buttonName = document.getElementById('btnFormName').value;
-            const title = document.getElementById('btnFormTitle').value;
-            const commandName = document.getElementById('btnFormCmd').value;
+            const buttonName = document.getElementById('btnFormName').value.trim() || 'КнопкаПечатиАкта';
+            const title = document.getElementById('btnFormTitle').value.trim() || 'Печать акта';
+            const commandName = document.getElementById('btnFormCmd').value.trim() || 'КомандаПечатиАкта';
             vscode.postMessage({ type: 'generateFormButton', buttonName, title, commandName });
         }
 
@@ -1976,10 +2016,10 @@ ${bspSummary}`;
 
         // Vanessa BDD
         function generateBdd(openEditor) {
-            const entity = document.getElementById('bddEntity').value;
-            const tabular = document.getElementById('bddTabular').value;
-            const register = document.getElementById('bddRegister').value;
-            const prompt = document.getElementById('bddPrompt').value;
+            const entity = document.getElementById('bddEntity').value.trim() || 'Реализация товаров и услуг';
+            const tabular = document.getElementById('bddTabular').value.trim() || 'Товары';
+            const register = document.getElementById('bddRegister').value.trim() || 'ТоварыНаСкладах';
+            const prompt = document.getElementById('bddPrompt').value.trim();
             vscode.postMessage({ type: 'generateBdd', entity, tabular, register, prompt, openEditor });
         }
 
@@ -2049,11 +2089,27 @@ ${bspSummary}`;
                     box.innerText = out;
                     document.getElementById('refactorActions').style.display = 'flex';
                 }
+            } else if (message.type === 'batchResult') {
+                const box = document.getElementById('batchOutput');
+                if (box) {
+                    box.style.display = 'block';
+                    box.innerText = message.code || '';
+                    const act = document.getElementById('batchActions');
+                    if (act) act.style.display = 'flex';
+                }
             } else if (message.type === 'extensionResult') {
                 const box = document.getElementById('extOutput');
                 box.style.display = 'block';
                 box.innerText = message.code || '';
                 document.getElementById('extActions').style.display = 'flex';
+            } else if (message.type === 'formBtnResult') {
+                const box = document.getElementById('btnFormOutput');
+                if (box) {
+                    box.style.display = 'block';
+                    box.innerText = message.code || '';
+                    const act = document.getElementById('btnFormActions');
+                    if (act) act.style.display = 'flex';
+                }
             } else if (message.type === 'auditResult') {
                 const container = document.getElementById('auditOutputContainer');
                 container.innerHTML = '';

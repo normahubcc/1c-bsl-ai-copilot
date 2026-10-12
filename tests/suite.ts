@@ -168,10 +168,10 @@ console.log('\n[4/5] Testing ExtensionGenerator (Расширения конфи
     console.log('  ✓ &ИзменениеИКонтроль generated with #Вставка/#КонецВставки tags');
 
     // C: Managed Form dynamic button injection
-    const formCode = ExtensionGenerator.generateFormButtonExtension('КнопкаПечать', 'Печать акта', 'ПечатьАкта');
+    const formCode = ExtensionGenerator.generateFormButtonExtension('КнопкаПечатиАкта', 'Печать акта', 'КомандаПечатиАкта');
     assert.ok(formCode.includes('&После("ПриСозданииНаСервере")'), 'Must extend ПриСозданииНаСервере');
-    assert.ok(formCode.includes('Элементы.Добавить("КнопкаПечать"'), 'Must dynamically add form button');
-    assert.ok(formCode.includes('Команды.Добавить("ПечатьАкта"'), 'Must register form command');
+    assert.ok(formCode.includes('Элементы.Добавить("КнопкаПечатиАкта"'), 'Must dynamically add form button');
+    assert.ok(formCode.includes('Команды.Добавить("КомандаПечатиАкта"'), 'Must register form command');
     console.log('  ✓ Managed form dynamic UI injection extension generated');
 }
 

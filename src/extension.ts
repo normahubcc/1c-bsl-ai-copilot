@@ -60,7 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage(`Метаданные 1С просканированы: найдено ${meta.objects.length} объектов.`);
         }),
         vscode.commands.registerCommand('normahub1c.topupBalance', () => {
-            vscode.env.openExternal(vscode.Uri.parse('https://normahub.cc/billing'));
+            vscode.env.openExternal(vscode.Uri.parse('https://normahub.cc'));
         }),
         vscode.commands.registerCommand('normahub1c.setApiKey', async () => {
             const key = await vscode.window.showInputBox({
@@ -137,7 +137,7 @@ async function showStatusMenu(context: vscode.ExtensionContext) {
     if (!pick) return;
 
     if (pick.action === 'billing') {
-        vscode.env.openExternal(vscode.Uri.parse('https://normahub.cc/billing'));
+        vscode.env.openExternal(vscode.Uri.parse('https://normahub.cc'));
     } else if (pick.action === 'b2b') {
         vscode.env.openExternal(vscode.Uri.parse('https://normahub.cc'));
     } else if (pick.action === 'setKey') {

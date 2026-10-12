@@ -109,6 +109,9 @@ def run_test():
         page.fill("#batchEntity", "РеализацияТоваровУслуг")
         page.locator("button[onclick='generateBatch()']").click()
         page.wait_for_timeout(200)
+        batch_out = page.locator("#batchOutput")
+        assert batch_out.is_visible()
+        assert "Движения.ТоварыНаСкладах.Записывать = Истина;" in batch_out.inner_text()
         toast = page.locator("#toast")
         assert "show" in toast.get_attribute("class")
         print("  ✓ Batch posting template generated and toast confirmed")
@@ -152,11 +155,11 @@ def run_test():
 
         # Test Subsystem Filter chip
         page.fill("#bspSearchInput", "")
-        page.locator("#bspFilters .chip:has-text('Строки')").click()
+        page.locator("#bspFilters .chip:has-text('Строковые функции')").click()
         page.wait_for_timeout(200)
         strings_count = page.locator(".bsp-item").count()
         assert strings_count > 0 and strings_count < count
-        print(f"  ✓ Subsystem chip 'Строки' filtered to {strings_count} methods")
+        print(f"  ✓ Subsystem chip 'Строковые функции' filtered to {strings_count} methods")
 
         page.screenshot(path=str(SCREENSHOT_DIR / "02_human_tab_bsp.png"))
 
@@ -198,9 +201,11 @@ def run_test():
         page.fill("#btnFormTitle", "Экспресс-Печать УПД")
         page.locator("button[onclick='generateFormBtn()']").click()
         page.wait_for_timeout(350)
-        btn_code = page.locator("#extOutput").inner_text()
+        btn_out = page.locator("#btnFormOutput")
+        assert btn_out.is_visible()
+        btn_code = btn_out.inner_text()
         assert "КнопкаЭкспрессПечать" in btn_code
-        print("  ✓ Dynamic managed form button generated")
+        print("  ✓ Dynamic managed form button generated in dedicated container")
         page.screenshot(path=str(SCREENSHOT_DIR / "03_human_tab_extensions.png"))
 
         # 6. Tab 4: Audit (ИТС Аудит)
@@ -250,7 +255,7 @@ def run_test():
         assert "Контекст:" in bdd_text
         assert "Сценарий:" in bdd_text
         assert "| Номенклатура" in bdd_text, "Missing table formatting in BDD scenario"
-        assert "| \"Кофе зерновой\"" in bdd_text
+        assert "| \"Товар тестовый\"" in bdd_text
         print("  ✓ BDD Gherkin scenario generated with beautiful indentation and aligned table spaces")
         page.screenshot(path=str(SCREENSHOT_DIR / "05_human_tab_bdd.png"))
 

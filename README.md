@@ -102,10 +102,10 @@
 ### Вариант 2. Установка через VSIX-пакет
 ```bash
 # Для VS Code
-code --install-extension 1c-bsl-ai-copilot-1.0.1.vsix
+code --install-extension 1c-bsl-ai-copilot-1.0.2.vsix
 
 # Для Cursor
-cursor --install-extension 1c-bsl-ai-copilot-1.0.1.vsix
+cursor --install-extension 1c-bsl-ai-copilot-1.0.2.vsix
 ```
 
 ### Первоначальная настройка
