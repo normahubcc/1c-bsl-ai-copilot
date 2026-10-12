@@ -49,6 +49,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('normahub1c.bspAssistant', () => handleBSPAssistantCommand()),
         vscode.commands.registerCommand('normahub1c.auditStandards', () => handleAuditStandardsCommand()),
         vscode.commands.registerCommand('normahub1c.inspectQuery', () => handleInspectQueryCommand()),
+        vscode.commands.registerCommand('normahub1c.refactorQuery', () => handleRefactorQueryCommand()),
         vscode.commands.registerCommand('normahub1c.generateVanessaFeature', () => handleGenerateVanessaFeatureCommand()),
         vscode.commands.registerCommand('normahub1c.analyzeTechLog', () => handleAnalyzeTechLogCommand()),
         vscode.commands.registerCommand('normahub1c.explainCode', () => handleExplainCodeCommand(context)),
@@ -288,6 +289,36 @@ async function handleInspectQueryCommand() {
             channel.show();
         }
     });
+}
+
+async function handleRefactorQueryCommand() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showWarningMessage('Откройте модуль BSL с текстом запроса 1С.');
+        return;
+    }
+
+    const queryText = editor.selection.isEmpty ? editor.document.getText() : editor.document.getText(editor.selection);
+    if (!queryText.trim()) {
+        vscode.window.showWarningMessage('Выделите текст запроса 1С для оптимизации.');
+        return;
+    }
+
+    const result = QueryBuilder.refactorQuery(queryText);
+    if (result.appliedOptimizations.length === 0) {
+        vscode.window.showInformationMessage('✓ Запрос уже соответствует стандартам ИТС (виртуальные таблицы изолированы).');
+        return;
+    }
+
+    editor.edit(editBuilder => {
+        if (editor.selection.isEmpty) {
+            editBuilder.replace(new vscode.Range(0, 0, editor.document.lineCount, 0), result.refactoredQuery);
+        } else {
+            editBuilder.replace(editor.selection, result.refactoredQuery);
+        }
+    });
+
+    vscode.window.showInformationMessage(`✓ Запрос оптимизирован по стандартам ИТС! Применено оптимизаций: ${result.appliedOptimizations.length}`);
 }
 
 async function handleGenerateQueryCommand(context: vscode.ExtensionContext) {

@@ -70,9 +70,22 @@ def build_vsix():
     files_to_pack = [
         ("package.json", "extension/package.json"),
         ("dist/extension.js", "extension/dist/extension.js"),
+        ("dist/mcp-server.js", "extension/dist/mcp-server.js"),
+        ("bin/mcp-server-1c.js", "extension/bin/mcp-server-1c.js"),
         ("README.md", "extension/README.md"),
         ("icon.png", "extension/icon.png"),
-        ("media/1c-icon.svg", "extension/media/1c-icon.svg")
+        ("media/1c-icon.svg", "extension/media/1c-icon.svg"),
+        ("epf/NormaHubCopilot_Module.bsl", "extension/epf/NormaHubCopilot_Module.bsl"),
+        ("epf/NormaHubCopilot_Form.bsl", "extension/epf/NormaHubCopilot_Form.bsl"),
+        ("epf/README.md", "extension/epf/README.md"),
+        ("turboconf/normahub_copilot.os", "extension/turboconf/normahub_copilot.os"),
+        ("turboconf/README.md", "extension/turboconf/README.md"),
+        ("sidecar/core.py", "extension/sidecar/core.py"),
+        ("sidecar/server.py", "extension/sidecar/server.py"),
+        ("sidecar/config.py", "extension/sidecar/config.py"),
+        ("sidecar/main.py", "extension/sidecar/main.py"),
+        ("sidecar/clipboard_watcher.py", "extension/sidecar/clipboard_watcher.py"),
+        ("sidecar/__init__.py", "extension/sidecar/__init__.py")
     ]
 
     for src, _ in files_to_pack:

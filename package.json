@@ -89,6 +89,10 @@
         "title": "1С: Проверить оптимизацию запроса по стандартам ИТС"
       },
       {
+        "command": "normahub1c.refactorQuery",
+        "title": "1С: Оптимизировать запрос (Вынести в ВТ_ по стандартам ИТС)"
+      },
+      {
         "command": "normahub1c.generateVanessaFeature",
         "title": "1С: Сгенерировать BDD-сценарий (Vanessa-Automation)"
       },
