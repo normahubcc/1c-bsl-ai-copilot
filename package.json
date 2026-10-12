@@ -102,6 +102,10 @@
       {
         "command": "normahub1c.setApiKey",
         "title": "1С: Настроить API-ключ NormaHub"
+      },
+      {
+        "command": "normahub1c.statusMenu",
+        "title": "1С: Меню управления и баланса"
       }
     ],
     "menus": {
