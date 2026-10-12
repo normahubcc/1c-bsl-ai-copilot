@@ -38,10 +38,11 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "build": "npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "build": "npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify && npx esbuild ./src/mcp/server.ts --bundle --outfile=dist/mcp-server.js --format=cjs --platform=node",
     "package": "python3 build_vsix.py",
-    "test": "node ./tests/test_runner.js"
+    "test": "node ./tests/test_runner.js && python3 -m unittest discover -s sidecar/tests/ -v",
+    "sidecar": "python3 sidecar/main.py daemon",
+    "mcp": "node bin/mcp-server-1c.js"
   },
   "contributes": {
     "viewsContainers": {

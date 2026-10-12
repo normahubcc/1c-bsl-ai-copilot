@@ -89,14 +89,60 @@ code --install-extension 1c-bsl-ai-copilot-1.0.0.vsix
 
 ---
 
+## Использование с внешними AI-агентами (1C MCP Server)
+
+В проект встроен нативный сервер протокола **Model Context Protocol (MCP)**, позволяющий подключить Cursor, Claude Code, Windsurf, Cline или AGY к структуре метаданных и правилам 1С.
+
+### Подключение в Cursor / Claude Code (`mcp.json`):
+```json
+{
+  "mcpServers": {
+    "1c-copilot": {
+      "command": "node",
+      "args": ["/home/user/Desktop/normahub/normahub-github/repos/1c-bsl-ai-copilot/bin/mcp-server-1c.js"],
+      "env": {
+        "NORMAHUB_API_KEY": "nr_hub_..."
+      }
+    }
+  }
+}
+```
+
+Доступные инструменты MCP:
+* `1c_scan_metadata`: получение дерева метаданных конфигурации (справочники, документы, регистры).
+* `1c_audit_standards`: аудит кода на стандарты фирмы «1С» (ИТС) и БСП.
+* `1c_build_batch_query`: генерация пакета запросов с временными таблицами и индексами.
+* `1c_inspect_query`: статический анализ текста запроса на антипаттерны СУБД.
+* `1c_generate_extension`: генерация перехвата `&Вместо`, `&Перед`, `&После`, `&ИзменениеИКонтроль`.
+* `1c_bsp_search`: поиск по типовым функциям БСП.
+
+---
+
+## 1C Configurator Global Sidecar (Для штатного Конфигуратора 1С)
+
+Для разработчиков, работающих в классическом **1С:Конфигураторе 8.3** (без VS Code), предусмотрен системный фоновый ассистент.
+
+### Запуск Sidecar Daemon:
+```bash
+# Запуск REST-шлюза (localhost:18833) и перехватчика буфера обмена
+python3 sidecar/main.py daemon --with-clipboard
+```
+
+### Возможности Sidecar:
+1. **Перехват буфера обмена**: скопируйте в Конфигураторе строку `// перехват ОбработкаПроведения` или `// запрос остатки` — Sidecar мгновенно трансформирует буфер обмена в готовый код 1С, вам останется только нажать `Ctrl+V`.
+2. **Аудит кода на лету**: при копировании BSL-кода Sidecar автоматически добавляет комментарии с найденными нарушениями стандартов ИТС и рекомендациями по исправлению.
+3. **Локальный REST API (`http://127.0.0.1:18833`)**: эндпоинты `/v1/audit`, `/v1/query`, `/v1/extension`, `/v1/complete` для вызова из OneScript (`oscript`), внешних обработок 1С (`.epf`) или CI/CD.
+
+---
+
 ## Сборка и тестирование
 
 ```bash
-# Сборка production бандла
+# Сборка production бандлов расширения и MCP
 npm run build
 
-# Запуск тестов ядра
-node tests/test_runner.js
+# Запуск полного тестового контура (TypeScript + Python Sidecar)
+npm run test
 
 # Сборка пакета VSIX
 python3 build_vsix.py
