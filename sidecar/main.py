@@ -31,6 +31,16 @@ def main():
     ext_parser.add_argument("method", help="Target method name")
     ext_parser.add_argument("--directive", default="Вместо", choices=["Вместо", "Перед", "После", "ИзменениеИКонтроль"])
 
+    # bdd
+    bdd_parser = subparsers.add_parser("bdd", help="Generate Vanessa-Automation .feature scenario")
+    bdd_parser.add_argument("--entity", default="РеализацияТоваровУслуг", help="Document name")
+    bdd_parser.add_argument("--tabular", default="Товары", help="Tabular section name")
+    bdd_parser.add_argument("--register", default="ТоварыНаСкладах", help="Accumulation register name")
+
+    # techlog
+    techlog_parser = subparsers.add_parser("techlog", help="Analyze 1C Technological Log (ТЖ) events")
+    techlog_parser.add_argument("path", help="Path to tech log file or raw log snippet")
+
     # clip-process
     subparsers.add_parser("process-clip", help="Transform current clipboard content once")
 
@@ -78,6 +88,20 @@ def main():
     elif args.command == "extension":
         ext_code = SidecarCore.generate_extension_method(args.method, args.directive)
         print(ext_code)
+
+    elif args.command == "bdd":
+        feature = SidecarCore.generate_bdd_feature(args.entity, args.tabular, args.register)
+        print(feature)
+
+    elif args.command == "techlog":
+        try:
+            with open(args.path, "r", encoding="utf-8") as f:
+                log_data = f.read()
+        except Exception:
+            log_data = args.path
+
+        diag = SidecarCore.analyze_tech_log(log_data)
+        print(diag.get("report", ""))
 
     elif args.command == "process-clip":
         watcher = ClipboardWatcher(config)

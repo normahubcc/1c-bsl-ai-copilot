@@ -5,6 +5,8 @@ import { StandardsChecker } from './standardsChecker';
 import { BSPHelper } from './bspHelper';
 import { QueryBuilder } from './queryBuilder';
 import { ExtensionGenerator, ExtensionDirective } from './extensionGenerator';
+import { BDDGenerator } from './bddGenerator';
+import { TechLogAnalyzer } from './techLogAnalyzer';
 
 export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
@@ -67,6 +69,14 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
 
                 case 'insertBspSnippet':
                     await this._handleInsertBspSnippet(data.example);
+                    break;
+
+                case 'generateBdd':
+                    await this._handleGenerateBdd(data.entity, data.tabular, data.register, data.openEditor);
+                    break;
+
+                case 'analyzeTechLog':
+                    await this._handleAnalyzeTechLog(data.rawLog);
                     break;
             }
         });
@@ -177,6 +187,35 @@ ${bspSummary}`;
         const issues = StandardsChecker.auditCode(code);
         const report = StandardsChecker.formatAuditReport(issues);
         this._view.webview.postMessage({ type: 'auditResult', report });
+    }
+
+    private async _handleGenerateBdd(entity: string, tabular: string, register: string, openEditor = true) {
+        if (!this._view) return;
+        const targetEntity = (entity || '').trim() || 'РеализацияТоваровУслуг';
+        const spec = BDDGenerator.generateDocumentScenario(
+            targetEntity,
+            (tabular || '').trim() || 'Товары',
+            (register || '').trim() || 'ТоварыНаСкладах'
+        );
+        const feature = BDDGenerator.generateFeature(spec);
+        this._view.webview.postMessage({ type: 'bddResult', feature });
+
+        if (openEditor) {
+            const doc = await vscode.workspace.openTextDocument({ content: feature, language: 'gherkin' });
+            await vscode.window.showTextDocument(doc);
+        }
+    }
+
+    private async _handleAnalyzeTechLog(rawLog: string) {
+        if (!this._view) return;
+        if (!rawLog || !rawLog.trim()) {
+            this._view.webview.postMessage({ type: 'techLogResult', report: 'Вставьте текст лога ТЖ для анализа.' });
+            return;
+        }
+        const events = TechLogAnalyzer.parseLog(rawLog);
+        const diagnoses = TechLogAnalyzer.diagnose(events);
+        const report = TechLogAnalyzer.formatReport(diagnoses);
+        this._view.webview.postMessage({ type: 'techLogResult', report, count: events.length });
     }
 
     private _getHtmlForWebview(apiKey: string, balance: any): string {
@@ -369,6 +408,8 @@ ${bspSummary}`;
         <div class="tab" onclick="switchTab('bsp')">БСП</div>
         <div class="tab" onclick="switchTab('extensions')">Расширения</div>
         <div class="tab" onclick="switchTab('audit')">ИТС Аудит</div>
+        <div class="tab" onclick="switchTab('bdd')">Vanessa BDD</div>
+        <div class="tab" onclick="switchTab('techlog')">Анализ ТЖ</div>
         <div class="tab" onclick="switchTab('settings')">Баланс</div>
     </div>
 
@@ -431,6 +472,34 @@ ${bspSummary}`;
         </div>
     </div>
 
+    <!-- ТАБ 5: VANESSA BDD -->
+    <div id="tab-bdd" class="tab-panel">
+        <div class="card">
+            <div class="card-title">Генератор тестов Vanessa-Automation</div>
+            <div style="font-size:11px; color:var(--vscode-descriptionForeground); margin-bottom:8px;">
+                Формирует русскоязычные BDD-сценарии (.feature) с таблицами данных и проверкой движений регистров.
+            </div>
+            <input type="text" id="bddEntity" placeholder="Имя документа (РеализацияТоваровУслуг)" value="РеализацияТоваровУслуг" />
+            <input type="text" id="bddTabular" placeholder="Табличная часть (Товары)" value="Товары" />
+            <input type="text" id="bddRegister" placeholder="Контролируемый регистр (ТоварыНаСкладах)" value="ТоварыНаСкладах" />
+            <button onclick="generateBdd(true)">Сгенерировать и открыть .feature</button>
+            <div id="bddOutput" class="code-box" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- ТАБ 6: АНАЛИЗ ТЖ -->
+    <div id="tab-techlog" class="tab-panel">
+        <div class="card">
+            <div class="card-title">Диагностика Технологического Журнала (ТЖ)</div>
+            <div style="font-size:11px; color:var(--vscode-descriptionForeground); margin-bottom:8px;">
+                Экспертный анализ инцидентов: TLOCK, TDEADLOCK, EXCP, SDBL/DBPOSTGR/DBMSSQL с рекомендациями High-Load.
+            </div>
+            <textarea id="techlogInput" style="min-height:80px;" placeholder="Вставьте строку или блок событий ТЖ..."></textarea>
+            <button onclick="analyzeTechLog()">Диагностировать инциденты</button>
+            <div id="techlogOutput" class="code-box" style="display:none;"></div>
+        </div>
+    </div>
+
     <!-- ТАБ 5: НАСТРОЙКИ И БАЛАНС -->
     <div id="tab-settings" class="tab-panel">
         <div class="card">
@@ -488,6 +557,18 @@ ${bspSummary}`;
             vscode.postMessage({ type: 'auditSelection' });
         }
 
+        function generateBdd(openEditor) {
+            const entity = document.getElementById('bddEntity').value;
+            const tabular = document.getElementById('bddTabular').value;
+            const register = document.getElementById('bddRegister').value;
+            vscode.postMessage({ type: 'generateBdd', entity, tabular, register, openEditor });
+        }
+
+        function analyzeTechLog() {
+            const rawLog = document.getElementById('techlogInput').value;
+            vscode.postMessage({ type: 'analyzeTechLog', rawLog });
+        }
+
         function saveKey() {
             const val = document.getElementById('apiKeyInput').value;
             if (val) vscode.postMessage({ type: 'saveKey', value: val });
@@ -509,6 +590,14 @@ ${bspSummary}`;
                 box.innerText = message.code || '';
             } else if (message.type === 'auditResult') {
                 const box = document.getElementById('auditOutput');
+                box.style.display = 'block';
+                box.innerText = message.report || '';
+            } else if (message.type === 'bddResult') {
+                const box = document.getElementById('bddOutput');
+                box.style.display = 'block';
+                box.innerText = message.feature || '';
+            } else if (message.type === 'techLogResult') {
+                const box = document.getElementById('techlogOutput');
                 box.style.display = 'block';
                 box.innerText = message.report || '';
             }

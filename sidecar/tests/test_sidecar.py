@@ -70,6 +70,37 @@ class TestSidecarCore(unittest.TestCase):
         self.assertIsNotNone(res_audit)
         self.assertIn("ITS-UI-003", res_audit)
 
+        # 4. Vanessa BDD intent
+        res_bdd = watcher.process_text("// ванесса ЗаказКлиента")
+        self.assertIsNotNone(res_bdd)
+        self.assertIn("Функционал: Проведение и валидация документа \"ЗаказКлиента\"", res_bdd)
+
+        # 5. Tech Log intent
+        tlog_snippet = "14:20.123000-8000000,TLOCK,2,process=rphost,Context=Док : 10 : Заблокировать(),Regions=Товары,WaitConnections=10"
+        res_tlog = watcher.process_text(f"// тж\n{tlog_snippet}")
+        self.assertIsNotNone(res_tlog)
+        self.assertIn("Транзакционные блокировки (TLOCK)", res_tlog)
+
+    def test_generate_bdd_feature(self):
+        feat = SidecarCore.generate_bdd_feature("РеализацияТоваровУслуг", "Товары", "ТоварыНаСкладах")
+        self.assertIn("# language: ru", feat)
+        self.assertIn("Функционал: Проведение и валидация документа \"РеализацияТоваровУслуг\"", feat)
+        self.assertIn("Сценарий: Успешное создание и проведение документа", feat)
+        self.assertIn("Сценарий: Контроль превышения остатка", feat)
+
+    def test_analyze_tech_log(self):
+        log_sample = """
+14:20.123000-8000000,TLOCK,2,process=rphost,Context=Документ.Реализация.Модуль : 142 : Заблокировать(),Regions=Товары,WaitConnections=100
+15:02.450000-0,TDEADLOCK,3,process=rphost,Context=Документ.Заказ.Модуль : 88 : Записать(),DeadlockConnectionList=100 102
+"""
+        diag = SidecarCore.analyze_tech_log(log_sample)
+        self.assertEqual(diag["events_count"], 2)
+        self.assertEqual(diag["diagnoses_count"], 2)
+        cats = [d["category"] for d in diag["diagnoses"]]
+        self.assertIn("Транзакционные блокировки (TLOCK)", cats)
+        self.assertIn("Взаимные блокировки (TDEADLOCK)", cats)
+        self.assertIn("Рекомендации", diag["report"])
+
 
 class TestSidecarHTTPServer(unittest.TestCase):
     @classmethod
@@ -126,6 +157,27 @@ class TestSidecarHTTPServer(unittest.TestCase):
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode("utf-8"))
             self.assertIn('&Вместо("РассчитатьСкидки")', data["code"])
+
+    def test_bdd_endpoint(self):
+        url = f"http://127.0.0.1:{self.port}/v1/bdd"
+        payload = json.dumps({"entity": "ЗаказКлиента", "tabular": "Товары", "register": "ТоварыНаСкладах"}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertIn("Функционал: Проведение и валидация документа \"ЗаказКлиента\"", data["feature"])
+
+    def test_techlog_endpoint(self):
+        url = f"http://127.0.0.1:{self.port}/v1/techlog"
+        snippet = "14:20.123000-8000000,TLOCK,2,process=rphost,Context=Док : 10 : Блокировать(),Regions=Товары,WaitConnections=1"
+        payload = json.dumps({"rawLog": snippet}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["events_count"], 1)
+            self.assertEqual(data["diagnoses_count"], 1)
+            self.assertIn("Транзакционные блокировки (TLOCK)", data["report"])
 
 
 if __name__ == "__main__":

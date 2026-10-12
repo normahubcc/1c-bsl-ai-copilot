@@ -13,6 +13,8 @@ import { BSPHelper } from '../bspHelper';
 import { QueryBuilder } from '../queryBuilder';
 import { ExtensionGenerator, ExtensionDirective } from '../extensionGenerator';
 import { MetadataScanner } from '../metadataScanner';
+import { BDDGenerator } from '../bddGenerator';
+import { TechLogAnalyzer } from '../techLogAnalyzer';
 
 interface McpRequest {
     jsonrpc: string;
@@ -216,6 +218,45 @@ export class McpServer1C {
                     },
                     required: ['workspacePath']
                 }
+            },
+            {
+                name: '1c_generate_bdd_feature',
+                description: 'Генерация BDD-сценариев Vanessa-Automation (.feature) на русском языке (Gherkin) для тестирования документов, справочников и бизнес-процессов 1С.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        entityName: {
+                            type: 'string',
+                            description: 'Имя документа или бизнес-сущности (например: ЗаказКлиента, РеализацияТоваровУслуг)'
+                        },
+                        tabularSection: {
+                            type: 'string',
+                            description: 'Имя табличной части (по умолчанию: Товары)'
+                        },
+                        registerName: {
+                            type: 'string',
+                            description: 'Имя регистра для валидации движений (по умолчанию: ТоварыНаСкладах)'
+                        },
+                        prompt: {
+                            type: 'string',
+                            description: 'Произвольное текстовое описание сценария тестирования на естественном языке'
+                        }
+                    }
+                }
+            },
+            {
+                name: '1c_analyze_tech_log',
+                description: 'Глубокий экспертный анализ фрагментов Технологического Журнала 1С (ТЖ): события TLOCK, TDEADLOCK, EXCP, SDBL/DBPOSTGR/DBMSSQL с локализацией в коде BSL и архитектурными рекомендациями High-Load.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        rawLog: {
+                            type: 'string',
+                            description: 'Сырой текст фрагмента технологического журнала 1С'
+                        }
+                    },
+                    required: ['rawLog']
+                }
             }
         ];
     }
@@ -298,6 +339,37 @@ export class McpServer1C {
                         version: metadata.version,
                         objectsCount: metadata.objects.length,
                         summary
+                    });
+                    break;
+                }
+
+                case '1c_generate_bdd_feature': {
+                    let featureContent = '';
+                    if (args.prompt) {
+                        featureContent = BDDGenerator.parseNaturalLanguageToFeature(args.prompt);
+                    } else {
+                        const entityName = args.entityName || 'РеализацияТоваровУслуг';
+                        const spec = BDDGenerator.generateDocumentScenario(
+                            entityName,
+                            args.tabularSection || 'Товары',
+                            args.registerName || 'ТоварыНаСкладах'
+                        );
+                        featureContent = BDDGenerator.generateFeature(spec);
+                    }
+                    this.sendToolResponse(id, { feature: featureContent });
+                    break;
+                }
+
+                case '1c_analyze_tech_log': {
+                    const rawLog = args.rawLog || '';
+                    const parsedEvents = TechLogAnalyzer.parseLog(rawLog);
+                    const diagnoses = TechLogAnalyzer.diagnose(parsedEvents);
+                    const report = TechLogAnalyzer.formatReport(diagnoses);
+                    this.sendToolResponse(id, {
+                        eventsFound: parsedEvents.length,
+                        diagnosesCount: diagnoses.length,
+                        diagnoses,
+                        report
                     });
                     break;
                 }

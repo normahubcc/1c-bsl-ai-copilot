@@ -4,6 +4,8 @@ import { BSPHelper } from '../src/bspHelper';
 import { QueryBuilder } from '../src/queryBuilder';
 import { ExtensionGenerator } from '../src/extensionGenerator';
 import { MetadataScanner } from '../src/metadataScanner';
+import { BDDGenerator } from '../src/bddGenerator';
+import { TechLogAnalyzer } from '../src/techLogAnalyzer';
 
 console.log('====================================================');
 console.log('RUNNING SENIOR-GRADE 1C COPILOT UNIT TEST SUITE');
@@ -183,6 +185,62 @@ console.log('\n[5/5] Testing MetadataScanner...');
     assert.ok(summary.includes('РеализацияТоваровУслуг'), 'Must list document РеализацияТоваровУслуг');
     assert.ok(summary.includes('Табличные части: Товары'), 'Must list tabular section Товары');
     console.log('  ✓ Metadata correctly summarized and formatted for LLM context');
+}
+
+// 6. Test BDDGenerator (Vanessa-Automation BDD)
+console.log('\n[6/7] Testing BDDGenerator (Vanessa-Automation BDD)...');
+{
+    // A: Standard Document Scenario
+    const spec = BDDGenerator.generateDocumentScenario('РеализацияТоваровУслуг', 'Товары', 'ТоварыНаСкладах');
+    const featureText = BDDGenerator.generateFeature(spec);
+
+    assert.ok(featureText.includes('# language: ru'), 'Must specify Russian Gherkin language header');
+    assert.ok(featureText.includes('Функционал: Проведение и валидация документа "РеализацияТоваровУслуг"'), 'Must have Feature title');
+    assert.ok(featureText.includes('Контекст:'), 'Must have Background context');
+    assert.ok(featureText.includes('Сценарий: Успешное создание и проведение документа'), 'Must have positive scenario');
+    assert.ok(featureText.includes('Сценарий: Контроль превышения остатка'), 'Must have negative scenario');
+    assert.ok(featureText.includes('| \'Номенклатура\' | \'Количество\' | \'Цена\' |'), 'Must generate data table headers');
+    console.log('  ✓ Vanessa-Automation Russian Gherkin .feature generated with scenarios and tables');
+
+    // B: Freeform Natural Language Intent Parsing
+    const parsedFeature = BDDGenerator.parseNaturalLanguageToFeature('Создать тест для документа "ЗаказПокупателя" с проверкой остатков');
+    assert.ok(parsedFeature.includes('ЗаказПокупателя'), 'Must extract document name from natural language prompt');
+    console.log('  ✓ Natural language intent parsed into structured BDD feature');
+}
+
+// 7. Test TechLogAnalyzer (1C Technological Log Diagnostics)
+console.log('\n[7/7] Testing TechLogAnalyzer (Технологический Журнал 1С - ТЖ)...');
+{
+    const sampleLog = `
+14:20.123000-7500000,TLOCK,2,process=rphost,p:processName=Trade,t:clientID=124,Context=Документ.РеализацияТоваровУслуг.МодульОбъекта : 142 : БлокировкаДанных.Заблокировать(),Regions=AccumRgOpt.ТоварыНаСкладах,WaitConnections=122,Locks=AccumRgOpt.ТоварыНаСкладах(Exclusive)
+15:02.450000-0,TDEADLOCK,3,process=rphost,p:processName=Trade,t:clientID=124,Context=Документ.ЗаказКлиента.МодульОбъекта : 88 : Движения.Записать(),DeadlockConnectionList=122 124
+16:10.005000-0,EXCP,1,process=rphost,p:processName=Trade,t:clientID=99,Context=Справочник.Номенклатура.Форма.ФормаЭлемента.Форма : 54 : Значение = Ссылка.ПолучитьОбъект(),Descr='Попытка передачи с клиента на сервер мутабельного значения'
+12:00.000000-4500000,DBPOSTGR,2,process=rphost,p:processName=Trade,Sql='SELECT * FROM _Document123 WHERE _Fld456 = 1',Context=Отчет.ОстаткиТоваров.МодульОбъекта : 210 : Запрос.Выполнить()
+    `;
+
+    const events = TechLogAnalyzer.parseLog(sampleLog);
+    assert.strictEqual(events.length, 4, 'Must parse exactly 4 events (TLOCK, TDEADLOCK, EXCP, DBPOSTGR)');
+    console.log('  ✓ All 4 distinct Tech Log event types correctly parsed');
+
+    // Verify TLOCK event details
+    const tlock = events.find(e => e.event === 'TLOCK')!;
+    assert.strictEqual(tlock.durationSec, 7.5, 'Duration must be converted to 7.5 seconds');
+    assert.strictEqual(tlock.contextLocation?.line, 142, 'Context line must be 142');
+
+    // Run diagnosis
+    const diagnoses = TechLogAnalyzer.diagnose(events);
+    assert.strictEqual(diagnoses.length, 4, 'Must produce 4 diagnoses');
+
+    const hasDeadlockDiag = diagnoses.some(d => d.category === 'Взаимные блокировки (TDEADLOCK)' && d.severity === 'critical');
+    assert.strictEqual(hasDeadlockDiag, true, 'Deadlock must be diagnosed with critical severity');
+
+    const hasLockDiag = diagnoses.some(d => d.category === 'Транзакционные блокировки (TLOCK)' && d.severity === 'critical');
+    assert.strictEqual(hasLockDiag, true, 'Long TLOCK (>5s) must be critical');
+
+    const report = TechLogAnalyzer.formatReport(diagnoses);
+    assert.ok(report.includes('Взаимные блокировки (TDEADLOCK)'), 'Report must mention deadlock');
+    assert.ok(report.includes('Рекомендации эксперта по High-Load 1С'), 'Report must provide High-Load recommendations');
+    console.log('  ✓ TLOCK, TDEADLOCK, EXCP and slow SQL diagnosed with High-Load fixes');
 }
 
 console.log('\n====================================================');

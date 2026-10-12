@@ -681,6 +681,398 @@ var MetadataScanner = class {
   }
 };
 
+// src/bddGenerator.ts
+var BDDGenerator = class {
+  /**
+   * Generates a complete .feature file compliant with Vanessa-Automation.
+   */
+  static generateFeature(options) {
+    const lines = [];
+    lines.push("# language: ru");
+    lines.push("");
+    lines.push(`\u0424\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B: ${options.featureName}`);
+    if (options.role) {
+      lines.push(`  \u041A\u0430\u043A ${options.role}`);
+    }
+    if (options.objective) {
+      lines.push(`  \u042F \u0445\u043E\u0447\u0443 ${options.objective}`);
+    }
+    if (options.businessValue) {
+      lines.push(`  \u0427\u0442\u043E\u0431\u044B ${options.businessValue}`);
+    }
+    lines.push("");
+    lines.push("\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442:");
+    const user = options.contextUser || "\u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440";
+    lines.push(`  \u0414\u0430\u043D\u043E \u042F \u043E\u0442\u043A\u0440\u044B\u043B \u0441\u0435\u0430\u043D\u0441 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F "${user}"`);
+    lines.push("  \u0418 \u042F \u043E\u0442\u043A\u0440\u044B\u043B \u043D\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u043E\u043D\u043D\u0443\u044E \u043F\u0430\u043D\u0435\u043B\u044C");
+    lines.push("");
+    for (const scenario of options.scenarios) {
+      lines.push(`  \u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439: ${scenario.name}`);
+      if (scenario.description) {
+        lines.push(`    # ${scenario.description}`);
+      }
+      for (const step of scenario.steps) {
+        lines.push(`    ${step.keyword} ${step.action}`);
+        if (step.table && step.table.length > 0) {
+          const headers = step.table[0].map((c) => `'${c.name}'`);
+          lines.push(`      | ${headers.join(" | ")} |`);
+          for (const row of step.table) {
+            const vals = row.map((c) => `'${c.value}'`);
+            lines.push(`      | ${vals.join(" | ")} |`);
+          }
+        }
+      }
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+  /**
+   * Generates standard document posting BDD scenario
+   */
+  static generateDocumentScenario(docName, tabularSection = "\u0422\u043E\u0432\u0430\u0440\u044B", registerName = "\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445") {
+    return {
+      featureName: `\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435 \u0438 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 "${docName}"`,
+      role: "\u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440 \u043F\u043E \u043F\u0440\u043E\u0434\u0430\u0436\u0430\u043C / \u041A\u043B\u0430\u0434\u043E\u0432\u0449\u0438\u043A",
+      objective: `\u0431\u044B\u0441\u0442\u0440\u043E \u0441\u043E\u0437\u0434\u0430\u0432\u0430\u0442\u044C \u0438 \u043F\u0440\u043E\u0432\u043E\u0434\u0438\u0442\u044C \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 "${docName}" \u0441 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u043E\u0439 \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432`,
+      businessValue: "\u0438\u0441\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u043E\u0442\u0440\u0438\u0446\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043E\u0441\u0442\u0430\u0442\u043A\u0438 \u043D\u0430 \u0441\u043A\u043B\u0430\u0434\u0430\u0445 \u0438 \u0433\u0430\u0440\u0430\u043D\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0446\u0435\u043B\u043E\u0441\u0442\u043D\u043E\u0441\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0445",
+      contextUser: "\u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440",
+      scenarios: [
+        {
+          name: `\u0423\u0441\u043F\u0435\u0448\u043D\u043E\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u0438 \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 "${docName}"`,
+          steps: [
+            {
+              keyword: "\u041A\u043E\u0433\u0434\u0430",
+              action: `\u0432 \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u043C \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0435 \u044F \u0432\u044B\u0431\u0438\u0440\u0430\u044E "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" -> "${docName}"`
+            },
+            {
+              keyword: "\u0422\u043E\u0433\u0434\u0430",
+              action: `\u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C \u043E\u043A\u043D\u043E "${docName}"`
+            },
+            {
+              keyword: "\u0418",
+              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u0421\u043E\u0437\u0434\u0430\u0442\u044C"'
+            },
+            {
+              keyword: "\u0422\u043E\u0433\u0434\u0430",
+              action: `\u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C \u043E\u043A\u043D\u043E "${docName} (\u0441\u043E\u0437\u0434\u0430\u043D\u0438\u0435)"`
+            },
+            {
+              keyword: "\u0418",
+              action: '\u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442 "\u041E\u0440\u0433\u0430\u043D\u0438\u0437\u0430\u0446\u0438\u044F" \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u043C "\u041E\u0441\u043D\u043E\u0432\u043D\u0430\u044F \u043E\u0440\u0433\u0430\u043D\u0438\u0437\u0430\u0446\u0438\u044F"'
+            },
+            {
+              keyword: "\u0418",
+              action: '\u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442 "\u0421\u043A\u043B\u0430\u0434" \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u043C "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u043A\u043B\u0430\u0434"'
+            },
+            {
+              keyword: "\u0418",
+              action: `\u0432 \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 "${tabularSection}" \u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C"`
+            },
+            {
+              keyword: "\u0418",
+              action: `\u0432 \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 "${tabularSection}" \u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443:`,
+              table: [
+                [
+                  { name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", value: "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0442\u043E\u0432\u0430\u0440 \u0410" },
+                  { name: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E", value: 5 },
+                  { name: "\u0426\u0435\u043D\u0430", value: 1200 }
+                ]
+              ]
+            },
+            {
+              keyword: "\u0418",
+              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u041F\u0440\u043E\u0432\u0435\u0441\u0442\u0438 \u0438 \u0437\u0430\u043A\u0440\u044B\u0442\u044C"'
+            },
+            {
+              keyword: "\u0422\u043E\u0433\u0434\u0430",
+              action: `\u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C \u043E\u043A\u043D\u043E "${docName}"`
+            },
+            {
+              keyword: "\u0418",
+              action: `\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u044E \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u043F\u043E \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0443 "${registerName}"`
+            }
+          ]
+        },
+        {
+          name: `\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u043F\u0440\u0435\u0432\u044B\u0448\u0435\u043D\u0438\u044F \u043E\u0441\u0442\u0430\u0442\u043A\u0430 \u043F\u0440\u0438 \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0438 "${docName}"`,
+          steps: [
+            {
+              keyword: "\u041A\u043E\u0433\u0434\u0430",
+              action: `\u0432 \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u043C \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0435 \u044F \u0432\u044B\u0431\u0438\u0440\u0430\u044E "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" -> "${docName}"`
+            },
+            {
+              keyword: "\u0418",
+              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u0421\u043E\u0437\u0434\u0430\u0442\u044C"'
+            },
+            {
+              keyword: "\u0418",
+              action: `\u0432 \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 "${tabularSection}" \u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443:`,
+              table: [
+                [
+                  { name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", value: "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0442\u043E\u0432\u0430\u0440 \u041D\u0435\u0434\u043E\u0441\u0442\u0430\u0447\u0430" },
+                  { name: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E", value: 999999 }
+                ]
+              ]
+            },
+            {
+              keyword: "\u0418",
+              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u041F\u0440\u043E\u0432\u0435\u0441\u0442\u0438"'
+            },
+            {
+              keyword: "\u0422\u043E\u0433\u0434\u0430",
+              action: '\u044F \u0436\u0434\u0443 \u043F\u043E\u044F\u0432\u043B\u0435\u043D\u0438\u044F \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u043E\u0431 \u043E\u0448\u0438\u0431\u043A\u0435 "\u041D\u0435\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E \u0442\u043E\u0432\u0430\u0440\u0430 \u043D\u0430 \u0441\u043A\u043B\u0430\u0434\u0435"'
+            }
+          ]
+        }
+      ]
+    };
+  }
+  /**
+   * Parses freeform natural language intent into a structured BDD feature
+   */
+  static parseNaturalLanguageToFeature(prompt) {
+    const trimmed = prompt.trim();
+    let targetName = "";
+    const quotedMatch = trimmed.match(/["«']([а-яА-ЯёЁa-zA-Z0-9_]+)["»']/);
+    if (quotedMatch) {
+      targetName = quotedMatch[1];
+    }
+    if (!targetName) {
+      const keywordMatch = trimmed.match(/(?:документ[а-яё]*|справочник[а-яё]*|регистр[а-яё]*)\s+([а-яА-ЯёЁa-zA-Z0-9_]+)/i);
+      if (keywordMatch) {
+        targetName = keywordMatch[1];
+      }
+    }
+    if (!targetName) {
+      const words = trimmed.split(/\s+/);
+      const camelWord = words.find((w) => /^[А-ЯЁ][а-яё]+[А-ЯЁ][а-яёА-ЯЁ0-9_]*/.test(w));
+      if (camelWord) {
+        targetName = camelWord.replace(/[^А-ЯЁа-яё0-9_]/g, "");
+      }
+    }
+    if (!targetName) {
+      targetName = "\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433";
+    }
+    const featureOptions = this.generateDocumentScenario(targetName);
+    return this.generateFeature(featureOptions);
+  }
+};
+
+// src/techLogAnalyzer.ts
+var TechLogAnalyzer = class {
+  /**
+   * Parses raw 1C Tech Log text into structured event list
+   */
+  static parseLog(rawLog) {
+    const events = [];
+    const lines = rawLog.split("\n");
+    let currentEventText = "";
+    for (const line of lines) {
+      if (/^\d{2}:\d{2}\.\d{4,6}-\d+,\w+,\d+/.test(line.trim())) {
+        if (currentEventText) {
+          const parsed = this.parseSingleEvent(currentEventText);
+          if (parsed)
+            events.push(parsed);
+        }
+        currentEventText = line.trim();
+      } else if (currentEventText) {
+        currentEventText += "\n" + line;
+      }
+    }
+    if (currentEventText) {
+      const parsed = this.parseSingleEvent(currentEventText);
+      if (parsed)
+        events.push(parsed);
+    }
+    return events;
+  }
+  static parseSingleEvent(eventText) {
+    const headerMatch = eventText.match(/^(\d{2}:\d{2}\.\d{4,6})-(\d+),(\w+),(\d+),(.*)/s);
+    if (!headerMatch)
+      return null;
+    const timestamp = headerMatch[1];
+    const durationMicrosec = parseInt(headerMatch[2], 10);
+    const durationSec = durationMicrosec / 1e6;
+    const rawEvent = headerMatch[3].toUpperCase();
+    const level = parseInt(headerMatch[4], 10);
+    const payload = headerMatch[5] || "";
+    const eventType = ["TLOCK", "TDEADLOCK", "EXCP", "SDBL", "DBPOSTGR", "DBMSSQL"].includes(rawEvent) ? rawEvent : "OTHER";
+    const properties = {};
+    const propRegex = /([a-zA-Z0-9_:]+)=(?:'([^']*)'|([^,]*))(?:,|$)/gs;
+    let match;
+    while ((match = propRegex.exec(payload)) !== null) {
+      const key = match[1];
+      const val = match[2] !== void 0 ? match[2] : match[3];
+      if (key) {
+        properties[key] = val ? val.trim() : "";
+      }
+    }
+    const context = properties["Context"] || properties["context"] || "";
+    let contextLocation;
+    if (context) {
+      const ctxParts = context.split(":").map((s) => s.trim());
+      if (ctxParts.length >= 2) {
+        const lineNum = parseInt(ctxParts[1], 10);
+        contextLocation = {
+          module: ctxParts[0],
+          line: isNaN(lineNum) ? 0 : lineNum,
+          codeSnippet: ctxParts.slice(2).join(":").trim()
+        };
+      }
+    }
+    return {
+      timestamp,
+      durationMicrosec,
+      durationSec,
+      event: eventType,
+      level,
+      process: properties["process"],
+      processName: properties["p:processName"] || properties["processName"],
+      clientId: properties["t:clientID"] || properties["clientID"],
+      context,
+      contextLocation,
+      properties,
+      rawText: eventText
+    };
+  }
+  /**
+   * Diagnoses events and provides architectural and code-level fixes
+   */
+  static diagnose(events) {
+    const diagnoses = [];
+    for (const ev of events) {
+      switch (ev.event) {
+        case "TLOCK": {
+          const regions = ev.properties["Regions"] || ev.properties["regions"] || "\u041D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D\u044B";
+          const waitConns = ev.properties["WaitConnections"] || ev.properties["waitConnections"] || "";
+          const durationSec = ev.durationSec;
+          const isLongWait = durationSec >= 5;
+          diagnoses.push({
+            severity: isLongWait ? "critical" : "warning",
+            category: "\u0422\u0440\u0430\u043D\u0437\u0430\u043A\u0446\u0438\u043E\u043D\u043D\u044B\u0435 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438 (TLOCK)",
+            title: `\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435 \u043D\u0430 \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u043E\u0439 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0435: ${durationSec.toFixed(2)} \u0441\u0435\u043A.`,
+            description: `\u0421\u0435\u0430\u043D\u0441 \u043E\u0436\u0438\u0434\u0430\u043B \u043E\u0441\u0432\u043E\u0431\u043E\u0436\u0434\u0435\u043D\u0438\u044F \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438 \u043F\u043E \u043F\u0440\u043E\u0441\u0442\u0440\u0430\u043D\u0441\u0442\u0432\u0443 "${regions}". \u041A\u043E\u043D\u0444\u043B\u0438\u043A\u0442 \u0441 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435\u043C: ${waitConns || "\u043D\u0435 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E"}.`,
+            affectedModule: ev.contextLocation?.module,
+            affectedLine: ev.contextLocation?.line,
+            metrics: {
+              durationSec,
+              waitConnections: waitConns,
+              regions
+            },
+            recommendations: [
+              "1. \u0423\u043C\u0435\u043D\u044C\u0448\u0438\u0442\u0435 \u0432\u0440\u0435\u043C\u044F \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0439 \u0442\u0440\u0430\u043D\u0437\u0430\u043A\u0446\u0438\u0438: \u0432\u044B\u043D\u0435\u0441\u0438\u0442\u0435 \u0442\u044F\u0436\u0435\u043B\u044B\u0435 \u0432\u044B\u0447\u0438\u0441\u043B\u0435\u043D\u0438\u044F \u0438 \u0447\u0442\u0435\u043D\u0438\u0435 \u0437\u0430 \u043F\u0440\u0435\u0434\u0435\u043B\u044B \u0442\u0440\u0430\u043D\u0437\u0430\u043A\u0446\u0438\u0438.",
+              "2. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u044F\u0432\u043D\u044B\u0435 \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u044B\u0435 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438 (\u0411\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u0414\u0430\u043D\u043D\u044B\u0445) \u0441 \u043C\u0430\u043A\u0441\u0438\u043C\u0430\u043B\u044C\u043D\u043E\u0439 \u0434\u0435\u0442\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0435\u0439 \u043F\u043E \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u044F\u043C \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 (\u041E\u0440\u0433\u0430\u043D\u0438\u0437\u0430\u0446\u0438\u044F, \u0421\u043A\u043B\u0430\u0434, \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430).",
+              "3. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0440\u0430\u0437\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u0438\u0442\u043E\u0433\u043E\u0432 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 \u043D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F (\u0421\u0432\u043E\u0439\u0441\u0442\u0432\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 -> \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C \u0440\u0430\u0437\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u0438\u0442\u043E\u0433\u043E\u0432)."
+            ]
+          });
+          break;
+        }
+        case "TDEADLOCK": {
+          const deadlocks = ev.properties["DeadlockConnectionList"] || "";
+          diagnoses.push({
+            severity: "critical",
+            category: "\u0412\u0437\u0430\u0438\u043C\u043D\u044B\u0435 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438 (TDEADLOCK)",
+            title: "\u041E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D DEADLOCK (\u0412\u0437\u0430\u0438\u043C\u043D\u0430\u044F \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430 \u0441\u0435\u0430\u043D\u0441\u043E\u0432)",
+            description: `\u0412\u0437\u0430\u0438\u043C\u043D\u0430\u044F \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430 \u043C\u0435\u0436\u0434\u0443 \u0442\u0440\u0430\u043D\u0437\u0430\u043A\u0446\u0438\u044F\u043C\u0438: ${deadlocks}. \u041F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u0430 \u043F\u0440\u0438\u043D\u0443\u0434\u0438\u0442\u0435\u043B\u044C\u043D\u043E \u043F\u0440\u0435\u0440\u0432\u0430\u043B\u0430 \u043E\u0434\u043D\u0443 \u0438\u0437 \u0442\u0440\u0430\u043D\u0437\u0430\u043A\u0446\u0438\u0439.`,
+            affectedModule: ev.contextLocation?.module,
+            affectedLine: ev.contextLocation?.line,
+            metrics: {
+              waitConnections: deadlocks
+            },
+            recommendations: [
+              "1. \u0421\u043E\u0431\u043B\u044E\u0434\u0430\u0439\u0442\u0435 \u0441\u0442\u0440\u043E\u0433\u043E \u0435\u0434\u0438\u043D\u044B\u0439 \u043F\u043E\u0440\u044F\u0434\u043E\u043A \u0437\u0430\u0445\u0432\u0430\u0442\u0430 \u0442\u0430\u0431\u043B\u0438\u0446 \u0432\u043E \u0432\u0441\u0435\u0445 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u0445 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A -> \u0437\u0430\u0442\u0435\u043C \u0420\u0435\u0433\u0438\u0441\u0442\u04401 -> \u0437\u0430\u0442\u0435\u043C \u0420\u0435\u0433\u0438\u0441\u0442\u04402).",
+              "2. \u0417\u0430\u0445\u0432\u0430\u0442\u044B\u0432\u0430\u0439\u0442\u0435 \u0441\u0442\u0440\u043E\u043A\u0438 \u0432 \u0443\u043F\u043E\u0440\u044F\u0434\u043E\u0447\u0435\u043D\u043D\u043E\u043C \u0432\u0438\u0434\u0435 (\u0421\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043F\u043E \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430.\u0421\u0441\u044B\u043B\u043A\u0430 \u043F\u0435\u0440\u0435\u0434 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u043E\u0439).",
+              "3. \u041D\u0435 \u0434\u043E\u043F\u0443\u0441\u043A\u0430\u0439\u0442\u0435 \u044D\u0441\u043A\u0430\u043B\u0430\u0446\u0438\u0438 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043E\u043A \u0421\u0423\u0411\u0414 (MS SQL / PostgreSQL) \u0438\u0437-\u0437\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u044F \u0438\u043D\u0434\u0435\u043A\u0441\u043E\u0432."
+            ]
+          });
+          break;
+        }
+        case "EXCP": {
+          const descr = ev.properties["Descr"] || ev.properties["descr"] || "\u041D\u0435\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043D\u043E\u0435 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435";
+          diagnoses.push({
+            severity: "critical",
+            category: "\u0418\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 / \u041E\u0448\u0438\u0431\u043A\u0430 (EXCP)",
+            title: "\u041D\u0435\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043D\u043E\u0435 \u0441\u0438\u0441\u0442\u0435\u043C\u043D\u043E\u0435 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B 1\u0421",
+            description: descr,
+            affectedModule: ev.contextLocation?.module,
+            affectedLine: ev.contextLocation?.line,
+            metrics: {},
+            recommendations: [
+              "1. \u041B\u043E\u043A\u0430\u043B\u0438\u0437\u0443\u0439\u0442\u0435 \u0442\u043E\u0447\u043A\u0443 \u0441\u0431\u043E\u044F \u043F\u043E \u0441\u0442\u0435\u043A\u0443 \u0432\u044B\u0437\u043E\u0432\u0430 Context.",
+              "2. \u0414\u043E\u0431\u0430\u0432\u044C\u0442\u0435 \u0437\u0430\u0449\u0438\u0442\u043D\u044B\u0439 \u0431\u043B\u043E\u043A \u041F\u043E\u043F\u044B\u0442\u043A\u0430 ... \u0418\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u0441 \u043B\u043E\u0433\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435\u043C \u0432 \u0416\u0443\u0440\u043D\u0430\u043B\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438.",
+              "3. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0432\u0430\u043B\u0438\u0434\u043D\u043E\u0441\u0442\u044C \u0442\u0438\u043F\u043E\u0432 \u0438 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u0435 \u043C\u0443\u0442\u0430\u0431\u0435\u043B\u044C\u043D\u044B\u0445 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0439 \u043F\u0440\u0438 \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0435 \u043A\u043B\u0438\u0435\u043D\u0442-\u0441\u0435\u0440\u0432\u0435\u0440."
+            ]
+          });
+          break;
+        }
+        case "SDBL":
+        case "DBPOSTGR":
+        case "DBMSSQL": {
+          const durationSec = ev.durationSec;
+          const sql = ev.properties["Sql"] || ev.properties["sql"] || "";
+          const isVerySlow = durationSec >= 3;
+          diagnoses.push({
+            severity: isVerySlow ? "critical" : "warning",
+            category: "\u041C\u0435\u0434\u043B\u0435\u043D\u043D\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u043A \u0421\u0423\u0411\u0414",
+            title: `\u041C\u0435\u0434\u043B\u0435\u043D\u043D\u044B\u0439 SQL-\u0437\u0430\u043F\u0440\u043E\u0441 (${ev.event}): ${durationSec.toFixed(2)} \u0441\u0435\u043A.`,
+            description: `\u0417\u0430\u043F\u0440\u043E\u0441 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u043B\u0441\u044F ${durationSec.toFixed(2)} \u0441 \u043D\u0430 \u0443\u0440\u043E\u0432\u043D\u0435 \u0431\u0430\u0437\u044B \u0434\u0430\u043D\u043D\u044B\u0445. \u0412\u043E\u0437\u043C\u043E\u0436\u0435\u043D Scan \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0432\u043C\u0435\u0441\u0442\u043E Index Seek.`,
+            affectedModule: ev.contextLocation?.module,
+            affectedLine: ev.contextLocation?.line,
+            metrics: {
+              durationSec,
+              sqlSnippet: sql.substring(0, 150) + (sql.length > 150 ? "..." : "")
+            },
+            recommendations: [
+              "1. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u043B\u0430\u043D \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u0437\u0430\u043F\u0440\u043E\u0441\u0430 (EXPLAIN ANALYZE \u0434\u043B\u044F PostgreSQL / Showplan \u0434\u043B\u044F MS SQL).",
+              "2. \u0418\u0441\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u044F \u0441 \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u043C\u0438 \u0442\u0430\u0431\u043B\u0438\u0446\u0430\u043C\u0438 (\u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0441 \u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E).",
+              "3. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0443\u0441\u043B\u043E\u0432\u0438\u044F WHERE \u043D\u0430 \u0441\u0430\u0440\u0433\u0430\u0431\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C: \u0438\u0437\u0431\u0435\u0433\u0430\u0439\u0442\u0435 \u0444\u0443\u043D\u043A\u0446\u0438\u0439 \u043D\u0430\u0434 \u0438\u043D\u0434\u0435\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u043C\u0438 \u043A\u043E\u043B\u043E\u043D\u043A\u0430\u043C\u0438 (\u041F\u041E\u0414\u0421\u0422\u0420\u041E\u041A\u0410, \u041D\u0410\u0427\u0410\u041B\u041E\u041F\u0415\u0420\u0418\u041E\u0414\u0410)."
+            ]
+          });
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    return diagnoses;
+  }
+  /**
+   * Formats diagnostic results into a readable markdown report
+   */
+  static formatReport(diagnoses) {
+    if (diagnoses.length === 0) {
+      return "\u2705 \u0421\u043E\u0431\u044B\u0442\u0438\u0439 \u0441 \u043A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u043C\u0438 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u043C\u0438 \u0438\u043B\u0438 \u043E\u0448\u0438\u0431\u043A\u0430\u043C\u0438 \u0432 \u043F\u0435\u0440\u0435\u0434\u0430\u043D\u043D\u043E\u043C \u043B\u043E\u0433\u0435 \u043D\u0435 \u043E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u043E.";
+    }
+    const lines = [];
+    lines.push(`## \u{1F4CA} \u041E\u0442\u0447\u0435\u0442 \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0438 \u0422\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0416\u0443\u0440\u043D\u0430\u043B\u0430 1\u0421 (\u0422\u0416)
+`);
+    lines.push(`\u041E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u043E \u0438\u043D\u0446\u0438\u0434\u0435\u043D\u0442\u043E\u0432: **${diagnoses.length}**
+`);
+    diagnoses.forEach((d, idx) => {
+      const badge = d.severity === "critical" ? "\u{1F534} [\u041A\u0420\u0418\u0422\u0418\u0427\u041D\u041E]" : d.severity === "warning" ? "\u{1F7E1} [\u0412\u041D\u0418\u041C\u0410\u041D\u0418\u0415]" : "\u2139\uFE0F [\u0418\u041D\u0424\u041E]";
+      lines.push(`### ${idx + 1}. ${badge} ${d.title}`);
+      lines.push(`- **\u041A\u0430\u0442\u0435\u0433\u043E\u0440\u0438\u044F:** ${d.category}`);
+      if (d.affectedModule) {
+        lines.push(`- **\u041C\u043E\u0434\u0443\u043B\u044C \u0438 \u0441\u0442\u0440\u043E\u043A\u0430:** \`${d.affectedModule}\` ${d.affectedLine ? `(\u0441\u0442\u0440. ${d.affectedLine})` : ""}`);
+      }
+      lines.push(`- **\u0421\u0443\u0442\u044C \u043F\u0440\u043E\u0431\u043B\u0435\u043C\u044B:** ${d.description}`);
+      if (d.metrics.durationSec !== void 0) {
+        lines.push(`- **\u0414\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C:** \`${d.metrics.durationSec.toFixed(2)} \u0441\u0435\u043A.\``);
+      }
+      if (d.metrics.regions) {
+        lines.push(`- **\u041E\u0431\u043B\u0430\u0441\u0442\u044C \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438:** \`${d.metrics.regions}\``);
+      }
+      lines.push(`
+**\u{1F4A1} \u0420\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u0438 \u044D\u043A\u0441\u043F\u0435\u0440\u0442\u0430 \u043F\u043E High-Load 1\u0421:**`);
+      for (const rec of d.recommendations) {
+        lines.push(`  ${rec}`);
+      }
+      lines.push("");
+    });
+    return lines.join("\n");
+  }
+};
+
 // src/mcp/server.ts
 var McpServer1C = class {
   rl;
@@ -857,6 +1249,45 @@ var McpServer1C = class {
           },
           required: ["workspacePath"]
         }
+      },
+      {
+        name: "1c_generate_bdd_feature",
+        description: "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F BDD-\u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0435\u0432 Vanessa-Automation (.feature) \u043D\u0430 \u0440\u0443\u0441\u0441\u043A\u043E\u043C \u044F\u0437\u044B\u043A\u0435 (Gherkin) \u0434\u043B\u044F \u0442\u0435\u0441\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u043E\u0432, \u0441\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u0438 \u0431\u0438\u0437\u043D\u0435\u0441-\u043F\u0440\u043E\u0446\u0435\u0441\u0441\u043E\u0432 1\u0421.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            entityName: {
+              type: "string",
+              description: "\u0418\u043C\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u0438\u043B\u0438 \u0431\u0438\u0437\u043D\u0435\u0441-\u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0438 (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0417\u0430\u043A\u0430\u0437\u041A\u043B\u0438\u0435\u043D\u0442\u0430, \u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433)"
+            },
+            tabularSection: {
+              type: "string",
+              description: "\u0418\u043C\u044F \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: \u0422\u043E\u0432\u0430\u0440\u044B)"
+            },
+            registerName: {
+              type: "string",
+              description: "\u0418\u043C\u044F \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 \u0434\u043B\u044F \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438 \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u0439 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: \u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445)"
+            },
+            prompt: {
+              type: "string",
+              description: "\u041F\u0440\u043E\u0438\u0437\u0432\u043E\u043B\u044C\u043D\u043E\u0435 \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u043E\u0435 \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u044F \u0442\u0435\u0441\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F \u043D\u0430 \u0435\u0441\u0442\u0435\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u043C \u044F\u0437\u044B\u043A\u0435"
+            }
+          }
+        }
+      },
+      {
+        name: "1c_analyze_tech_log",
+        description: "\u0413\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u044D\u043A\u0441\u043F\u0435\u0440\u0442\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u043E\u0432 \u0422\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0416\u0443\u0440\u043D\u0430\u043B\u0430 1\u0421 (\u0422\u0416): \u0441\u043E\u0431\u044B\u0442\u0438\u044F TLOCK, TDEADLOCK, EXCP, SDBL/DBPOSTGR/DBMSSQL \u0441 \u043B\u043E\u043A\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0435\u0439 \u0432 \u043A\u043E\u0434\u0435 BSL \u0438 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u043D\u044B\u043C\u0438 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F\u043C\u0438 High-Load.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            rawLog: {
+              type: "string",
+              description: "\u0421\u044B\u0440\u043E\u0439 \u0442\u0435\u043A\u0441\u0442 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430 \u0442\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0436\u0443\u0440\u043D\u0430\u043B\u0430 1\u0421"
+            }
+          },
+          required: ["rawLog"]
+        }
       }
     ];
   }
@@ -928,6 +1359,35 @@ var McpServer1C = class {
             version: metadata.version,
             objectsCount: metadata.objects.length,
             summary
+          });
+          break;
+        }
+        case "1c_generate_bdd_feature": {
+          let featureContent = "";
+          if (args.prompt) {
+            featureContent = BDDGenerator.parseNaturalLanguageToFeature(args.prompt);
+          } else {
+            const entityName = args.entityName || "\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433";
+            const spec = BDDGenerator.generateDocumentScenario(
+              entityName,
+              args.tabularSection || "\u0422\u043E\u0432\u0430\u0440\u044B",
+              args.registerName || "\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445"
+            );
+            featureContent = BDDGenerator.generateFeature(spec);
+          }
+          this.sendToolResponse(id, { feature: featureContent });
+          break;
+        }
+        case "1c_analyze_tech_log": {
+          const rawLog = args.rawLog || "";
+          const parsedEvents = TechLogAnalyzer.parseLog(rawLog);
+          const diagnoses = TechLogAnalyzer.diagnose(parsedEvents);
+          const report = TechLogAnalyzer.formatReport(diagnoses);
+          this.sendToolResponse(id, {
+            eventsFound: parsedEvents.length,
+            diagnosesCount: diagnoses.length,
+            diagnoses,
+            report
           });
           break;
         }

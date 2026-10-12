@@ -77,7 +77,19 @@ class ClipboardWatcher:
         if trimmed.startswith("// запрос ") or trimmed.startswith("// создать запрос "):
             return SidecarCore.build_batch_query("РеализацияТоваровУслуг", "Товары", "ТоварыНаСкладах")
 
-        # 3. Intent: Existing BSL code snippet -> Audit and report
+        # 3. Intent: Vanessa BDD feature (e.g. "// ванесса РеализацияТоваровУслуг" or "// bdd ЗаказКлиента")
+        if trimmed.startswith("// ванесса ") or trimmed.startswith("// bdd "):
+            doc_name = trimmed.split(maxsplit=2)[-1]
+            return SidecarCore.generate_bdd_feature(doc_name)
+
+        # 4. Intent: 1C Tech Log snippet (either "// тж" or raw log pattern)
+        if trimmed.startswith("// тж") or trimmed.startswith("// techlog") or "\n" in trimmed and any(ev in trimmed for ev in ("TLOCK", "TDEADLOCK", "EXCP", "SDBL")):
+            raw_text = trimmed.replace("// тж", "").replace("// techlog", "").strip()
+            if any(ev in raw_text for ev in ("TLOCK", "TDEADLOCK", "EXCP", "SDBL", "DBPOSTGR", "DBMSSQL")):
+                res = SidecarCore.analyze_tech_log(raw_text)
+                return res.get("report", "")
+
+        # 5. Intent: Existing BSL code snippet -> Audit and report
         issues = SidecarCore.audit_bsl_code(trimmed)
         if issues:
             report_lines = [f"// [NormaHub 1C Audit] Найдено замечаний ИТС: {len(issues)}"]

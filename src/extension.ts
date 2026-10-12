@@ -7,6 +7,8 @@ import { MetadataScanner } from './metadataScanner';
 import { BSPHelper } from './bspHelper';
 import { QueryBuilder } from './queryBuilder';
 import { ExtensionGenerator, ExtensionDirective } from './extensionGenerator';
+import { BDDGenerator } from './bddGenerator';
+import { TechLogAnalyzer } from './techLogAnalyzer';
 
 let statusBarItem: vscode.StatusBarItem;
 
@@ -47,6 +49,8 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('normahub1c.bspAssistant', () => handleBSPAssistantCommand()),
         vscode.commands.registerCommand('normahub1c.auditStandards', () => handleAuditStandardsCommand()),
         vscode.commands.registerCommand('normahub1c.inspectQuery', () => handleInspectQueryCommand()),
+        vscode.commands.registerCommand('normahub1c.generateVanessaFeature', () => handleGenerateVanessaFeatureCommand()),
+        vscode.commands.registerCommand('normahub1c.analyzeTechLog', () => handleAnalyzeTechLogCommand()),
         vscode.commands.registerCommand('normahub1c.explainCode', () => handleExplainCodeCommand(context)),
         vscode.commands.registerCommand('normahub1c.scanMetadata', async () => {
             const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
@@ -403,4 +407,60 @@ ${code}`;
             vscode.window.showErrorMessage(`Ошибка анализа: ${err.message}`);
         }
     });
+}
+
+async function handleGenerateVanessaFeatureCommand() {
+    const input = await vscode.window.showInputBox({
+        prompt: '1C Copilot: Введите имя документа или ТЗ для Vanessa-Automation (напр. РеализацияТоваровУслуг)',
+        placeHolder: 'РеализацияТоваровУслуг'
+    });
+
+    if (!input || !input.trim()) return;
+
+    let featureContent = '';
+    if (input.includes(' ') || input.includes('создать') || input.includes('проверить')) {
+        featureContent = BDDGenerator.parseNaturalLanguageToFeature(input);
+    } else {
+        const spec = BDDGenerator.generateDocumentScenario(input.trim());
+        featureContent = BDDGenerator.generateFeature(spec);
+    }
+
+    const doc = await vscode.workspace.openTextDocument({
+        content: featureContent,
+        language: 'gherkin'
+    });
+    await vscode.window.showTextDocument(doc);
+    vscode.window.showInformationMessage(`✓ Сценарий Vanessa-Automation (.feature) успешно сгенерирован.`);
+}
+
+async function handleAnalyzeTechLogCommand() {
+    const editor = vscode.window.activeTextEditor;
+    let logText = '';
+    if (editor && !editor.selection.isEmpty) {
+        logText = editor.document.getText(editor.selection);
+    }
+
+    if (!logText) {
+        const input = await vscode.window.showInputBox({
+            prompt: '1C Copilot: Вставьте фрагмент строки Технологического Журнала (TLOCK, TDEADLOCK, EXCP, SDBL)',
+            placeHolder: '14:20.123000-20000000,TLOCK,2,process=rphost...'
+        });
+        if (!input) return;
+        logText = input;
+    }
+
+    const events = TechLogAnalyzer.parseLog(logText);
+    const diagnoses = TechLogAnalyzer.diagnose(events);
+    const report = TechLogAnalyzer.formatReport(diagnoses);
+
+    const channel = vscode.window.createOutputChannel('1C Tech Log Diagnostics (ТЖ)');
+    channel.clear();
+    channel.appendLine(report);
+    channel.show();
+
+    if (diagnoses.some(d => d.severity === 'critical')) {
+        vscode.window.showErrorMessage(`Диагностика ТЖ: обнаружено критических инцидентов (${diagnoses.filter(d => d.severity === 'critical').length}). Подробности в панели вывода.`);
+    } else {
+        vscode.window.showInformationMessage(`Диагностика ТЖ завершена. Событий проанализировано: ${events.length}.`);
+    }
 }

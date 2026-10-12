@@ -98,6 +98,20 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 self._set_headers(500)
                 self.wfile.write(json.dumps({"error": str(e)}, ensure_ascii=False).encode("utf-8"))
 
+        elif self.path == "/v1/bdd":
+            entity = payload.get("entity", "РеализацияТоваровУслуг")
+            tabular = payload.get("tabular", "Товары")
+            register = payload.get("register", "ТоварыНаСкладах")
+            feature = SidecarCore.generate_bdd_feature(entity, tabular, register)
+            self._set_headers(200)
+            self.wfile.write(json.dumps({"feature": feature}, ensure_ascii=False).encode("utf-8"))
+
+        elif self.path == "/v1/techlog":
+            raw_log = payload.get("rawLog", "")
+            diagnosis = SidecarCore.analyze_tech_log(raw_log)
+            self._set_headers(200)
+            self.wfile.write(json.dumps(diagnosis, ensure_ascii=False).encode("utf-8"))
+
         else:
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Route Not Found"}).encode("utf-8"))
