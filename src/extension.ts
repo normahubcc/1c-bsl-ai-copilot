@@ -102,11 +102,7 @@ async function showStatusMenu(context: vscode.ExtensionContext) {
             detail: `Текущий баланс: ${balanceInfo.balanceRub.toFixed(2)} ₽. Оплата только за реальные токены.`,
             action: 'billing'
         },
-        {
-            label: `$(file-text) Выставить счет юрлицу с НДС 20% (Диадок)`,
-            detail: `Безналичный расчет для организаций и франчайзи 1С`,
-            action: 'b2b'
-        },
+
         {
             label: `$(symbol-namespace) Сгенерировать перехват для расширения (&Вместо / &ИзменениеИКонтроль)`,
             detail: `Создать безопасный метод расширения конфигурации (cfe)`,

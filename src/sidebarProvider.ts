@@ -1118,8 +1118,7 @@ ${bspSummary}`;
             <div class="card-title">Баланс NormaHub</div>
             <div style="font-size:18px; font-weight:700; color:#10B981; margin: 4px 0 8px 0;">${balanceDisplay}</div>
             <div class="btn-group">
-                <button onclick="openBilling()">Пополнить (СБП / МИР)</button>
-                <button class="secondary" onclick="openB2B()">Счет с НДС 20%</button>
+                <button onclick="openBilling()">Пополнить баланс</button>
             </div>
         </div>
 
