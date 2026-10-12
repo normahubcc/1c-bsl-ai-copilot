@@ -34,7 +34,12 @@ def build_vsix():
   <Default Extension=".md" ContentType="text/markdown"/>
   <Default Extension=".png" ContentType="image/png"/>
   <Default Extension=".svg" ContentType="image/svg+xml"/>
+  <Default Extension=".txt" ContentType="text/plain"/>
+  <Default Extension=".bsl" ContentType="text/plain"/>
+  <Default Extension=".os" ContentType="text/plain"/>
+  <Default Extension=".py" ContentType="text/plain"/>
   <Default Extension=".vsixmanifest" ContentType="text/xml"/>
+  <Override PartName="/extension/LICENSE" ContentType="text/plain"/>
 </Types>
 """
 
@@ -63,7 +68,6 @@ def build_vsix():
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/>
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true"/>
     <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/icon.png" Addressable="true"/>
-    <Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE" Addressable="true"/>
   </Assets>
 </PackageManifest>
 """
