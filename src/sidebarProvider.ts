@@ -139,7 +139,7 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
         }
 
         const config = vscode.workspace.getConfiguration('normahub1c');
-        const model = config.get<string>('reasoningModel', 'claude-sonnet-5-5');
+        const model = config.get<string>('reasoningModel', 'gpt-6.1-sol');
 
         const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const metadata = await MetadataScanner.scanWorkspace(rootPath);
@@ -1292,7 +1292,6 @@ ${bspSummary}`;
                 <option value="gpt-6-astra" ${selectedModel === 'gpt-6-astra' ? 'selected' : ''}>GPT-6 Astra (Баланс скорости и интеллекта)</option>
                 <option value="glm-5.3-flash" ${selectedModel === 'glm-5.3-flash' ? 'selected' : ''}>GLM 5.3 Flash (Сверхскоростная Z.ai)</option>
                 <option value="muse-spark-1.3" ${selectedModel === 'muse-spark-1.3' ? 'selected' : ''}>Muse Spark 1.3 (Креативность и документация)</option>
-                <option value="claude-sonnet-5-5" ${selectedModel === 'claude-sonnet-5-5' ? 'selected' : ''}>Claude 3.5 Sonnet (Максимальный интеллект для ТЖ)</option>
             </select>
         </div>
 

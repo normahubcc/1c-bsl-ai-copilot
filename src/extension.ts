@@ -331,7 +331,7 @@ async function handleGenerateQueryCommand(context: vscode.ExtensionContext) {
     }
 
     const config = vscode.workspace.getConfiguration('normahub1c');
-    const model = config.get<string>('reasoningModel', 'claude-sonnet-5-5');
+    const model = config.get<string>('reasoningModel', 'gpt-6.1-sol');
 
     const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
     const metadata = await MetadataScanner.scanWorkspace(rootPath);
@@ -414,7 +414,7 @@ async function handleExplainCodeCommand(context: vscode.ExtensionContext) {
     }
 
     const config = vscode.workspace.getConfiguration('normahub1c');
-    const model = config.get<string>('reasoningModel', 'claude-sonnet-5-5');
+    const model = config.get<string>('reasoningModel', 'gpt-6.1-sol');
 
     vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,

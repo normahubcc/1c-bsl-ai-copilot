@@ -386,7 +386,6 @@ def run_qa():
             "gpt-6-astra",
             "glm-5.3-flash",
             "muse-spark-1.3",
-            "claude-sonnet-5-5",
             "deepseek-v4.1-flash"
         ]
         for m in models_to_test:
