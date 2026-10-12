@@ -63,6 +63,7 @@ def build_vsix():
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/>
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true"/>
     <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/icon.png" Addressable="true"/>
+    <Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE" Addressable="true"/>
   </Assets>
 </PackageManifest>
 """
@@ -73,6 +74,7 @@ def build_vsix():
         ("dist/mcp-server.js", "extension/dist/mcp-server.js"),
         ("bin/mcp-server-1c.js", "extension/bin/mcp-server-1c.js"),
         ("README.md", "extension/README.md"),
+        ("LICENSE", "extension/LICENSE"),
         ("icon.png", "extension/icon.png"),
         ("media/1c-icon.svg", "extension/media/1c-icon.svg"),
         ("epf/NormaHubCopilot_Module.bsl", "extension/epf/NormaHubCopilot_Module.bsl"),

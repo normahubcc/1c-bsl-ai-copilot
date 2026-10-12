@@ -1,0 +1,65 @@
+name: Release & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Test Suite
+        run: npm test
+
+      - name: Build Extension Bundles
+        run: npm run build
+
+      - name: Package VSIX
+        run: python3 build_vsix.py
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            1c-bsl-ai-copilot-*.vsix
+            epf/NormaHubCopilot_Module.bsl
+            epf/NormaHubCopilot_Form.bsl
+            turboconf/normahub_copilot.os
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
+      - name: Publish to Open-VSX (Cursor, VSCodium)
+        if: env.OVSX_PAT != ''
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          VSIX=$(ls 1c-bsl-ai-copilot-*.vsix | head -n 1)
+          npx --yes ovsx publish "$VSIX" --pat "$OVSX_PAT"
+
+      - name: Publish to Visual Studio Marketplace (VS Code)
+        if: env.VSCE_PAT != ''
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          VSIX=$(ls 1c-bsl-ai-copilot-*.vsix | head -n 1)
+          npx --yes @vscode/vsce@2.24.0 publish -p "$VSCE_PAT" --packagePath "$VSIX"
