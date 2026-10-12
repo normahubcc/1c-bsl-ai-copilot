@@ -16,14 +16,14 @@ import { MetadataScanner } from '../metadataScanner';
 
 interface McpRequest {
     jsonrpc: string;
-    id?: string | number;
+    id?: string | number | null;
     method: string;
     params?: any;
 }
 
 interface McpResponse {
     jsonrpc: string;
-    id?: string | number;
+    id?: string | number | null;
     result?: any;
     error?: {
         code: number;
@@ -220,7 +220,7 @@ export class McpServer1C {
         ];
     }
 
-    private async handleToolCall(id: string | number | undefined, params: any) {
+    private async handleToolCall(id: string | number | null | undefined, params: any) {
         if (!params || !params.name) {
             this.sendError(id, -32602, 'Missing tool name in params');
             return;
@@ -311,7 +311,7 @@ export class McpServer1C {
         }
     }
 
-    private sendToolResponse(id: string | number | undefined, data: any, isError = false) {
+    private sendToolResponse(id: string | number | null | undefined, data: any, isError = false) {
         this.sendResult(id, {
             content: [
                 {
@@ -323,7 +323,7 @@ export class McpServer1C {
         });
     }
 
-    private sendResult(id: string | number | undefined, result: any) {
+    private sendResult(id: string | number | null | undefined, result: any) {
         const resp: McpResponse = {
             jsonrpc: '2.0',
             id,
@@ -332,7 +332,7 @@ export class McpServer1C {
         process.stdout.write(JSON.stringify(resp) + '\n');
     }
 
-    private sendError(id: string | number | undefined, code: number, message: string) {
+    private sendError(id: string | number | null | undefined, code: number, message: string) {
         const resp: McpResponse = {
             jsonrpc: '2.0',
             id,
