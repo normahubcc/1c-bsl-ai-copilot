@@ -14,7 +14,7 @@
 `&&t++,n++,t++,s=t;continue}if(a===" "||a==="	"){t++;continue}if(a==="/"&&e[t+1]==="/"){let l=t;for(;t<e.length&&e[t]!==`
 `&&e[t]!=="\r";)t++;o.push({type:"COMMENT",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(a==="&"){let l=t;for(t++;t<e.length&&/[а-яА-ЯёЁa-zA-Z0-9_]/.test(e[t]);)t++;o.push({type:"DIRECTIVE",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(a==="#"){let l=t;for(t++;t<e.length&&/[а-яА-ЯёЁa-zA-Z0-9_]/.test(e[t]);)t++;o.push({type:"PREPROCESSOR",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(a==='"'||a==="|"){let l=t;t++;let b=a==='"';for(;t<e.length;)if(e[t]==='"')if(e[t+1]==='"'){t+=2;continue}else{b=!1,t++;break}else{if(e[t]===`
 `||e[t]==="\r")break;t++}o.push({type:"STRING_LITERAL",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(a==="'"){let l=t;for(t++;t<e.length&&e[t]!=="'"&&e[t]!==`
-`;)t++;e[t]==="'"&&t++,o.push({type:"DATE_LITERAL",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(/[0-9]/.test(a)){let l=t;for(;t<e.length&&/[0-9.]/.test(e[t]);)t++;o.push({type:"NUMBER_LITERAL",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(/[а-яА-ЯёЁa-zA-Z_]/.test(a)){let l=t;for(;t<e.length&&/[а-яА-ЯёЁa-zA-Z0-9_]/.test(e[t]);)t++;let b=e.substring(l,t),d=this.KEYWORDS.has(b.toLowerCase());o.push({type:d?"KEYWORD":"IDENTIFIER",value:b,line:n,column:c,offset:l});continue}if(a==="<"&&e[t+1]===">"){o.push({type:"OPERATOR",value:"<>",line:n,column:c,offset:t}),t+=2;continue}if((a==="<"||a===">")&&e[t+1]==="="){o.push({type:"OPERATOR",value:a+"=",line:n,column:c,offset:t}),t+=2;continue}if("=+-*/%<>".includes(a)){o.push({type:"OPERATOR",value:a,line:n,column:c,offset:t}),t++;continue}if(";,().[]".includes(a)){o.push({type:"PUNCTUATION",value:a,line:n,column:c,offset:t}),t++;continue}o.push({type:"UNKNOWN",value:a,line:n,column:c,offset:t}),t++}return o}},W=class{static analyzeScopeAtPosition(e,o,t){let n,s,a=new Set,c=new Set,l=0,b=0,d=0;for(;d<e.length;){let p=e[d];if(p.line>o||p.line===o&&p.column>t)break;if(p.type==="DIRECTIVE"){s=p.value,d++;continue}if(p.type==="KEYWORD"&&(p.value.toLowerCase()==="\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430"||p.value.toLowerCase()==="\u0444\u0443\u043D\u043A\u0446\u0438\u044F")){let h=p.value.toLowerCase()==="\u0444\u0443\u043D\u043A\u0446\u0438\u044F",u=p.line;for(d++;d<e.length&&e[d].type!=="IDENTIFIER";)d++;if(d<e.length){let m=e[d].value;d++;let v=[];if(d<e.length&&e[d].value==="("){d++;let w=!1,E="";for(;d<e.length&&e[d].value!==")";){let F=e[d];F.type==="KEYWORD"&&F.value.toLowerCase()==="\u0437\u043D\u0430\u0447"?w=!0:F.type==="IDENTIFIER"&&(E=F.value,v.push({name:E,isVal:w}),a.add(E),w=!1),d++}}let f=!1;for(;d<e.length&&e[d].line===u;)e[d].value.toLowerCase()==="\u044D\u043A\u0441\u043F\u043E\u0440\u0442"&&(f=!0),d++;n={name:m,isFunction:h,parameters:v,directive:s,startLine:u,isExport:f},s=void 0}continue}if(p.type==="KEYWORD"&&(p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B"||p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u0444\u0443\u043D\u043A\u0446\u0438\u0438")){n&&(n.endLine=p.line,p.line<o&&(n=void 0,a.clear())),d++;continue}if(p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043F\u0435\u0440\u0435\u043C"){for(d++;d<e.length&&e[d].value!==";";)e[d].type==="IDENTIFIER"&&a.add(e[d].value),d++;continue}p.type==="IDENTIFIER"&&e[d+1]?.value==="="&&e[d+1]?.type==="OPERATOR"&&a.add(p.value),p.type==="KEYWORD"&&p.value.toLowerCase()==="\u0446\u0438\u043A\u043B"&&l++,p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430"&&(l=Math.max(0,l-1)),p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043F\u043E\u043F\u044B\u0442\u043A\u0430"&&b++,p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u043F\u043E\u043F\u044B\u0442\u043A\u0438"&&(b=Math.max(0,b-1)),p.type==="IDENTIFIER"&&["\u0441\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A\u0438","\u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B","\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u044B\u043D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F","\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u044B\u0441\u0432\u0435\u0434\u0435\u043D\u0438\u0439"].includes(p.value.toLowerCase())&&e[d+1]?.value==="."&&e[d+2]?.type==="IDENTIFIER"&&c.add(`${p.value}.${e[d+2].value}`),d++}return{currentMethod:n,compilationDirective:n?.directive,localVariables:Array.from(a),insideLoop:l>0,insideTry:b>0,referencedMetadata:Array.from(c)}}};var j=class{constructor(e){this.context=e}context;lastRequestTime=0;async provideInlineCompletionItems(e,o,t,n){let s=C.workspace.getConfiguration("normahub1c");if(!s.get("enableInlineCompletion",!0))return null;let c=await x.getApiKey(this.context);if(!c||!e.lineAt(o.line).text.substring(0,o.character).trim()&&o.line===0)return null;let d=s.get("debounceMs",250),p=Date.now();if(p-this.lastRequestTime<d)return null;this.lastRequestTime=p;let h=Math.max(0,o.line-50),u=new C.Range(new C.Position(h,0),o),m=e.getText(u),v=Math.min(e.lineCount-1,o.line+15),f=new C.Range(o,new C.Position(v,e.lineAt(v).text.length)),w=e.getText(f),E=C.workspace.workspaceFolders?.[0]?.uri.fsPath||"",F=await y.scanWorkspace(E),oe=y.formatForPrompt(F),ne=T.getBSPPromptInjection(),Y=D.getOpenModulesContext(e),se=e.getText(),ae=P.tokenize(se),S=W.analyzeScopeAtPosition(ae,o.line+1,o.character+1),ie=s.get("autocompleteModel","deepseek-v4.1-flash"),J="\u0413\u043B\u043E\u0431\u0430\u043B\u044C\u043D\u044B\u0439 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 \u043C\u043E\u0434\u0443\u043B\u044F";if(S.currentMethod){let N=S.currentMethod.parameters.map(V=>`${V.isVal?"\u0417\u043D\u0430\u0447 ":""}${V.name}`).join(", "),z=S.currentMethod.isFunction?"\u0424\u0443\u043D\u043A\u0446\u0438\u044F":"\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430";J=`${S.compilationDirective?S.compilationDirective+`
+`;)t++;e[t]==="'"&&t++,o.push({type:"DATE_LITERAL",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(/[0-9]/.test(a)){let l=t;for(;t<e.length&&/[0-9.]/.test(e[t]);)t++;o.push({type:"NUMBER_LITERAL",value:e.substring(l,t),line:n,column:c,offset:l});continue}if(/[а-яА-ЯёЁa-zA-Z_]/.test(a)){let l=t;for(;t<e.length&&/[а-яА-ЯёЁa-zA-Z0-9_]/.test(e[t]);)t++;let b=e.substring(l,t),d=this.KEYWORDS.has(b.toLowerCase());o.push({type:d?"KEYWORD":"IDENTIFIER",value:b,line:n,column:c,offset:l});continue}if(a==="<"&&e[t+1]===">"){o.push({type:"OPERATOR",value:"<>",line:n,column:c,offset:t}),t+=2;continue}if((a==="<"||a===">")&&e[t+1]==="="){o.push({type:"OPERATOR",value:a+"=",line:n,column:c,offset:t}),t+=2;continue}if("=+-*/%<>".includes(a)){o.push({type:"OPERATOR",value:a,line:n,column:c,offset:t}),t++;continue}if(";,().[]".includes(a)){o.push({type:"PUNCTUATION",value:a,line:n,column:c,offset:t}),t++;continue}o.push({type:"UNKNOWN",value:a,line:n,column:c,offset:t}),t++}return o}},W=class{static analyzeScopeAtPosition(e,o,t){let n,s,a=new Set,c=new Set,l=0,b=0,d=0;for(;d<e.length;){let p=e[d];if(p.line>o||p.line===o&&p.column>t)break;if(p.type==="DIRECTIVE"){s=p.value,d++;continue}if(p.type==="KEYWORD"&&(p.value.toLowerCase()==="\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430"||p.value.toLowerCase()==="\u0444\u0443\u043D\u043A\u0446\u0438\u044F")){let h=p.value.toLowerCase()==="\u0444\u0443\u043D\u043A\u0446\u0438\u044F",u=p.line;for(d++;d<e.length&&e[d].type!=="IDENTIFIER";)d++;if(d<e.length){let m=e[d].value;d++;let v=[];if(d<e.length&&e[d].value==="("){d++;let w=!1,E="";for(;d<e.length&&e[d].value!==")";){let A=e[d];A.type==="KEYWORD"&&A.value.toLowerCase()==="\u0437\u043D\u0430\u0447"?w=!0:A.type==="IDENTIFIER"&&(E=A.value,v.push({name:E,isVal:w}),a.add(E),w=!1),d++}}let f=!1;for(;d<e.length&&e[d].line===u;)e[d].value.toLowerCase()==="\u044D\u043A\u0441\u043F\u043E\u0440\u0442"&&(f=!0),d++;n={name:m,isFunction:h,parameters:v,directive:s,startLine:u,isExport:f},s=void 0}continue}if(p.type==="KEYWORD"&&(p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B"||p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u0444\u0443\u043D\u043A\u0446\u0438\u0438")){n&&(n.endLine=p.line,p.line<o&&(n=void 0,a.clear())),d++;continue}if(p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043F\u0435\u0440\u0435\u043C"){for(d++;d<e.length&&e[d].value!==";";)e[d].type==="IDENTIFIER"&&a.add(e[d].value),d++;continue}p.type==="IDENTIFIER"&&e[d+1]?.value==="="&&e[d+1]?.type==="OPERATOR"&&a.add(p.value),p.type==="KEYWORD"&&p.value.toLowerCase()==="\u0446\u0438\u043A\u043B"&&l++,p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430"&&(l=Math.max(0,l-1)),p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043F\u043E\u043F\u044B\u0442\u043A\u0430"&&b++,p.type==="KEYWORD"&&p.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u043F\u043E\u043F\u044B\u0442\u043A\u0438"&&(b=Math.max(0,b-1)),p.type==="IDENTIFIER"&&["\u0441\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A\u0438","\u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B","\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u044B\u043D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F","\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u044B\u0441\u0432\u0435\u0434\u0435\u043D\u0438\u0439"].includes(p.value.toLowerCase())&&e[d+1]?.value==="."&&e[d+2]?.type==="IDENTIFIER"&&c.add(`${p.value}.${e[d+2].value}`),d++}return{currentMethod:n,compilationDirective:n?.directive,localVariables:Array.from(a),insideLoop:l>0,insideTry:b>0,referencedMetadata:Array.from(c)}}};var j=class{constructor(e){this.context=e}context;lastRequestTime=0;async provideInlineCompletionItems(e,o,t,n){let s=C.workspace.getConfiguration("normahub1c");if(!s.get("enableInlineCompletion",!0))return null;let c=await x.getApiKey(this.context);if(!c||!e.lineAt(o.line).text.substring(0,o.character).trim()&&o.line===0)return null;let d=s.get("debounceMs",250),p=Date.now();if(p-this.lastRequestTime<d)return null;this.lastRequestTime=p;let h=Math.max(0,o.line-50),u=new C.Range(new C.Position(h,0),o),m=e.getText(u),v=Math.min(e.lineCount-1,o.line+15),f=new C.Range(o,new C.Position(v,e.lineAt(v).text.length)),w=e.getText(f),E=C.workspace.workspaceFolders?.[0]?.uri.fsPath||"",A=await y.scanWorkspace(E),oe=y.formatForPrompt(A),ne=T.getBSPPromptInjection(),Y=D.getOpenModulesContext(e),se=e.getText(),ae=P.tokenize(se),S=W.analyzeScopeAtPosition(ae,o.line+1,o.character+1),ie=s.get("autocompleteModel","deepseek-v4.1-flash"),J="\u0413\u043B\u043E\u0431\u0430\u043B\u044C\u043D\u044B\u0439 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 \u043C\u043E\u0434\u0443\u043B\u044F";if(S.currentMethod){let N=S.currentMethod.parameters.map(V=>`${V.isVal?"\u0417\u043D\u0430\u0447 ":""}${V.name}`).join(", "),z=S.currentMethod.isFunction?"\u0424\u0443\u043D\u043A\u0446\u0438\u044F":"\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430";J=`${S.compilationDirective?S.compilationDirective+`
 `:""}${z} ${S.currentMethod.name}(${N})`}let re=S.localVariables.length>0?S.localVariables.join(", "):"\u041D\u0435 \u043E\u0431\u044A\u044F\u0432\u043B\u0435\u043D\u044B",ce=`\u0422\u044B \u2014 \u0432\u0435\u0434\u0443\u0449\u0438\u0439 \u0441\u0438\u0441\u0442\u0435\u043C\u043D\u044B\u0439 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u043E\u0440 1\u0421:\u041F\u0440\u0435\u0434\u043F\u0440\u0438\u044F\u0442\u0438\u0435 8.3 (\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u044B \u0444\u0438\u0440\u043C\u044B \xAB1\u0421\xBB \u0438 \u0411\u0421\u041F).
 \u0422\u0432\u043E\u044F \u0437\u0430\u0434\u0430\u0447\u0430 \u2014 \u043C\u0433\u043D\u043E\u0432\u0435\u043D\u043D\u043E \u0434\u043E\u043F\u0438\u0441\u0430\u0442\u044C \u043A\u043E\u0434 BSL (1C:Enterprise) \u043D\u0430 \u043F\u043E\u0437\u0438\u0446\u0438\u0438 \u043A\u0443\u0440\u0441\u043E\u0440\u0430.
 
@@ -136,7 +136,7 @@ ${m}
 `),s=new Set,a=new Set,c=0,l=!1,b=0,d=!1;for(let u=0;u<t.length;u++){let m=t[u];if(m.type==="COMMENT"){a.add(m.line);continue}if(m.type==="KEYWORD"&&m.value.toLowerCase()==="\u0446\u0438\u043A\u043B"&&c++,m.type==="KEYWORD"&&m.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430"&&(c=Math.max(0,c-1)),c>0&&s.add(m.line),m.type==="KEYWORD"&&m.value.toLowerCase()==="\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430"){let v=t[u+1];v&&v.value.toLowerCase()==="\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F"&&(l=!0,b=m.line,d=!1)}l&&m.type==="IDENTIFIER"&&m.value.toLowerCase()==="\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u0434\u0430\u043D\u043D\u044B\u0445"&&(d=!0),l&&m.type==="KEYWORD"&&m.value.toLowerCase()==="\u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B"&&(d||o.push({line:m.line,rule:"ITS-LOCK-001",severity:"error",message:"\u0412 \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0435 \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u043E\u0431\u044A\u0435\u043A\u0442 \u0411\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u0414\u0430\u043D\u043D\u044B\u0445.",suggestion:"\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u0443\u044E \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0443 \u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0435\u0440\u0435\u0434 \u0447\u0442\u0435\u043D\u0438\u0435\u043C \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432 \u0434\u043B\u044F \u043F\u0440\u0435\u0434\u043E\u0442\u0432\u0440\u0430\u0449\u0435\u043D\u0438\u044F \u0432\u0437\u0430\u0438\u043C\u043E\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043E\u043A (Deadlock) \u043F\u0440\u0438 \u043F\u0430\u0440\u0430\u043B\u043B\u0435\u043B\u044C\u043D\u043E\u043C \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0438."}))}for(let u=0;u<t.length;u++){let m=t[u];if(!(m.type==="COMMENT"||m.type==="STRING_LITERAL")){if(s.has(m.line)&&(m.type==="IDENTIFIER"||m.type==="KEYWORD")&&m.value.toLowerCase()==="\u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C"){let v=t[u-1],f=t[u+1];v&&v.value==="."&&f&&f.value==="("&&o.push({line:m.line,rule:"ITS-PERF-001",severity:"error",message:"\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0432\u043D\u0443\u0442\u0440\u0438 \u0446\u0438\u043A\u043B\u0430 (\u0417\u0430\u043F\u0440\u043E\u0441.\u0412\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C()).",suggestion:"\u041F\u0435\u0440\u0435\u043D\u0435\u0441\u0438\u0442\u0435 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0443 \u0434\u0430\u043D\u043D\u044B\u0445 \u0432 \u043E\u0434\u0438\u043D \u043F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u0434\u043E \u0446\u0438\u043A\u043B\u0430 \u0441 \u043F\u043E\u043C\u0435\u0449\u0435\u043D\u0438\u0435\u043C \u0432\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u0443\u044E \u0442\u0430\u0431\u043B\u0438\u0446\u0443 \u0438 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435\u043C \u043F\u043E \u043C\u0430\u0441\u0441\u0438\u0432\u0443 \u0441\u0441\u044B\u043B\u043E\u043A."})}if(m.type==="IDENTIFIER"&&["\u043E\u0441\u0442\u0430\u0442\u043A\u0438","\u0441\u0440\u0435\u0437\u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0445","\u0441\u0440\u0435\u0437\u043F\u0435\u0440\u0432\u044B\u0445","\u043E\u0431\u043E\u0440\u043E\u0442\u044B"].includes(m.value.toLowerCase())){let v=t[u-1],f=t[u+1],w=t[u+2];v&&v.value==="."&&f&&f.value==="("&&w&&w.value===")"&&o.push({line:m.line,rule:"ITS-PERF-002",severity:"warning",message:`\u041E\u0431\u0440\u0430\u0449\u0435\u043D\u0438\u0435 \u043A \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u0435 "${m.value}" \u0431\u0435\u0437 \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0441\u0440\u0435\u0437\u0430/\u0443\u0441\u043B\u043E\u0432\u0438\u044F.`,suggestion:"\u0412\u0441\u0435\u0433\u0434\u0430 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0438\u043E\u0434\u0430 \u0438 \u0443\u0441\u043B\u043E\u0432\u0438\u0439 \u043E\u0442\u0431\u043E\u0440\u0430 \u0432 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B, \u0430 \u043D\u0435 \u0444\u0438\u043B\u044C\u0442\u0440\u0443\u0439\u0442\u0435 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0432 \u0441\u0435\u043A\u0446\u0438\u0438 \u0413\u0414\u0415."})}if(m.type==="IDENTIFIER"&&["\u043F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435","\u0432\u043E\u043F\u0440\u043E\u0441","\u0432\u0432\u0435\u0441\u0442\u0438\u0441\u0442\u0440\u043E\u043A\u0443","\u0432\u0432\u0435\u0441\u0442\u0438\u0447\u0438\u0441\u043B\u043E"].includes(m.value.toLowerCase())){let v=t[u-1],f=t[u+1];if((!v||v.value!==".")&&f&&f.value==="("){let w=!1,E=u+2;for(;E<t.length&&t[E].value!==")"&&t[E].line===m.line;){if(t[E].value.toLowerCase().includes("\u043E\u043F\u043E\u0432\u0435\u0449\u0435\u043D\u0438")){w=!0;break}E++}w||o.push({line:m.line,rule:"ITS-UI-003",severity:"warning",message:`\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u043C\u043E\u0434\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u043E\u043A\u043D\u0430 (${m.value}). \u0417\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E \u0432 \u0432\u0435\u0431-\u043A\u043B\u0438\u0435\u043D\u0442\u0435 \u0438 \u043C\u043E\u0431\u0438\u043B\u044C\u043D\u043E\u043C \u043A\u043B\u0438\u0435\u043D\u0442\u0435.`,suggestion:"\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0430\u0441\u0438\u043D\u0445\u0440\u043E\u043D\u043D\u044B\u0435 \u043C\u0435\u0442\u043E\u0434\u044B: \u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C\u041F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435(), \u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C\u0412\u043E\u043F\u0440\u043E\u0441() \u0441 \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0435\u0439 \u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435\u041E\u043F\u043E\u0432\u0435\u0449\u0435\u043D\u0438\u044F."})}}}}for(let u=0;u<n.length;u++){let v=n[u].trim(),f=u+1;v.startsWith("//")||/Запрос\.Текст\s*=\s*Запрос\.Текст\s*\+\s*["'].*(\+|&)/i.test(v)&&!/Параметр/i.test(v)&&o.push({line:f,rule:"ITS-SEC-001",severity:"warning",message:"\u0414\u0438\u043D\u0430\u043C\u0438\u0447\u0435\u0441\u043A\u0430\u044F \u0441\u043A\u043B\u0435\u0439\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0441\u043E \u0441\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u043C\u0438 \u043F\u0435\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u043C\u0438 (\u0440\u0438\u0441\u043A 1\u0421-\u0438\u043D\u044A\u0435\u043A\u0446\u0438\u0438).",suggestion:"\u0412\u0441\u0435\u0433\u0434\u0430 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0447\u0435\u0440\u0435\u0437 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0437\u0430\u043F\u0440\u043E\u0441\u0430 (\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440), \u0430 \u043D\u0435 \u043A\u043E\u043D\u043A\u0430\u0442\u0435\u043D\u0438\u0440\u0443\u0439\u0442\u0435 \u0442\u0435\u043A\u0441\u0442."})}let p=T.analyzeForBSPOptimization(e);for(let u of p)o.push({line:1,rule:"ITS-BSP-001",severity:"info",message:`\u0420\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0435\u0442\u0441\u044F \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u043C\u043E\u0434\u0443\u043B\u044F \u0411\u0421\u041F "${u.moduleName}": ${u.explanation}`,suggestion:`\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u043D\u0430: ${u.recommendedCall}`});let h=L.inspectQuery(e);for(let u of h.issues)o.push({line:1,rule:u.code,severity:u.severity,message:u.message,suggestion:u.recommendation});return o}static formatAuditReport(e){if(e.length===0)return"\u2713 \u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438 \u0444\u0438\u0440\u043C\u044B \xAB1\u0421\xBB (\u0418\u0422\u0421) \u043D\u0435 \u043E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u043E. \u041A\u043E\u0434 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u043A\u043E\u0440\u043F\u043E\u0440\u0430\u0442\u0438\u0432\u043D\u043E\u043C\u0443 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0443 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430.";let o=[`\u041D\u0430\u0439\u0434\u0435\u043D\u043E \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421: ${e.length}
 `];for(let t of e){let n="\u2139\uFE0F [\u0420\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F]";t.severity==="error"?n="\u{1F534} [\u041A\u0440\u0438\u0442\u0438\u0447\u043D\u043E]":t.severity==="warning"&&(n="\u{1F7E1} [\u041F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435]"),o.push(`${n} ${t.rule} (\u0441\u0442\u0440. ${t.line}): ${t.message}`),o.push(`   \u{1F4A1} \u0420\u0435\u0448\u0435\u043D\u0438\u0435: ${t.suggestion}
 `)}return o.join(`
-`)}};var A=class{static generateInterceptor(e){let o=e.isFunction?"\u0424\u0443\u043D\u043A\u0446\u0438\u044F":"\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430",t=e.isFunction?"\u041A\u043E\u043D\u0435\u0446\u0424\u0443\u043D\u043A\u0446\u0438\u0438":"\u041A\u043E\u043D\u0435\u0446\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B",n=e.parameters.join(", "),s=`&${e.directive}("${e.targetMethod}")`,a="";switch(e.directive){case"\u0412\u043C\u0435\u0441\u0442\u043E":e.isFunction?a=`    // \u041A\u0430\u0441\u0442\u043E\u043C\u043D\u0430\u044F \u043B\u043E\u0433\u0438\u043A\u0430 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u043F\u0435\u0440\u0435\u0434 \u0432\u044B\u0437\u043E\u0432\u043E\u043C \u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043C\u0435\u0442\u043E\u0434\u0430
+`)}};var F=class{static generateInterceptor(e){let o=e.isFunction?"\u0424\u0443\u043D\u043A\u0446\u0438\u044F":"\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430",t=e.isFunction?"\u041A\u043E\u043D\u0435\u0446\u0424\u0443\u043D\u043A\u0446\u0438\u0438":"\u041A\u043E\u043D\u0435\u0446\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B",n=e.parameters.join(", "),s=`&${e.directive}("${e.targetMethod}")`,a="";switch(e.directive){case"\u0412\u043C\u0435\u0441\u0442\u043E":e.isFunction?a=`    // \u041A\u0430\u0441\u0442\u043E\u043C\u043D\u0430\u044F \u043B\u043E\u0433\u0438\u043A\u0430 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u043F\u0435\u0440\u0435\u0434 \u0432\u044B\u0437\u043E\u0432\u043E\u043C \u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043C\u0435\u0442\u043E\u0434\u0430
     ${e.customLogic||"// \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u0435\u0434\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432"}
 
     // \u0412\u044B\u0437\u043E\u0432 \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0438\u043F\u043E\u0432\u043E\u0439 \u0444\u0443\u043D\u043A\u0446\u0438\u0438 \u043F\u043E\u0441\u0442\u0430\u0432\u0449\u0438\u043A\u0430
@@ -218,7 +218,7 @@ ${c}
 ${b?`
 `+b:""}
 
-${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043F\u0430\u043A\u0435\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 \u0447\u0435\u0440\u0435\u0437 NormaHub..."});let p=await x.complete(o,n,d,e,.1,1500);this._view.webview.postMessage({type:"queryResult",code:p})}catch(p){this._view.webview.postMessage({type:"queryResult",error:p.message})}}async _handleRefactorQuery(e){if(!this._view)return;if(!e||!e.trim()){this._view.webview.postMessage({type:"refactorResult",error:"\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421 \u0434\u043B\u044F \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u0438."});return}let o=L.refactorQuery(e);this._view.webview.postMessage({type:"refactorResult",code:o.refactoredQuery,optimizations:o.appliedOptimizations})}async _handleGenerateBatchTemplate(e,o,t,n="\u041E\u0441\u0442\u0430\u0442\u043A\u0438"){let s=L.generateBatchQuery({entityName:e||"\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433",tabularSection:o||"\u0422\u043E\u0432\u0430\u0440\u044B",registerName:t||"\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445",registerType:n||"\u041E\u0441\u0442\u0430\u0442\u043A\u0438",fields:["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430","\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"],includeScaffolding:!0}),a=g.window.activeTextEditor;a?(a.edit(c=>{c.insert(a.selection.active,s)}),g.window.showInformationMessage("\u0428\u0430\u0431\u043B\u043E\u043D \u043F\u0430\u043A\u0435\u0442\u043D\u043E\u0433\u043E \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.")):this._view?.webview.postMessage({type:"queryResult",code:s})}async _handleGenerateExtension(e,o,t){let n=t?t.split(",").map(c=>c.trim()).filter(Boolean):["\u041E\u0442\u043A\u0430\u0437"],s=A.generateInterceptor({targetMethod:e||"\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F",directive:o||"\u0412\u043C\u0435\u0441\u0442\u043E",moduleType:"\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430",isFunction:!1,parameters:n}),a=g.window.activeTextEditor;a?(a.edit(c=>{c.insert(a.selection.active,s)}),g.window.showInformationMessage(`\u041F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 &${o} \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.`)):this._view?.webview.postMessage({type:"extensionResult",code:s})}async _handleGenerateFormButton(e,o,t){let n=A.generateFormButtonExtension(e||"\u041A\u043D\u043E\u043F\u043A\u0430\u041F\u0435\u0447\u0430\u0442\u044C",o||"\u041F\u0435\u0447\u0430\u0442\u044C \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430",t||"\u041A\u043E\u043C\u0430\u043D\u0434\u0430\u041F\u0435\u0447\u0430\u0442\u044C"),s=g.window.activeTextEditor;s?(s.edit(a=>{a.insert(s.selection.active,n)}),g.window.showInformationMessage("\u041A\u043E\u0434 \u0444\u043E\u0440\u043C\u044B \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.")):this._view?.webview.postMessage({type:"extensionResult",code:n})}async _handleAuditSelection(){if(!this._view)return;let e=g.window.activeTextEditor;if(!e){this._view.webview.postMessage({type:"auditResult",report:"\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043C\u043E\u0434\u0443\u043B\u044C BSL \u0434\u043B\u044F \u0430\u043D\u0430\u043B\u0438\u0437\u0430."});return}let o=e.selection.isEmpty?e.document.getText():e.document.getText(e.selection),t=B.auditCode(o),n=B.formatAuditReport(t);this._view.webview.postMessage({type:"auditResult",issues:t,report:n})}async _handleAuditCodeSnippet(e){if(!this._view)return;if(!e||!e.trim()){this._view.webview.postMessage({type:"auditResult",report:"\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u0434 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438."});return}let o=B.auditCode(e),t=B.formatAuditReport(o);this._view.webview.postMessage({type:"auditResult",issues:o,report:t})}async _handleJumpToLine(e){let o=g.window.activeTextEditor;if(o&&e>0){let t=Math.max(0,e-1),n=new g.Position(t,0);o.selection=new g.Selection(n,n),o.revealRange(new g.Range(n,n),g.TextEditorRevealType.InCenter)}}async _handleInsertCode(e){let o=g.window.activeTextEditor;o?(o.edit(t=>{t.insert(o.selection.active,e)}),g.window.showInformationMessage("\u041A\u043E\u0434 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u043C\u043E\u0434\u0443\u043B\u044C 1\u0421.")):g.window.showWarningMessage("\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u043C\u043E\u0434\u0443\u043B\u044F 1\u0421 \u0434\u043B\u044F \u0432\u0441\u0442\u0430\u0432\u043A\u0438 \u043A\u043E\u0434\u0430.")}async _handleGenerateBdd(e,o,t,n,s=!0){if(!this._view)return;let a="";if(n&&n.trim())a=I.parseNaturalLanguageToFeature(n.trim());else{let c=(e||"").trim()||"\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433",l=I.generateDocumentScenario(c,(o||"").trim()||"\u0422\u043E\u0432\u0430\u0440\u044B",(t||"").trim()||"\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445");a=I.generateFeature(l)}if(this._view.webview.postMessage({type:"bddResult",feature:a}),s){let c=await g.workspace.openTextDocument({content:a,language:"gherkin"});await g.window.showTextDocument(c)}}async _handleAnalyzeTechLog(e){if(!this._view)return;if(!e||!e.trim()){this._view.webview.postMessage({type:"techLogResult",report:"\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u043B\u043E\u0433\u0430 \u0422\u0416 \u0434\u043B\u044F \u0430\u043D\u0430\u043B\u0438\u0437\u0430."});return}let o=e,t="";e.length>5e5&&(o=e.slice(0,5e5),t=`\u26A0\uFE0F \u041B\u043E\u0433 \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 500 \u041A\u0411. \u041F\u0440\u043E\u0430\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u043F\u0435\u0440\u0432\u044B\u0435 \u0441\u043E\u0431\u044B\u0442\u0438\u044F \u0434\u043B\u044F \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u043E\u0442\u0437\u044B\u0432\u0447\u0438\u0432\u043E\u0441\u0442\u0438 UI.
+${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043F\u0430\u043A\u0435\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 \u0447\u0435\u0440\u0435\u0437 NormaHub..."});let p=await x.complete(o,n,d,e,.1,1500);this._view.webview.postMessage({type:"queryResult",code:p})}catch(p){this._view.webview.postMessage({type:"queryResult",error:p.message})}}async _handleRefactorQuery(e){if(!this._view)return;if(!e||!e.trim()){this._view.webview.postMessage({type:"refactorResult",error:"\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421 \u0434\u043B\u044F \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u0438."});return}let o=L.refactorQuery(e);this._view.webview.postMessage({type:"refactorResult",code:o.refactoredQuery,optimizations:o.appliedOptimizations})}async _handleGenerateBatchTemplate(e,o,t,n="\u041E\u0441\u0442\u0430\u0442\u043A\u0438"){let s=L.generateBatchQuery({entityName:e||"\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433",tabularSection:o||"\u0422\u043E\u0432\u0430\u0440\u044B",registerName:t||"\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445",registerType:n||"\u041E\u0441\u0442\u0430\u0442\u043A\u0438",fields:["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430","\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"],includeScaffolding:!0}),a=g.window.activeTextEditor;a?(a.edit(c=>{c.insert(a.selection.active,s)}),g.window.showInformationMessage("\u0428\u0430\u0431\u043B\u043E\u043D \u043F\u0430\u043A\u0435\u0442\u043D\u043E\u0433\u043E \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.")):this._view?.webview.postMessage({type:"queryResult",code:s})}async _handleGenerateExtension(e,o,t){let n=t?t.split(",").map(c=>c.trim()).filter(Boolean):["\u041E\u0442\u043A\u0430\u0437"],s=F.generateInterceptor({targetMethod:e||"\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F",directive:o||"\u0412\u043C\u0435\u0441\u0442\u043E",moduleType:"\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430",isFunction:!1,parameters:n}),a=g.window.activeTextEditor;a?(a.edit(c=>{c.insert(a.selection.active,s)}),g.window.showInformationMessage(`\u041F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 &${o} \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.`)):this._view?.webview.postMessage({type:"extensionResult",code:s})}async _handleGenerateFormButton(e,o,t){let n=F.generateFormButtonExtension(e||"\u041A\u043D\u043E\u043F\u043A\u0430\u041F\u0435\u0447\u0430\u0442\u044C",o||"\u041F\u0435\u0447\u0430\u0442\u044C \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430",t||"\u041A\u043E\u043C\u0430\u043D\u0434\u0430\u041F\u0435\u0447\u0430\u0442\u044C"),s=g.window.activeTextEditor;s?(s.edit(a=>{a.insert(s.selection.active,n)}),g.window.showInformationMessage("\u041A\u043E\u0434 \u0444\u043E\u0440\u043C\u044B \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.")):this._view?.webview.postMessage({type:"extensionResult",code:n})}async _handleAuditSelection(){if(!this._view)return;let e=g.window.activeTextEditor;if(!e){this._view.webview.postMessage({type:"auditResult",report:"\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043C\u043E\u0434\u0443\u043B\u044C BSL \u0434\u043B\u044F \u0430\u043D\u0430\u043B\u0438\u0437\u0430."});return}let o=e.selection.isEmpty?e.document.getText():e.document.getText(e.selection),t=B.auditCode(o),n=B.formatAuditReport(t);this._view.webview.postMessage({type:"auditResult",issues:t,report:n})}async _handleAuditCodeSnippet(e){if(!this._view)return;if(!e||!e.trim()){this._view.webview.postMessage({type:"auditResult",report:"\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u0434 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438."});return}let o=B.auditCode(e),t=B.formatAuditReport(o);this._view.webview.postMessage({type:"auditResult",issues:o,report:t})}async _handleJumpToLine(e){let o=g.window.activeTextEditor;if(o&&e>0){let t=Math.max(0,e-1),n=new g.Position(t,0);o.selection=new g.Selection(n,n),o.revealRange(new g.Range(n,n),g.TextEditorRevealType.InCenter)}}async _handleInsertCode(e){let o=g.window.activeTextEditor;o?(o.edit(t=>{t.insert(o.selection.active,e)}),g.window.showInformationMessage("\u041A\u043E\u0434 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u043C\u043E\u0434\u0443\u043B\u044C 1\u0421.")):g.window.showWarningMessage("\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u043C\u043E\u0434\u0443\u043B\u044F 1\u0421 \u0434\u043B\u044F \u0432\u0441\u0442\u0430\u0432\u043A\u0438 \u043A\u043E\u0434\u0430.")}async _handleGenerateBdd(e,o,t,n,s=!0){if(!this._view)return;let a="";if(n&&n.trim())a=I.parseNaturalLanguageToFeature(n.trim());else{let c=(e||"").trim()||"\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433",l=I.generateDocumentScenario(c,(o||"").trim()||"\u0422\u043E\u0432\u0430\u0440\u044B",(t||"").trim()||"\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445");a=I.generateFeature(l)}if(this._view.webview.postMessage({type:"bddResult",feature:a}),s){let c=await g.workspace.openTextDocument({content:a,language:"gherkin"});await g.window.showTextDocument(c)}}async _handleAnalyzeTechLog(e){if(!this._view)return;if(!e||!e.trim()){this._view.webview.postMessage({type:"techLogResult",report:"\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u043B\u043E\u0433\u0430 \u0422\u0416 \u0434\u043B\u044F \u0430\u043D\u0430\u043B\u0438\u0437\u0430."});return}let o=e,t="";e.length>5e5&&(o=e.slice(0,5e5),t=`\u26A0\uFE0F \u041B\u043E\u0433 \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 500 \u041A\u0411. \u041F\u0440\u043E\u0430\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u043F\u0435\u0440\u0432\u044B\u0435 \u0441\u043E\u0431\u044B\u0442\u0438\u044F \u0434\u043B\u044F \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u043E\u0442\u0437\u044B\u0432\u0447\u0438\u0432\u043E\u0441\u0442\u0438 UI.
 
 `);let n=$.parseLog(o),s=$.diagnose(n),a=t+$.formatReport(s);this._view.webview.postMessage({type:"techLogResult",report:a,count:n.length,diagnosesCount:s.length})}async _handleScanMetadata(){if(!this._view)return;let e=g.workspace.workspaceFolders?.[0]?.uri.fsPath||"",o=await y.scanWorkspace(e);this._view.webview.postMessage({type:"metadataResult",name:o.name,version:o.version,objectsCount:o.objects.length,objects:o.objects,summary:y.formatForPrompt(o)})}async _handleCheckSidecar(){if(!this._view)return;ee.get("http://127.0.0.1:18833/health",{timeout:1500},o=>{let t="";o.on("data",n=>t+=n),o.on("end",()=>{try{let n=JSON.parse(t);this._view?.webview.postMessage({type:"sidecarStatus",online:!0,info:n})}catch{this._view?.webview.postMessage({type:"sidecarStatus",online:!0,info:{status:"ok",version:"1.0.0"}})}})}).on("error",()=>{this._view?.webview.postMessage({type:"sidecarStatus",online:!1,error:"Sidecar \u043D\u0435 \u043E\u0442\u0432\u0435\u0447\u0430\u0435\u0442 \u043D\u0430 127.0.0.1:18833"})})}async _handleOpenWorkspaceFile(e){let o=g.workspace.workspaceFolders?.[0]?.uri.fsPath||"",t=q.isAbsolute(e)?e:q.join(o,e);try{let n=await g.workspace.openTextDocument(g.Uri.file(t));await g.window.showTextDocument(n)}catch(n){g.window.showErrorMessage(`\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0444\u0430\u0439\u043B: ${n.message}`)}}_getHtmlForWebview(e,o,t){let n=e?`${e.slice(0,8)}...${e.slice(-4)}`:"\u041D\u0435 \u0437\u0430\u0434\u0430\u043D",s=o.status==="active"?`${o.balanceRub.toFixed(2)} \u20BD`:"\u041A\u043B\u044E\u0447 \u043D\u0435 \u0430\u043A\u0442\u0438\u0432\u0435\u043D",a=JSON.stringify(T.STANDARD_MODULES),c=D.getOpenModulesCount();return`<!DOCTYPE html>
 <html lang="ru">
@@ -230,82 +230,104 @@ ${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\
     <style>
         :root {
             /* Palette 1: Warm Sand (\u041F\u0435\u0441\u043E\u0447\u043D\u043E-\u0431\u0435\u0436\u0435\u0432\u0430\u044F) */
-            --sand-bg: #F7F4EE;
+            --sand-bg: #F8F6F0;
             --sand-card-bg: #FFFFFF;
+            --sand-card-subtle: #F2EDE4;
             --sand-sub-bg: #EFE9DF;
-            --sand-border: #DDD5C7;
-            --sand-border-focus: #B87333;
-            --sand-primary: #B87333;
-            --sand-primary-hover: #9E6028;
+            --sand-border: #E0D7C8;
+            --sand-border-light: #ECE5D8;
+            --sand-border-focus: #C87D3B;
+            --sand-primary: #C87D3B;
+            --sand-primary-hover: #AF682A;
             --sand-secondary: #8B5E34;
             --sand-secondary-hover: #734B28;
-            --sand-text: #2B2621;
-            --sand-muted: #6E6259;
-            --sand-code-bg: #EAE3D6;
+            --sand-text: #2C2621;
+            --sand-text-secondary: #5C5248;
+            --sand-muted: #7E7368;
+            --sand-code-bg: #ECE5D8;
+            --sand-shadow: 0 1px 3px rgba(44, 38, 33, 0.05), 0 4px 12px rgba(44, 38, 33, 0.03);
             
             /* Palette 2: Warm Dark (Espresso Obsidian) */
-            --dark-bg: #181513;
-            --dark-card-bg: #221E1B;
-            --dark-sub-bg: #1C1916;
-            --dark-border: #38302A;
-            --dark-border-focus: #E5A93C;
-            --dark-primary: #E5A93C;
-            --dark-primary-hover: #F5B84C;
-            --dark-secondary: #2D2723;
+            --dark-bg: #151311;
+            --dark-card-bg: #1F1B18;
+            --dark-card-subtle: #191614;
+            --dark-sub-bg: #191614;
+            --dark-border: #332B25;
+            --dark-border-light: #2A231E;
+            --dark-border-focus: #E6A23C;
+            --dark-primary: #E6A23C;
+            --dark-primary-hover: #F7B550;
+            --dark-secondary: #2A2420;
             --dark-secondary-hover: #38302A;
-            --dark-text: #EDE6DE;
-            --dark-muted: #9C9289;
-            --dark-code-bg: #141210;
+            --dark-text: #F0EAE2;
+            --dark-text-secondary: #B8ADA2;
+            --dark-muted: #8A7E72;
+            --dark-code-bg: #12100E;
+            --dark-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 6px 20px rgba(0, 0, 0, 0.25);
         }
 
         body.theme-warm-sand {
             --bg-main: var(--sand-bg);
             --bg-card: var(--sand-card-bg);
+            --bg-card-subtle: var(--sand-card-subtle);
             --bg-sub: var(--sand-sub-bg);
             --border-color: var(--sand-border);
+            --border-light: var(--sand-border-light);
             --border-focus: var(--sand-border-focus);
             --btn-primary: var(--sand-primary);
             --btn-primary-hover: var(--sand-primary-hover);
             --btn-primary-text: #FFFFFF;
-            --btn-sec: var(--sand-sub-bg);
-            --btn-sec-hover: #E3DBCF;
+            --btn-sec: #FFFFFF;
+            --btn-sec-hover: #F2EDE4;
             --btn-sec-text: var(--sand-text);
             --text-main: var(--sand-text);
+            --text-secondary: var(--sand-text-secondary);
             --text-muted: var(--sand-muted);
             --code-bg: var(--sand-code-bg);
-            --code-text: #2B2621;
-            --accent-badge: #8B5E34;
-            --badge-crit-bg: #FDE8E8;
-            --badge-crit-text: #9B1C1C;
+            --code-text: #2C2621;
+            --accent-badge: #C87D3B;
+            --card-shadow: var(--sand-shadow);
+            --badge-crit-bg: #FEE2E2;
+            --badge-crit-text: #991B1B;
             --badge-warn-bg: #FEF3C7;
             --badge-warn-text: #92400E;
-            --badge-ok-bg: #DEF7EC;
-            --badge-ok-text: #03543F;
+            --badge-ok-bg: #D1FAE5;
+            --badge-ok-text: #065F46;
+            --tab-active-bg: #FFFFFF;
+            --tab-active-text: #C87D3B;
+            --tab-active-shadow: 0 1px 4px rgba(44, 38, 33, 0.08);
         }
 
         body.theme-espresso {
             --bg-main: var(--dark-bg);
             --bg-card: var(--dark-card-bg);
+            --bg-card-subtle: var(--dark-card-subtle);
             --bg-sub: var(--dark-sub-bg);
             --border-color: var(--dark-border);
-            --border-focus: var(--dark-border-focus);
+            --border-light: var(--dark-border-light);
+            --border-focus: var(--dark-primary);
             --btn-primary: var(--dark-primary);
             --btn-primary-hover: var(--dark-primary-hover);
-            --btn-primary-text: #181513;
-            --btn-sec: var(--dark-secondary);
-            --btn-sec-hover: var(--dark-secondary-hover);
+            --btn-primary-text: #151311;
+            --btn-sec: var(--dark-card-bg);
+            --btn-sec-hover: #29231E;
             --btn-sec-text: var(--dark-text);
             --text-main: var(--dark-text);
+            --text-secondary: var(--dark-text-secondary);
             --text-muted: var(--dark-muted);
             --code-bg: var(--dark-code-bg);
-            --code-text: #F3EFEA;
-            --accent-badge: #E5A93C;
-            --badge-crit-bg: #3B1818;
+            --code-text: #F5EFEB;
+            --accent-badge: #E6A23C;
+            --card-shadow: var(--dark-shadow);
+            --badge-crit-bg: #3E1616;
             --badge-crit-text: #F87171;
-            --badge-warn-bg: #382A13;
+            --badge-warn-bg: #382811;
             --badge-warn-text: #FBBF24;
-            --badge-ok-bg: #132B1F;
+            --badge-ok-bg: #112D20;
             --badge-ok-text: #34D399;
+            --tab-active-bg: #29231E;
+            --tab-active-text: #E6A23C;
+            --tab-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
         }
 
         * {
@@ -314,244 +336,300 @@ ${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\
 
         body {
             font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-            font-size: var(--vscode-font-size, 13px);
+            font-size: var(--vscode-font-size, 12px);
             color: var(--text-main);
             background-color: var(--bg-main);
-            padding: 8px 6px;
+            padding: 10px 8px 16px 8px;
             margin: 0;
-            line-height: 1.45;
+            line-height: 1.5;
             max-width: 100%;
             overflow-x: hidden;
             word-wrap: break-word;
-            transition: background-color 0.2s ease, color 0.2s ease;
+            transition: background-color 0.25s ease, color 0.25s ease;
         }
 
-        /* Header bar */
-        .header {
+        /* Top Header Navigation Bar */
+        .top-navbar {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 4px;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 6px;
             margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-light);
         }
-        .header-left {
+
+        .brand-block {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .brand-badge {
+            background: linear-gradient(135deg, var(--btn-primary), var(--accent-badge));
+            color: var(--btn-primary-text);
+            font-weight: 800;
+            font-size: 10.5px;
+            padding: 2px 6px;
+            border-radius: 5px;
+            letter-spacing: 0.6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .brand-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.1px;
+            color: var(--text-main);
+        }
+
+        .header-actions {
             display: flex;
             align-items: center;
             gap: 6px;
         }
-        .logo-badge {
-            background: var(--btn-primary);
-            color: var(--btn-primary-text);
-            font-weight: 700;
-            font-size: 11px;
-            padding: 1px 5px;
-            border-radius: 2px;
-            letter-spacing: 0.5px;
-            font-family: var(--vscode-editor-font-family, monospace);
-        }
-        .title {
-            font-weight: 600;
-            font-size: 12px;
-            letter-spacing: 0.2px;
-        }
+
+        /* Compact Top-Right Theme Switcher Button */
         .theme-toggle-btn {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
             color: var(--text-main);
             cursor: pointer;
-            border-radius: 3px;
-            padding: 2px 7px;
-            font-size: 10px;
-            display: flex;
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 10.5px;
+            display: inline-flex;
             align-items: center;
-            gap: 4px;
-            font-weight: 500;
-            transition: border-color 0.15s ease;
+            gap: 5px;
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+            transition: all 0.18s ease;
         }
+
         .theme-toggle-btn:hover {
+            border-color: var(--border-focus);
+            transform: translateY(-1px);
+        }
+
+        .theme-toggle-btn .theme-icon {
+            font-size: 11px;
+            line-height: 1;
+        }
+
+        /* Quick Navigation Bar (Segmented & Dropdown) */
+        .nav-controls {
+            margin-bottom: 10px;
+        }
+
+        .nav-select-wrapper {
+            margin-bottom: 6px;
+        }
+
+        .nav-select {
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: var(--text-main);
+            outline: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        }
+
+        .nav-select:focus {
             border-color: var(--border-focus);
         }
 
-        /* Project & Multi-Tab Context Bar */
-        .context-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 4px 6px;
-            background: var(--bg-sub);
-            border: 1px solid var(--border-color);
-            border-radius: 3px;
-            padding: 4px 6px;
-            margin-bottom: 8px;
-            font-size: 10px;
-            max-width: 100%;
-            overflow: hidden;
-        }
-        .context-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
-        .status-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .status-dot.online { background-color: #10B981; }
-        .status-dot.idle { background-color: #9CA3AF; }
-
-        kbd {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 2px;
-            padding: 1px 4px;
-            font-size: 9.5px;
-            font-family: monospace;
-            color: var(--text-muted);
-        }
-
-        /* Navigation tabs */
+        /* Segmented Pill Navigation Strip */
         .tabs {
             display: flex;
-            border-bottom: 1px solid var(--border-color);
+            gap: 3px;
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: 7px;
+            padding: 2.5px;
             margin-bottom: 10px;
-            gap: 2px;
             overflow-x: auto;
             white-space: nowrap;
-            max-width: 100%;
-            scrollbar-width: thin;
+            scrollbar-width: none;
             -webkit-overflow-scrolling: touch;
         }
+
         .tabs::-webkit-scrollbar {
-            height: 3px;
+            display: none;
         }
-        .tabs::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 3px;
-        }
+
         .tab {
             font-size: 11px;
-            padding: 5px 7px;
+            padding: 4px 8px;
             cursor: pointer;
-            border-bottom: 2px solid transparent;
             color: var(--text-muted);
+            border-radius: 5px;
             user-select: none;
             white-space: nowrap;
             flex-shrink: 0;
             transition: all 0.15s ease;
             font-weight: 500;
+            border: 1px solid transparent;
         }
+
         .tab:hover {
             color: var(--text-main);
+            background: rgba(128, 128, 128, 0.08);
         }
+
         .tab.active {
-            color: var(--text-main);
-            border-bottom-color: var(--btn-primary);
+            color: var(--tab-active-text);
+            background: var(--tab-active-bg);
             font-weight: 600;
+            border-color: var(--border-color);
+            box-shadow: var(--tab-active-shadow);
         }
 
-        .tab-panel {
-            display: none;
-            animation: fadeIn 0.15s ease-in-out;
-        }
-        .tab-panel.active {
-            display: block;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(2px); }
-            to { opacity: 1; transform: translateY(0); }
+        /* Engineering Context Bar */
+        .context-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 5px 8px;
+            margin-bottom: 10px;
+            font-size: 10.5px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
         }
 
-        /* Card blocks */
+        .context-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.online {
+            background-color: #10B981;
+            box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+        }
+
+        .status-dot.idle {
+            background-color: #9CA3AF;
+        }
+
+        /* Cards & Section Blocks */
         .card {
             background-color: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 8px 10px;
-            margin-bottom: 8px;
+            border-radius: 7px;
+            padding: 10px 11px;
+            margin-bottom: 9px;
             max-width: 100%;
             box-sizing: border-box;
-            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            transition: border-color 0.18s ease;
         }
+
+        .card:hover {
+            border-color: var(--border-light);
+        }
+
         .card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
-            gap: 4px;
+            gap: 5px;
             margin-bottom: 6px;
         }
+
         .card-title {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: 0.2px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
+
         .card-desc {
             font-size: 11px;
             color: var(--text-muted);
             margin-bottom: 8px;
+            line-height: 1.45;
             word-break: break-word;
         }
 
-        /* Inputs & Textareas */
+        /* Form Controls: Inputs, Textarea, Select */
         input[type="text"], input[type="password"], textarea, select {
             width: 100%;
             max-width: 100%;
             box-sizing: border-box;
-            background-color: var(--bg-sub);
+            background-color: var(--bg-card-subtle);
             color: var(--text-main);
             border: 1px solid var(--border-color);
-            padding: 6px 8px;
-            border-radius: 4px;
-            font-size: 12px;
+            padding: 6.5px 9px;
+            border-radius: 5px;
+            font-size: 11.5px;
             outline: none;
             font-family: inherit;
             margin-bottom: 6px;
             text-overflow: ellipsis;
-            transition: border-color 0.15s ease;
-        }
-        input:focus, textarea:focus, select:focus {
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 1px var(--border-focus);
-        }
-        textarea {
-            resize: vertical;
-            min-height: 60px;
-            font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
-            font-size: 11px;
-            line-height: 1.4;
+            transition: all 0.15s ease;
         }
 
-        /* Buttons */
+        input:focus, textarea:focus, select:focus {
+            border-color: var(--border-focus);
+            background-color: var(--bg-card);
+            box-shadow: 0 0 0 2px rgba(230, 162, 60, 0.18);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 65px;
+            font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        /* Buttons & Actions */
         .btn-group {
             display: flex;
-            gap: 4px;
-            margin-top: 4px;
+            gap: 5px;
+            margin-top: 5px;
             flex-wrap: wrap;
         }
+
         .btn-group button {
-            flex: 1 1 calc(50% - 4px);
+            flex: 1 1 calc(50% - 5px);
             min-width: 80px;
             width: auto;
             margin-top: 0;
         }
+
         button {
             background-color: var(--btn-primary);
             color: var(--btn-primary-text);
-            border: none;
-            padding: 6px 10px;
-            border-radius: 4px;
+            border: 1px solid transparent;
+            padding: 6.5px 11px;
+            border-radius: 5px;
             cursor: pointer;
-            font-size: 11px;
+            font-size: 11.5px;
             font-weight: 600;
             width: 100%;
             max-width: 100%;
@@ -565,120 +643,165 @@ ${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\
             white-space: normal;
             word-break: break-word;
             text-align: center;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
         }
+
         button:hover {
             background-color: var(--btn-primary-hover);
             transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.12);
         }
+
         button.secondary {
             background-color: var(--btn-sec);
             color: var(--btn-sec-text);
             border: 1px solid var(--border-color);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
         }
+
         button.secondary:hover {
             background-color: var(--btn-sec-hover);
             border-color: var(--border-focus);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
         }
+
         button.sm {
-            padding: 3px 6px;
-            font-size: 10px;
+            padding: 3px 7px;
+            font-size: 10.5px;
             width: auto;
             flex: initial;
             margin-top: 0;
         }
 
-        /* Chips */
+        kbd {
+            background: rgba(128, 128, 128, 0.15);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            padding: 1px 4px;
+            font-size: 9.5px;
+            font-family: monospace;
+            color: var(--text-muted);
+            font-weight: normal;
+        }
+
+        /* Chips / Tag Pills */
         .chips-row {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
-            margin-bottom: 6px;
+            margin-bottom: 7px;
         }
+
         .chip {
-            background: var(--bg-sub);
+            background: var(--bg-card-subtle);
             border: 1px solid var(--border-color);
-            color: var(--text-main);
+            color: var(--text-secondary);
             border-radius: 12px;
-            padding: 2px 7px;
-            font-size: 10px;
+            padding: 2.5px 8px;
+            font-size: 10.5px;
             cursor: pointer;
             user-select: none;
             transition: all 0.15s ease;
-        }
-        .chip:hover {
-            border-color: var(--border-focus);
-            background: var(--bg-card);
+            font-weight: 500;
         }
 
-        /* Code box */
+        .chip:hover {
+            border-color: var(--border-focus);
+            color: var(--text-main);
+            background: var(--bg-card);
+            transform: translateY(-0.5px);
+        }
+
+        .chip.active {
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            border-color: var(--btn-primary);
+            font-weight: 600;
+        }
+
+        /* Output Code Box */
         .code-box {
             background-color: var(--code-bg);
             color: var(--code-text);
             border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 8px;
+            border-radius: 6px;
+            padding: 9px;
             font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
             font-size: 11px;
             white-space: pre-wrap;
-            max-height: 220px;
+            max-height: 230px;
             overflow-y: auto;
-            margin-top: 6px;
-            line-height: 1.45;
+            margin-top: 7px;
+            line-height: 1.5;
             word-break: break-all;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
         }
 
-        /* Badges */
+        /* Semantic Badges */
         .badge {
             font-size: 10px;
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: 4px;
             font-weight: 600;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            line-height: 1.3;
         }
+
         .badge-crit { background: var(--badge-crit-bg); color: var(--badge-crit-text); border: 1px solid var(--badge-crit-text); }
         .badge-warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); border: 1px solid var(--badge-warn-text); }
         .badge-ok { background: var(--badge-ok-bg); color: var(--badge-ok-text); border: 1px solid var(--badge-ok-text); }
-        .badge-context { background: var(--bg-sub); color: var(--text-main); border: 1px solid var(--border-color); font-size: 9px; }
+        .badge-context { background: var(--bg-card-subtle); color: var(--text-main); border: 1px solid var(--border-color); font-size: 9.5px; }
 
         /* BSP Item Card */
         .bsp-item {
             border: 1px solid var(--border-color);
-            border-radius: 5px;
-            padding: 7px;
+            border-radius: 6px;
+            padding: 8px 9px;
             margin-bottom: 6px;
             background: var(--bg-card);
-            transition: border-color 0.15s ease;
+            transition: all 0.15s ease;
         }
+
         .bsp-item:hover {
             border-color: var(--border-focus);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
         }
+
         .bsp-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            gap: 4px;
+            gap: 5px;
         }
+
         .bsp-method-name {
-            font-size: 11px;
-            font-weight: 600;
+            font-size: 11.5px;
+            font-weight: 700;
             word-break: break-word;
+            color: var(--text-main);
         }
+
         .bsp-module-tag {
             font-size: 10px;
             color: var(--text-muted);
             margin-top: 1px;
+            font-family: monospace;
         }
+
         .bsp-desc {
             font-size: 11px;
-            color: var(--text-muted);
+            color: var(--text-secondary);
             margin-top: 4px;
             word-break: break-word;
+            line-height: 1.4;
         }
 
         /* Toast notification */
         .toast {
             position: fixed;
-            bottom: 12px;
+            bottom: 14px;
             left: 50%;
             transform: translateX(-50%);
             background: #10B981;
@@ -687,12 +810,13 @@ ${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\
             border-radius: 20px;
             font-size: 11px;
             font-weight: 600;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.2s ease, transform 0.2s ease;
             z-index: 9999;
         }
+
         .toast.show {
             opacity: 1;
             transform: translateX(-50%) translateY(-2px);
@@ -700,55 +824,92 @@ ${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\
 
         /* Issue list item */
         .issue-card {
-            border-left: 3px solid;
-            padding: 6px 8px;
+            border-left: 3.5px solid;
+            padding: 7px 9px;
             margin-bottom: 6px;
-            background: var(--bg-sub);
-            border-radius: 0 4px 4px 0;
+            background: var(--bg-card-subtle);
+            border-radius: 0 5px 5px 0;
             font-size: 11px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
         }
+
         .issue-card.error { border-color: #EF4444; }
         .issue-card.warning { border-color: #F59E0B; }
         .issue-card.info { border-color: #3B82F6; }
+
         .issue-link {
             font-weight: 600;
             cursor: pointer;
             text-decoration: underline;
         }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.15s ease-in-out;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(2px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body class="theme-espresso">
-    <div class="header">
-        <div class="header-left">
-            <div class="logo-badge">1C</div>
-            <div class="title">BSL Studio</div>
+    <!-- \u0412\u0435\u0440\u0445\u043D\u044F\u044F \u043A\u043E\u043C\u043F\u0430\u043A\u0442\u043D\u0430\u044F \u0448\u0430\u043F\u043A\u0430 \u0441 \u0431\u0440\u0435\u043D\u0434\u043E\u043C \u0438 \u043A\u043D\u043E\u043F\u043A\u043E\u0439 \u0442\u0435\u043C\u044B \u0441\u043F\u0440\u0430\u0432\u0430 -->
+    <div class="top-navbar">
+        <div class="brand-block">
+            <div class="brand-badge">1C</div>
+            <div class="brand-title">BSL Studio</div>
         </div>
-        <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeBtn" title="\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0442\u0435\u043C\u0443 \u043E\u0444\u043E\u0440\u043C\u043B\u0435\u043D\u0438\u044F">
-            <span id="themeLabel">\u041F\u0435\u0441\u043E\u0447\u043D\u0430\u044F</span>
-        </button>
+        <div class="header-actions">
+            <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeBtn" title="\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0442\u0435\u043C\u0443 (\u042D\u0441\u043F\u0440\u0435\u0441\u0441\u043E / \u041F\u0435\u0441\u043E\u0447\u043D\u0430\u044F)">
+                <span class="theme-icon">\u{1F3A8}</span>
+                <span id="themeLabel">\u041F\u0435\u0441\u043E\u0447\u043D\u0430\u044F</span>
+            </button>
+        </div>
     </div>
 
     <!-- \u0418\u043D\u0434\u0438\u043A\u0430\u0442\u043E\u0440 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0433\u043E \u0438\u043D\u0436\u0435\u043D\u0435\u0440\u043D\u043E\u0433\u043E \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430 -->
     <div class="context-bar">
         <div class="context-item" title="\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 1\u0421">
-            <span class="status-dot online"></span> 1\u0421:8.3 \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 (50)
+            <span class="status-dot online"></span> \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 1\u0421 (50)
         </div>
         <div class="context-item" title="\u0421\u043C\u0435\u0436\u043D\u044B\u0435 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0435 BSL-\u043C\u043E\u0434\u0443\u043B\u0438 \u0432 \u0440\u0430\u0431\u043E\u0447\u0435\u0439 \u043E\u0431\u043B\u0430\u0441\u0442\u0438">
             <span class="status-dot ${c>0?"online":"idle"}"></span> \u0412\u043A\u043B\u0430\u0434\u043E\u043A \u0432 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0435: ${c}
         </div>
     </div>
 
-    <!-- \u041D\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u043E\u043D\u043D\u044B\u0435 \u0432\u043A\u043B\u0430\u0434\u043A\u0438 -->
-    <div class="tabs">
-        <div id="tab-btn-queries" class="tab active" onclick="switchTab('queries')">\u0417\u0430\u043F\u0440\u043E\u0441\u044B</div>
-        <div id="tab-btn-bsp" class="tab" onclick="switchTab('bsp')">\u0411\u0421\u041F 3.1</div>
-        <div id="tab-btn-extensions" class="tab" onclick="switchTab('extensions')">&cfe</div>
-        <div id="tab-btn-audit" class="tab" onclick="switchTab('audit')">\u0418\u0422\u0421 \u0410\u0443\u0434\u0438\u0442</div>
-        <div id="tab-btn-bdd" class="tab" onclick="switchTab('bdd')">Vanessa BDD</div>
-        <div id="tab-btn-techlog" class="tab" onclick="switchTab('techlog')">\u0422\u0416 \u041B\u043E\u0433</div>
-        <div id="tab-btn-metadata" class="tab" onclick="switchTab('metadata')">\u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435</div>
-        <div id="tab-btn-sidecar" class="tab" onclick="switchTab('sidecar')">Sidecar</div>
-        <div id="tab-btn-settings" class="tab" onclick="switchTab('settings')">\u0411\u0430\u043B\u0430\u043D\u0441</div>
+    <!-- \u0423\u043B\u0443\u0447\u0448\u0435\u043D\u043D\u0430\u044F \u043D\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u044F: \u0432\u044B\u043F\u0430\u0434\u0430\u044E\u0449\u0438\u0439 \u0441\u0435\u043B\u0435\u043A\u0442\u043E\u0440 + \u043B\u0435\u043D\u0442\u0430 \u0442\u0430\u0431\u043E\u0432 \u0441 \u0438\u043A\u043E\u043D\u043A\u0430\u043C\u0438 -->
+    <div class="nav-controls">
+        <div class="nav-select-wrapper">
+            <select id="tabNavSelector" class="nav-select" onchange="switchTab(this.value)">
+                <option value="queries">\u26A1 \u0417\u0430\u043F\u0440\u043E\u0441\u044B \u0438 \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435</option>
+                <option value="bsp">\u{1F4E6} \u0411\u0430\u0437\u0430 \u0437\u043D\u0430\u043D\u0438\u0439 \u0411\u0421\u041F 3.1</option>
+                <option value="extensions">\u{1F9E9} \u0420\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F (&cfe)</option>
+                <option value="audit">\u{1F6E1}\uFE0F \u0418\u0422\u0421 \u0410\u0443\u0434\u0438\u0442 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430</option>
+                <option value="bdd">\u{1F9EA} \u0422\u0435\u0441\u0442\u044B Vanessa BDD</option>
+                <option value="techlog">\u{1F4CA} \u0422\u0435\u0445\u0436\u0443\u0440\u043D\u0430\u043B (\u0422\u0416)</option>
+                <option value="metadata">\u{1F5C2}\uFE0F \u0413\u0440\u0430\u0444 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445</option>
+                <option value="sidecar">\u{1F50C} Sidecar \u0438 \u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0442\u043E\u0440</option>
+                <option value="settings">\u2699\uFE0F \u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438 \u0431\u0430\u043B\u0430\u043D\u0441</option>
+            </select>
+        </div>
+
+        <div class="tabs">
+            <div id="tab-btn-queries" class="tab active" onclick="switchTab('queries')" title="\u041F\u0430\u043A\u0435\u0442\u043D\u044B\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u044B \u0438 \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u044F">\u26A1 \u0417\u0430\u043F\u0440\u043E\u0441\u044B</div>
+            <div id="tab-btn-bsp" class="tab" onclick="switchTab('bsp')" title="\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0445 \u041F\u043E\u0434\u0441\u0438\u0441\u0442\u0435\u043C 3.1">\u{1F4E6} \u0411\u0421\u041F</div>
+            <div id="tab-btn-extensions" class="tab" onclick="switchTab('extensions')" title="\u041F\u0435\u0440\u0435\u0445\u0432\u0430\u0442\u0447\u0438\u043A\u0438 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0439">&cfe</div>
+            <div id="tab-btn-audit" class="tab" onclick="switchTab('audit')" title="\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u044B \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438 \u0444\u0438\u0440\u043C\u044B 1\u0421">\u{1F6E1}\uFE0F \u0418\u0422\u0421</div>
+            <div id="tab-btn-bdd" class="tab" onclick="switchTab('bdd')" title="Vanessa Automation BDD">\u{1F9EA} BDD</div>
+            <div id="tab-btn-techlog" class="tab" onclick="switchTab('techlog')" title="\u0410\u043D\u0430\u043B\u0438\u0437 \u0422\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0416\u0443\u0440\u043D\u0430\u043B\u0430">\u{1F4CA} \u0422\u0416</div>
+            <div id="tab-btn-metadata" class="tab" onclick="switchTab('metadata')" title="\u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438">\u{1F5C2}\uFE0F \u041C\u0435\u0442\u0430</div>
+            <div id="tab-btn-sidecar" class="tab" onclick="switchTab('sidecar')" title="1C Sidecar Daemon">\u{1F50C} Sidecar</div>
+            <div id="tab-btn-settings" class="tab" onclick="switchTab('settings')" title="\u0411\u0430\u043B\u0430\u043D\u0441 \u0438 \u0432\u044B\u0431\u043E\u0440 \u043C\u043E\u0434\u0435\u043B\u0438">\u2699\uFE0F \u0411\u0430\u043B\u0430\u043D\u0441</div>
+        </div>
     </div>
 
     <!-- \u0422\u0410\u0411 1: \u0417\u0410\u041F\u0420\u041E\u0421\u042B (AI + REFACTOR + BATCH) -->
@@ -1030,6 +1191,11 @@ ${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\
             const panel = document.getElementById('tab-' + name);
             if (panel) panel.classList.add('active');
 
+            const navSel = document.getElementById('tabNavSelector');
+            if (navSel && navSel.value !== name) {
+                navSel.value = name;
+            }
+
             if (name === 'bsp') {
                 const bspContainer = document.getElementById('bspListContainer');
                 if (bspContainer && bspContainer.children.length === 0) {
@@ -1304,7 +1470,7 @@ ${l}`;try{this._view.webview.postMessage({type:"queryStatus",text:"\u0413\u0435\
         });
     </script>
 </body>
-</html>`}};var M;function he(r){M=i.window.createStatusBarItem(i.StatusBarAlignment.Right,100),M.command="normahub1c.statusMenu",M.tooltip="1C BSL AI Copilot: \u041A\u043B\u0438\u043A\u043D\u0438\u0442\u0435 \u0434\u043B\u044F \u043C\u0435\u043D\u044E \u0431\u0430\u043B\u0430\u043D\u0441\u0430 \u0438 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A",te(r),M.show(),r.subscriptions.push(M);let e=[{scheme:"file",language:"bsl"},{scheme:"file",language:"1c"},{scheme:"file",language:"oscript"},{scheme:"untitled",language:"bsl"}],o=new j(r);r.subscriptions.push(i.languages.registerInlineCompletionItemProvider(e,o));let t=new H(r.extensionUri,r);r.subscriptions.push(i.window.registerWebviewViewProvider("normahub1c.mainView",t)),r.subscriptions.push(i.commands.registerCommand("normahub1c.statusMenu",()=>fe(r)),i.commands.registerCommand("normahub1c.generateQuery",()=>Ee(r)),i.commands.registerCommand("normahub1c.generateBatchQuery",()=>xe()),i.commands.registerCommand("normahub1c.generateExtensionMethod",()=>ye()),i.commands.registerCommand("normahub1c.bspAssistant",()=>we()),i.commands.registerCommand("normahub1c.auditStandards",()=>Se()),i.commands.registerCommand("normahub1c.inspectQuery",()=>Te()),i.commands.registerCommand("normahub1c.refactorQuery",()=>Ce()),i.commands.registerCommand("normahub1c.generateVanessaFeature",()=>Le()),i.commands.registerCommand("normahub1c.analyzeTechLog",()=>Be()),i.commands.registerCommand("normahub1c.explainCode",()=>ke(r)),i.commands.registerCommand("normahub1c.scanMetadata",async()=>{let n=i.workspace.workspaceFolders?.[0]?.uri.fsPath||"";y.clearCache();let s=await y.scanWorkspace(n);i.window.showInformationMessage(`\u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 1\u0421 \u043F\u0440\u043E\u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u044B: \u043D\u0430\u0439\u0434\u0435\u043D\u043E ${s.objects.length} \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432.`)}),i.commands.registerCommand("normahub1c.topupBalance",()=>{i.env.openExternal(i.Uri.parse("https://normahub.cc/billing"))}),i.commands.registerCommand("normahub1c.setApiKey",async()=>{let n=await i.window.showInputBox({prompt:"\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0432\u0430\u0448 API-\u043A\u043B\u044E\u0447 NormaHub (\u0444\u043E\u0440\u043C\u0430\u0442 nr_hub_...)",password:!0,placeHolder:"nr_hub_..."});n!==void 0&&(await x.setApiKey(r,n),i.window.showInformationMessage("API-\u043A\u043B\u044E\u0447 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D \u0432 \u0437\u0430\u0449\u0438\u0449\u0435\u043D\u043D\u043E\u043C SecretStorage."),te(r))}))}async function te(r){let e=await x.getApiKey(r);if(!e){M.text="$(hubot) 1\u0421 Copilot: [\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043A\u043B\u044E\u0447]";return}let o=await x.checkBalance(e);o.status==="active"?M.text=`$(hubot) 1\u0421 Copilot: ${o.balanceRub.toFixed(2)} \u20BD`:M.text=`$(alert) 1\u0421 Copilot: ${o.error||"\u041E\u0448\u0438\u0431\u043A\u0430"}`}async function fe(r){let e=await x.getApiKey(r),t=[{label:"$(credit-card) \u041F\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u044C \u0431\u0430\u043B\u0430\u043D\u0441 (\u0421\u0411\u041F / \u041A\u0430\u0440\u0442\u044B \u041C\u0418\u0420)",detail:`\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u0431\u0430\u043B\u0430\u043D\u0441: ${(await x.checkBalance(e)).balanceRub.toFixed(2)} \u20BD. \u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0437\u0430 \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u0435 \u0442\u043E\u043A\u0435\u043D\u044B.`,action:"billing"},{label:"$(symbol-namespace) \u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 \u0434\u043B\u044F \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F (&\u0412\u043C\u0435\u0441\u0442\u043E / &\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C)",detail:"\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u044B\u0439 \u043C\u0435\u0442\u043E\u0434 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 (cfe)",action:"extension"},{label:"$(database) \u041C\u0430\u0441\u0442\u0435\u0440 \u043F\u0430\u043A\u0435\u0442\u043D\u043E\u0433\u043E \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0441 \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u043C\u0438 \u0442\u0430\u0431\u043B\u0438\u0446\u0430\u043C\u0438",detail:"\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0437\u0430\u043F\u0440\u043E\u0441 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421 \u0441 \u0438\u043D\u0434\u0435\u043A\u0441\u0430\u043C\u0438 \u0438 \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u0435\u043C \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432",action:"batchQuery"},{label:"$(book) \u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A \u043C\u0435\u0442\u043E\u0434\u043E\u0432 \u0411\u0421\u041F (\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0445 \u041F\u043E\u0434\u0441\u0438\u0441\u0442\u0435\u043C)",detail:"\u0411\u044B\u0441\u0442\u0440\u044B\u0439 \u043F\u043E\u0434\u0431\u043E\u0440 \u0444\u0443\u043D\u043A\u0446\u0438\u0439 \u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F, \u0414\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435\u041E\u043F\u0435\u0440\u0430\u0446\u0438\u0438 \u0438 \u0434\u0440.",action:"bsp"},{label:"$(key) \u041D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C API-\u043A\u043B\u044E\u0447 NormaHub",detail:e?`\u0410\u043A\u0442\u0438\u0432\u0435\u043D \u043A\u043B\u044E\u0447 ${e.slice(0,6)}...`:"\u041A\u043B\u044E\u0447 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D",action:"setKey"},{label:"$(symbol-structure) \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438",detail:"\u041F\u043E\u0432\u0442\u043E\u0440\u043D\u043E \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u0442\u044C Configuration.xml \u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0435",action:"scanMeta"}],n=await i.window.showQuickPick(t,{placeHolder:"NormaHub 1C BSL Copilot: \u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430\u043C\u0438 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0430"});n&&(n.action==="billing"?i.env.openExternal(i.Uri.parse("https://normahub.cc/billing")):n.action==="b2b"?i.env.openExternal(i.Uri.parse("https://normahub.cc")):n.action==="setKey"?i.commands.executeCommand("normahub1c.setApiKey"):n.action==="scanMeta"?i.commands.executeCommand("normahub1c.scanMetadata"):n.action==="extension"?i.commands.executeCommand("normahub1c.generateExtensionMethod"):n.action==="batchQuery"?i.commands.executeCommand("normahub1c.generateBatchQuery"):n.action==="bsp"&&i.commands.executeCommand("normahub1c.bspAssistant"))}async function xe(){let r=i.window.activeTextEditor,e=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u0438\u043B\u0438 \u0441\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A\u0430",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433",value:"\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433"});if(!e)return;let o=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0422\u043E\u0432\u0430\u0440\u044B",value:"\u0422\u043E\u0432\u0430\u0440\u044B"});if(!o)return;let t=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 \u043D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F \u0434\u043B\u044F \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445",value:"\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445"});if(!t)return;let n=L.generateBatchQuery({entityName:e,tabularSection:o,registerName:t,registerType:"\u041E\u0441\u0442\u0430\u0442\u043A\u0438",fields:["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430","\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"],includeScaffolding:!0});if(r)r.edit(s=>{s.insert(r.selection.active,n)}),i.window.showInformationMessage("\u041F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 1\u0421 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.");else{let s=await i.workspace.openTextDocument({content:n,language:"bsl"});await i.window.showTextDocument(s)}}async function ye(){let r=i.window.activeTextEditor,e=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0442\u0438\u043F\u043E\u0432\u043E\u0439 \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B \u0438\u043B\u0438 \u0444\u0443\u043D\u043A\u0446\u0438\u0438 \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442\u0430",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u0438\u043B\u0438 \u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435",value:"\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F"});if(!e)return;let o=["\u0412\u043C\u0435\u0441\u0442\u043E","\u041F\u0435\u0440\u0435\u0434","\u041F\u043E\u0441\u043B\u0435","\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C"],t=await i.window.showQuickPick(o,{placeHolder:"\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0438\u0440\u0435\u043A\u0442\u0438\u0432\u0443 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F 1\u0421"});if(!t)return;let n=await i.window.showInputBox({prompt:"\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u041E\u0442\u043A\u0430\u0437, \u0420\u0435\u0436\u0438\u043C\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F",value:e.includes("\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F")?"\u041E\u0442\u043A\u0430\u0437, \u0420\u0435\u0436\u0438\u043C\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F":"\u041E\u0442\u043A\u0430\u0437, \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430"}),s=n?n.split(",").map(c=>c.trim()).filter(Boolean):[],a=A.generateInterceptor({targetMethod:e,directive:t,moduleType:"\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430",isFunction:!1,parameters:s});if(r)r.edit(c=>{c.insert(r.selection.active,a)}),i.window.showInformationMessage(`\u041F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 &${t} \u0434\u043B\u044F \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F 1\u0421 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D.`);else{let c=await i.workspace.openTextDocument({content:a,language:"bsl"});await i.window.showTextDocument(c)}}async function we(){let r=i.window.activeTextEditor,e=T.STANDARD_MODULES.map(t=>({label:`${t.module}.${t.method}`,detail:t.description,description:`[${t.context}]`,example:t.example})),o=await i.window.showQuickPick(e,{placeHolder:"\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0435\u0442\u043E\u0434 \u0411\u0421\u041F \u0434\u043B\u044F \u0432\u0441\u0442\u0430\u0432\u043A\u0438 \u043F\u0440\u0438\u043C\u0435\u0440\u0430 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u044F"});o&&r&&(r.edit(t=>{t.insert(r.selection.active,o.example)}),i.window.showInformationMessage(`\u041F\u0440\u0438\u043C\u0435\u0440 \u0432\u044B\u0437\u043E\u0432\u0430 ${o.label} \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D.`))}async function Te(){let r=i.window.activeTextEditor;if(!r){i.window.showWarningMessage("\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0441 \u0442\u0435\u043A\u0441\u0442\u043E\u043C \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421.");return}let e=r.selection.isEmpty?r.document.getText():r.document.getText(r.selection),o=L.inspectQuery(e);if(o.isValid&&o.issues.length===0){i.window.showInformationMessage("\u2713 \u0417\u0430\u043F\u0440\u043E\u0441 \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u0438 \u0418\u0422\u0421.");return}let t=o.issues.map(n=>`[${n.code}] ${n.message}
+</html>`}};var M;function he(r){M=i.window.createStatusBarItem(i.StatusBarAlignment.Right,100),M.command="normahub1c.statusMenu",M.tooltip="1C BSL AI Copilot: \u041A\u043B\u0438\u043A\u043D\u0438\u0442\u0435 \u0434\u043B\u044F \u043C\u0435\u043D\u044E \u0431\u0430\u043B\u0430\u043D\u0441\u0430 \u0438 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A",te(r),M.show(),r.subscriptions.push(M);let e=[{scheme:"file",language:"bsl"},{scheme:"file",language:"1c"},{scheme:"file",language:"oscript"},{scheme:"untitled",language:"bsl"}],o=new j(r);r.subscriptions.push(i.languages.registerInlineCompletionItemProvider(e,o));let t=new H(r.extensionUri,r);r.subscriptions.push(i.window.registerWebviewViewProvider("normahub1c.mainView",t)),r.subscriptions.push(i.commands.registerCommand("normahub1c.statusMenu",()=>fe(r)),i.commands.registerCommand("normahub1c.generateQuery",()=>Ee(r)),i.commands.registerCommand("normahub1c.generateBatchQuery",()=>xe()),i.commands.registerCommand("normahub1c.generateExtensionMethod",()=>ye()),i.commands.registerCommand("normahub1c.bspAssistant",()=>we()),i.commands.registerCommand("normahub1c.auditStandards",()=>Se()),i.commands.registerCommand("normahub1c.inspectQuery",()=>Te()),i.commands.registerCommand("normahub1c.refactorQuery",()=>Ce()),i.commands.registerCommand("normahub1c.generateVanessaFeature",()=>Le()),i.commands.registerCommand("normahub1c.analyzeTechLog",()=>Be()),i.commands.registerCommand("normahub1c.explainCode",()=>ke(r)),i.commands.registerCommand("normahub1c.scanMetadata",async()=>{let n=i.workspace.workspaceFolders?.[0]?.uri.fsPath||"";y.clearCache();let s=await y.scanWorkspace(n);i.window.showInformationMessage(`\u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 1\u0421 \u043F\u0440\u043E\u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u044B: \u043D\u0430\u0439\u0434\u0435\u043D\u043E ${s.objects.length} \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432.`)}),i.commands.registerCommand("normahub1c.topupBalance",()=>{i.env.openExternal(i.Uri.parse("https://normahub.cc/billing"))}),i.commands.registerCommand("normahub1c.setApiKey",async()=>{let n=await i.window.showInputBox({prompt:"\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0432\u0430\u0448 API-\u043A\u043B\u044E\u0447 NormaHub (\u0444\u043E\u0440\u043C\u0430\u0442 nr_hub_...)",password:!0,placeHolder:"nr_hub_..."});n!==void 0&&(await x.setApiKey(r,n),i.window.showInformationMessage("API-\u043A\u043B\u044E\u0447 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D \u0432 \u0437\u0430\u0449\u0438\u0449\u0435\u043D\u043D\u043E\u043C SecretStorage."),te(r))}))}async function te(r){let e=await x.getApiKey(r);if(!e){M.text="$(hubot) 1\u0421 Copilot: [\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043A\u043B\u044E\u0447]";return}let o=await x.checkBalance(e);o.status==="active"?M.text=`$(hubot) 1\u0421 Copilot: ${o.balanceRub.toFixed(2)} \u20BD`:M.text=`$(alert) 1\u0421 Copilot: ${o.error||"\u041E\u0448\u0438\u0431\u043A\u0430"}`}async function fe(r){let e=await x.getApiKey(r),t=[{label:"$(credit-card) \u041F\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u044C \u0431\u0430\u043B\u0430\u043D\u0441 (\u0421\u0411\u041F / \u041A\u0430\u0440\u0442\u044B \u041C\u0418\u0420)",detail:`\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u0431\u0430\u043B\u0430\u043D\u0441: ${(await x.checkBalance(e)).balanceRub.toFixed(2)} \u20BD. \u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0437\u0430 \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u0435 \u0442\u043E\u043A\u0435\u043D\u044B.`,action:"billing"},{label:"$(symbol-namespace) \u0421\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 \u0434\u043B\u044F \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F (&\u0412\u043C\u0435\u0441\u0442\u043E / &\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C)",detail:"\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u044B\u0439 \u043C\u0435\u0442\u043E\u0434 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 (cfe)",action:"extension"},{label:"$(database) \u041C\u0430\u0441\u0442\u0435\u0440 \u043F\u0430\u043A\u0435\u0442\u043D\u043E\u0433\u043E \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0441 \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u043C\u0438 \u0442\u0430\u0431\u043B\u0438\u0446\u0430\u043C\u0438",detail:"\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0437\u0430\u043F\u0440\u043E\u0441 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421 \u0441 \u0438\u043D\u0434\u0435\u043A\u0441\u0430\u043C\u0438 \u0438 \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u0435\u043C \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432",action:"batchQuery"},{label:"$(book) \u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A \u043C\u0435\u0442\u043E\u0434\u043E\u0432 \u0411\u0421\u041F (\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430 \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0445 \u041F\u043E\u0434\u0441\u0438\u0441\u0442\u0435\u043C)",detail:"\u0411\u044B\u0441\u0442\u0440\u044B\u0439 \u043F\u043E\u0434\u0431\u043E\u0440 \u0444\u0443\u043D\u043A\u0446\u0438\u0439 \u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F, \u0414\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435\u041E\u043F\u0435\u0440\u0430\u0446\u0438\u0438 \u0438 \u0434\u0440.",action:"bsp"},{label:"$(key) \u041D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C API-\u043A\u043B\u044E\u0447 NormaHub",detail:e?`\u0410\u043A\u0442\u0438\u0432\u0435\u043D \u043A\u043B\u044E\u0447 ${e.slice(0,6)}...`:"\u041A\u043B\u044E\u0447 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D",action:"setKey"},{label:"$(symbol-structure) \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438",detail:"\u041F\u043E\u0432\u0442\u043E\u0440\u043D\u043E \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u0442\u044C Configuration.xml \u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u0435",action:"scanMeta"}],n=await i.window.showQuickPick(t,{placeHolder:"NormaHub 1C BSL Copilot: \u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430\u043C\u0438 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0430"});n&&(n.action==="billing"?i.env.openExternal(i.Uri.parse("https://normahub.cc/billing")):n.action==="b2b"?i.env.openExternal(i.Uri.parse("https://normahub.cc")):n.action==="setKey"?i.commands.executeCommand("normahub1c.setApiKey"):n.action==="scanMeta"?i.commands.executeCommand("normahub1c.scanMetadata"):n.action==="extension"?i.commands.executeCommand("normahub1c.generateExtensionMethod"):n.action==="batchQuery"?i.commands.executeCommand("normahub1c.generateBatchQuery"):n.action==="bsp"&&i.commands.executeCommand("normahub1c.bspAssistant"))}async function xe(){let r=i.window.activeTextEditor,e=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u0438\u043B\u0438 \u0441\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A\u0430",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433",value:"\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433"});if(!e)return;let o=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0422\u043E\u0432\u0430\u0440\u044B",value:"\u0422\u043E\u0432\u0430\u0440\u044B"});if(!o)return;let t=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 \u043D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F \u0434\u043B\u044F \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445",value:"\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445"});if(!t)return;let n=L.generateBatchQuery({entityName:e,tabularSection:o,registerName:t,registerType:"\u041E\u0441\u0442\u0430\u0442\u043A\u0438",fields:["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430","\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"],includeScaffolding:!0});if(r)r.edit(s=>{s.insert(r.selection.active,n)}),i.window.showInformationMessage("\u041F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 1\u0421 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440.");else{let s=await i.workspace.openTextDocument({content:n,language:"bsl"});await i.window.showTextDocument(s)}}async function ye(){let r=i.window.activeTextEditor,e=await i.window.showInputBox({prompt:"\u0418\u043C\u044F \u0442\u0438\u043F\u043E\u0432\u043E\u0439 \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B \u0438\u043B\u0438 \u0444\u0443\u043D\u043A\u0446\u0438\u0438 \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442\u0430",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u0438\u043B\u0438 \u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435",value:"\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F"});if(!e)return;let o=["\u0412\u043C\u0435\u0441\u0442\u043E","\u041F\u0435\u0440\u0435\u0434","\u041F\u043E\u0441\u043B\u0435","\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C"],t=await i.window.showQuickPick(o,{placeHolder:"\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0438\u0440\u0435\u043A\u0442\u0438\u0432\u0443 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F 1\u0421"});if(!t)return;let n=await i.window.showInputBox({prompt:"\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u041E\u0442\u043A\u0430\u0437, \u0420\u0435\u0436\u0438\u043C\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F",value:e.includes("\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F")?"\u041E\u0442\u043A\u0430\u0437, \u0420\u0435\u0436\u0438\u043C\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F":"\u041E\u0442\u043A\u0430\u0437, \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430"}),s=n?n.split(",").map(c=>c.trim()).filter(Boolean):[],a=F.generateInterceptor({targetMethod:e,directive:t,moduleType:"\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430",isFunction:!1,parameters:s});if(r)r.edit(c=>{c.insert(r.selection.active,a)}),i.window.showInformationMessage(`\u041F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 &${t} \u0434\u043B\u044F \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F 1\u0421 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D.`);else{let c=await i.workspace.openTextDocument({content:a,language:"bsl"});await i.window.showTextDocument(c)}}async function we(){let r=i.window.activeTextEditor,e=T.STANDARD_MODULES.map(t=>({label:`${t.module}.${t.method}`,detail:t.description,description:`[${t.context}]`,example:t.example})),o=await i.window.showQuickPick(e,{placeHolder:"\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0435\u0442\u043E\u0434 \u0411\u0421\u041F \u0434\u043B\u044F \u0432\u0441\u0442\u0430\u0432\u043A\u0438 \u043F\u0440\u0438\u043C\u0435\u0440\u0430 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u044F"});o&&r&&(r.edit(t=>{t.insert(r.selection.active,o.example)}),i.window.showInformationMessage(`\u041F\u0440\u0438\u043C\u0435\u0440 \u0432\u044B\u0437\u043E\u0432\u0430 ${o.label} \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D.`))}async function Te(){let r=i.window.activeTextEditor;if(!r){i.window.showWarningMessage("\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0444\u0430\u0439\u043B \u0441 \u0442\u0435\u043A\u0441\u0442\u043E\u043C \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421.");return}let e=r.selection.isEmpty?r.document.getText():r.document.getText(r.selection),o=L.inspectQuery(e);if(o.isValid&&o.issues.length===0){i.window.showInformationMessage("\u2713 \u0417\u0430\u043F\u0440\u043E\u0441 \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u0438 \u0418\u0422\u0421.");return}let t=o.issues.map(n=>`[${n.code}] ${n.message}
 \u0420\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F: ${n.recommendation}`).join(`
 
 `);i.window.showWarningMessage(`\u041D\u0430\u0439\u0434\u0435\u043D\u043E \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043F\u043E \u0437\u0430\u043F\u0440\u043E\u0441\u0443: ${o.issues.length}. \u041F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0438 \u0432 \u0432\u044B\u0432\u043E\u0434\u0435.`,"\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u043E\u0442\u0447\u0435\u0442").then(n=>{if(n==="\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u043E\u0442\u0447\u0435\u0442"){let s=i.window.createOutputChannel("1C Query Audit");s.clear(),s.appendLine(t),s.show()}})}async function Ce(){let r=i.window.activeTextEditor;if(!r){i.window.showWarningMessage("\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043C\u043E\u0434\u0443\u043B\u044C BSL \u0441 \u0442\u0435\u043A\u0441\u0442\u043E\u043C \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421.");return}let e=r.selection.isEmpty?r.document.getText():r.document.getText(r.selection);if(!e.trim()){i.window.showWarningMessage("\u0412\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421 \u0434\u043B\u044F \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u0438.");return}let o=L.refactorQuery(e);if(o.appliedOptimizations.length===0){i.window.showInformationMessage("\u2713 \u0417\u0430\u043F\u0440\u043E\u0441 \u0443\u0436\u0435 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421 (\u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0438\u0437\u043E\u043B\u0438\u0440\u043E\u0432\u0430\u043D\u044B).");return}r.edit(t=>{r.selection.isEmpty?t.replace(new i.Range(0,0,r.document.lineCount,0),o.refactoredQuery):t.replace(r.selection,o.refactoredQuery)}),i.window.showInformationMessage(`\u2713 \u0417\u0430\u043F\u0440\u043E\u0441 \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421! \u041F\u0440\u0438\u043C\u0435\u043D\u0435\u043D\u043E \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u0439: ${o.appliedOptimizations.length}`)}async function Ee(r){let e=await i.window.showInputBox({prompt:"\u041E\u043F\u0438\u0448\u0438\u0442\u0435 \u0437\u0430\u0434\u0430\u0447\u0443 \u0434\u043B\u044F \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421 \u043D\u0430 \u0440\u0443\u0441\u0441\u043A\u043E\u043C \u044F\u0437\u044B\u043A\u0435",placeHolder:"\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: \u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043E\u0441\u0442\u0430\u0442\u043A\u0438 \u043D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u044B \u043D\u0430 \u0441\u043A\u043B\u0430\u0434\u0435 \u0441 \u0446\u0435\u043D\u0430\u043C\u0438 \u043D\u0430 \u0434\u0430\u0442\u0443 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430"});if(!e||!e.trim())return;let o=await x.getApiKey(r);if(!o){i.window.showErrorMessage("API-\u043A\u043B\u044E\u0447 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430 \u0441\u0442\u0430\u0442\u0443\u0441-\u0431\u0430\u0440 1C Copilot.");return}let n=i.workspace.getConfiguration("normahub1c").get("reasoningModel","claude-sonnet-5-5"),s=i.workspace.workspaceFolders?.[0]?.uri.fsPath||"",a=await y.scanWorkspace(s),c=y.formatForPrompt(a),l=T.getBSPPromptInjection(),b=`\u0422\u044B \u2014 \u0432\u0435\u0434\u0443\u0449\u0438\u0439 \u044D\u043A\u0441\u043F\u0435\u0440\u0442 \u043F\u043E \u044F\u0437\u044B\u043A\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 1\u0421:\u041F\u0440\u0435\u0434\u043F\u0440\u0438\u044F\u0442\u0438\u0435 8.3 (\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u044B \u0444\u0438\u0440\u043C\u044B \xAB1\u0421\xBB \u0438 \u0411\u0421\u041F).

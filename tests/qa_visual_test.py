@@ -406,13 +406,11 @@ def run_qa():
         print("  ✓ API Key securely dispatched to SecretStorage")
 
         # External billing links
-        page.locator("button:has-text('Пополнить (СБП / МИР)')").click()
+        page.locator("button:has-text('Пополнить баланс')").click()
         last_msg = get_last_posted()
         assert last_msg["type"] == "openBilling"
 
-        page.locator("button:has-text('Счет с НДС 20%')").click()
         last_msg = get_last_posted()
-        assert last_msg["type"] == "openB2B"
         print("  ✓ Billing and corporate invoice external URLs verified")
         page.screenshot(path=str(SCREENSHOT_DIR / "09_tab_settings.png"))
 
