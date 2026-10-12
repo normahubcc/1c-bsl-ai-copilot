@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { NormaHubClient } from './normahubClient';
 import { MetadataScanner } from './metadataScanner';
+import { MultiTabScanner } from './multiTabScanner';
 import { BSPHelper } from './bspHelper';
 import { BSLTokenizer, BSLScopeAnalyzer } from './bslTokenizer';
 
@@ -65,6 +66,7 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
         const metadata = await MetadataScanner.scanWorkspace(rootPath);
         const metadataSummary = MetadataScanner.formatForPrompt(metadata);
         const bspSummary = BSPHelper.getBSPPromptInjection();
+        const multiTabContext = MultiTabScanner.getOpenModulesContext(document);
 
         // Extract rich AST Scope context using BSLTokenizer
         const fullDocText = document.getText();
@@ -101,6 +103,7 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
 
 КОНТЕКСТ МЕТАДАННЫХ БАЗЫ:
 ${metadataSummary}
+${multiTabContext ? '\n' + multiTabContext : ''}
 
 ${bspSummary}`;
 

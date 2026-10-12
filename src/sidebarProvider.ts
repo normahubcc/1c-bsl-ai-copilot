@@ -8,6 +8,7 @@ import { BSPHelper } from './bspHelper';
 import { QueryBuilder } from './queryBuilder';
 import { ExtensionGenerator, ExtensionDirective } from './extensionGenerator';
 import { BDDGenerator } from './bddGenerator';
+import { MultiTabScanner } from './multiTabScanner';
 import { TechLogAnalyzer } from './techLogAnalyzer';
 
 export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
@@ -144,6 +145,7 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
         const metadata = await MetadataScanner.scanWorkspace(rootPath);
         const metaSummary = MetadataScanner.formatForPrompt(metadata);
         const bspSummary = BSPHelper.getBSPPromptInjection();
+        const multiTabContext = MultiTabScanner.getOpenModulesContext();
 
         const systemPrompt = `Ты — ведущий эксперт по языку запросов 1С:Предприятие 8.3 (Стандарты фирмы «1С» и БСП).
 Пользователь описывает бизнес-задачу на русском языке. Сформируй чистый, оптимизированный код 1С с созданием объекта Запрос.
@@ -155,6 +157,7 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
 5. Выведи только готовый BSL-код создания и выполнения запроса.
 
 ${metaSummary}
+${multiTabContext ? '\n' + multiTabContext : ''}
 
 ${bspSummary}`;
 
@@ -386,11 +389,13 @@ ${bspSummary}`;
 
         // Serialize all 40+ BSP standard modules for instant, zero-latency client-side search
         const bspModulesJson = JSON.stringify(BSPHelper.STANDARD_MODULES);
+        const openTabsCount = MultiTabScanner.getOpenModulesCount();
 
         return `<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>1C BSL AI Copilot</title>
     <style>
@@ -483,9 +488,12 @@ ${bspSummary}`;
             font-size: var(--vscode-font-size, 13px);
             color: var(--text-main);
             background-color: var(--bg-main);
-            padding: 8px;
+            padding: 8px 6px;
             margin: 0;
             line-height: 1.45;
+            max-width: 100%;
+            overflow-x: hidden;
+            word-wrap: break-word;
             transition: background-color 0.2s ease, color 0.2s ease;
         }
 
@@ -494,8 +502,10 @@ ${bspSummary}`;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px;
             border-bottom: 1px solid var(--border-color);
-            padding-bottom: 8px;
+            padding-bottom: 6px;
             margin-bottom: 8px;
         }
         .header-left {
@@ -504,37 +514,78 @@ ${bspSummary}`;
             gap: 6px;
         }
         .logo-badge {
-            background: linear-gradient(135deg, #E5A93C, #B87333);
-            color: #FFFFFF;
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
             font-weight: 700;
             font-size: 11px;
-            padding: 2px 6px;
-            border-radius: 4px;
+            padding: 1px 5px;
+            border-radius: 2px;
             letter-spacing: 0.5px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            font-family: var(--vscode-editor-font-family, monospace);
         }
         .title {
             font-weight: 600;
             font-size: 12px;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
         }
         .theme-toggle-btn {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
             color: var(--text-main);
             cursor: pointer;
-            border-radius: 12px;
-            padding: 3px 8px;
+            border-radius: 3px;
+            padding: 2px 7px;
             font-size: 10px;
             display: flex;
             align-items: center;
             gap: 4px;
             font-weight: 500;
-            transition: all 0.15s ease;
+            transition: border-color 0.15s ease;
         }
         .theme-toggle-btn:hover {
             border-color: var(--border-focus);
-            transform: translateY(-1px);
+        }
+
+        /* Project & Multi-Tab Context Bar */
+        .context-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+            background: var(--bg-sub);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            padding: 4px 6px;
+            margin-bottom: 8px;
+            font-size: 10px;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        .context-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.online { background-color: #10B981; }
+        .status-dot.idle { background-color: #9CA3AF; }
+
+        kbd {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+            padding: 1px 4px;
+            font-size: 9.5px;
+            font-family: monospace;
+            color: var(--text-muted);
         }
 
         /* Navigation tabs */
@@ -544,7 +595,10 @@ ${bspSummary}`;
             margin-bottom: 10px;
             gap: 2px;
             overflow-x: auto;
+            white-space: nowrap;
+            max-width: 100%;
             scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
         }
         .tabs::-webkit-scrollbar {
             height: 3px;
@@ -561,6 +615,7 @@ ${bspSummary}`;
             color: var(--text-muted);
             user-select: none;
             white-space: nowrap;
+            flex-shrink: 0;
             transition: all 0.15s ease;
             font-weight: 500;
         }
@@ -589,15 +644,19 @@ ${bspSummary}`;
         .card {
             background-color: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            border-radius: 4px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            max-width: 100%;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         .card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 4px;
             margin-bottom: 6px;
         }
         .card-title {
@@ -617,6 +676,8 @@ ${bspSummary}`;
         /* Inputs & Textareas */
         input[type="text"], input[type="password"], textarea, select {
             width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
             background-color: var(--bg-sub);
             color: var(--text-main);
             border: 1px solid var(--border-color);
@@ -626,6 +687,7 @@ ${bspSummary}`;
             outline: none;
             font-family: inherit;
             margin-bottom: 6px;
+            text-overflow: ellipsis;
             transition: border-color 0.15s ease;
         }
         input:focus, textarea:focus, select:focus {
@@ -643,8 +705,15 @@ ${bspSummary}`;
         /* Buttons */
         .btn-group {
             display: flex;
-            gap: 5px;
+            gap: 4px;
             margin-top: 4px;
+            flex-wrap: wrap;
+        }
+        .btn-group button {
+            flex: 1 1 calc(50% - 4px);
+            min-width: 80px;
+            width: auto;
+            margin-top: 0;
         }
         button {
             background-color: var(--btn-primary);
@@ -656,12 +725,17 @@ ${bspSummary}`;
             font-size: 11px;
             font-weight: 600;
             width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
             margin-top: 4px;
             transition: all 0.15s ease;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 5px;
+            white-space: normal;
+            word-break: break-word;
+            text-align: center;
         }
         button:hover {
             background-color: var(--btn-primary-hover);
@@ -680,6 +754,7 @@ ${bspSummary}`;
             padding: 3px 6px;
             font-size: 10px;
             width: auto;
+            flex: initial;
             margin-top: 0;
         }
 
@@ -817,24 +892,34 @@ ${bspSummary}`;
     <div class="header">
         <div class="header-left">
             <div class="logo-badge">1C</div>
-            <div class="title">AI Copilot</div>
+            <div class="title">BSL Studio</div>
         </div>
         <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeBtn" title="Переключить тему оформления">
-            <span id="themeIcon">☀️</span> <span id="themeLabel">Песочная</span>
+            <span id="themeLabel">Песочная</span>
         </button>
+    </div>
+
+    <!-- Индикатор активного инженерного контекста -->
+    <div class="context-bar">
+        <div class="context-item" title="Структура метаданных конфигурации 1С">
+            <span class="status-dot online"></span> 1С:8.3 Метаданные (50)
+        </div>
+        <div class="context-item" title="Смежные открытые BSL-модули в рабочей области">
+            <span class="status-dot ${openTabsCount > 0 ? 'online' : 'idle'}"></span> Вкладок в контексте: ${openTabsCount}
+        </div>
     </div>
 
     <!-- Навигационные вкладки -->
     <div class="tabs">
-        <div class="tab active" onclick="switchTab('queries')">Запросы</div>
-        <div class="tab" onclick="switchTab('bsp')">БСП 3.1</div>
-        <div class="tab" onclick="switchTab('extensions')">&cfe</div>
-        <div class="tab" onclick="switchTab('audit')">ИТС Аудит</div>
-        <div class="tab" onclick="switchTab('bdd')">Vanessa BDD</div>
-        <div class="tab" onclick="switchTab('techlog')">ТЖ Лог</div>
-        <div class="tab" onclick="switchTab('metadata')">Метаданные</div>
-        <div class="tab" onclick="switchTab('sidecar')">Sidecar</div>
-        <div class="tab" onclick="switchTab('settings')">Баланс</div>
+        <div id="tab-btn-queries" class="tab active" onclick="switchTab('queries')">Запросы</div>
+        <div id="tab-btn-bsp" class="tab" onclick="switchTab('bsp')">БСП 3.1</div>
+        <div id="tab-btn-extensions" class="tab" onclick="switchTab('extensions')">&cfe</div>
+        <div id="tab-btn-audit" class="tab" onclick="switchTab('audit')">ИТС Аудит</div>
+        <div id="tab-btn-bdd" class="tab" onclick="switchTab('bdd')">Vanessa BDD</div>
+        <div id="tab-btn-techlog" class="tab" onclick="switchTab('techlog')">ТЖ Лог</div>
+        <div id="tab-btn-metadata" class="tab" onclick="switchTab('metadata')">Метаданные</div>
+        <div id="tab-btn-sidecar" class="tab" onclick="switchTab('sidecar')">Sidecar</div>
+        <div id="tab-btn-settings" class="tab" onclick="switchTab('settings')">Баланс</div>
     </div>
 
     <!-- ТАБ 1: ЗАПРОСЫ (AI + REFACTOR + BATCH) -->
@@ -842,12 +927,12 @@ ${bspSummary}`;
         <!-- Рефакторинг существующих запросов 1С -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">⚡ Интеллектуальный рефактор запроса</div>
+                <div class="card-title">Оптимизация запроса (ИТС)</div>
                 <span class="badge badge-ok">ИТС Стандарт</span>
             </div>
             <div class="card-desc">Выносит прямые соединения с виртуальными таблицами во временные таблицы с индексацией и ЕСТЬNULL.</div>
-            <textarea id="refactorInput" placeholder="Вставьте текст произвольного запроса 1С или соединение с РегистрНакопления..."></textarea>
-            <button onclick="refactorQuery()">Оптимизировать запрос (Вынести в ВТ_)</button>
+            <textarea id="refactorInput" placeholder="Вставьте текст запроса 1С или соединение с виртуальной таблицей..."></textarea>
+            <button onclick="refactorQuery()">Оптимизировать запрос <kbd>Ctrl+Enter</kbd></button>
             <div id="refactorStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
             <div id="refactorOutput" class="code-box" style="display:none;"></div>
             <div class="btn-group" id="refactorActions" style="display:none;">
@@ -858,7 +943,7 @@ ${bspSummary}`;
 
         <!-- AI Генератор по описанию -->
         <div class="card">
-            <div class="card-title">Генератор запроса через LLM</div>
+            <div class="card-title">Генерация пакета запроса</div>
             <div class="chips-row">
                 <div class="chip" onclick="setQueryIntent('Остатки товаров на складах на дату документа с ценами')">Остатки на дату</div>
                 <div class="chip" onclick="setQueryIntent('Обороты продаж номенклатуры за период по клиентам')">Обороты продаж</div>
@@ -866,7 +951,7 @@ ${bspSummary}`;
                 <div class="chip" onclick="setQueryIntent('Контроль отрицательных остатков при проведении')">Контроль остатков</div>
             </div>
             <textarea id="queryIntent" placeholder="Опишите задачу на русском языке (например: Выбрать остатки номенклатуры из регистра с фильтром по организации)..."></textarea>
-            <button onclick="generateQuery()">Сформировать BSL-код запроса</button>
+            <button onclick="generateQuery()">Сформировать BSL-код запроса <kbd>Ctrl+Alt+Q</kbd></button>
             <div id="queryStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
             <div id="queryOutput" class="code-box" style="display:none;"></div>
             <div class="btn-group" id="queryActions" style="display:none;">
@@ -877,7 +962,7 @@ ${bspSummary}`;
 
         <!-- Шаблонизатор проведения -->
         <div class="card">
-            <div class="card-title">Шаблон пакета проведения с ВТ</div>
+            <div class="card-title">Конструктор движений проведения</div>
             <input type="text" id="batchEntity" placeholder="Документ" value="РеализацияТоваровУслуг" />
             <input type="text" id="batchTabular" placeholder="Табличная часть" value="Товары" />
             <input type="text" id="batchRegister" placeholder="Регистр накопления" value="ТоварыНаСкладах" />
@@ -899,12 +984,12 @@ ${bspSummary}`;
             </div>
             <input type="text" id="bspSearchInput" placeholder="Поиск метода, модуля или действия..." oninput="filterBsp()" />
             <div class="chips-row" id="bspFilters">
-                <div class="chip active" onclick="setBspSubsystem('')">Все</div>
-                <div class="chip" onclick="setBspSubsystem('ОбщегоНазначения')">ОбщегоНазначения</div>
-                <div class="chip" onclick="setBspSubsystem('СтроковыеФункции')">Строки</div>
-                <div class="chip" onclick="setBspSubsystem('ДлительныеОперации')">Длительные</div>
-                <div class="chip" onclick="setBspSubsystem('Пользователи')">Пользователи</div>
-                <div class="chip" onclick="setBspSubsystem('УправлениеДоступом')">Доступ/RLS</div>
+                <div class="chip active" onclick="setBspSubsystem('', this)">Все</div>
+                <div class="chip" onclick="setBspSubsystem('ОбщегоНазначения', this)">ОбщегоНазначения</div>
+                <div class="chip" onclick="setBspSubsystem('СтроковыеФункции', this)">Строки</div>
+                <div class="chip" onclick="setBspSubsystem('ДлительныеОперации', this)">Длительные</div>
+                <div class="chip" onclick="setBspSubsystem('Пользователи', this)">Пользователи</div>
+                <div class="chip" onclick="setBspSubsystem('УправлениеДоступом', this)">Доступ/RLS</div>
             </div>
             <div id="bspListContainer" style="max-height:360px; overflow-y:auto;"></div>
         </div>
@@ -975,10 +1060,10 @@ ${bspSummary}`;
             <div class="card-title">Диагностика Технологического Журнала</div>
             <div class="card-desc">Экспертный анализ инцидентов TLOCK, TDEADLOCK, EXCP и медленных SQL-запросов.</div>
             <div class="chips-row">
-                <div class="chip" onclick="loadDemoTLog('TLOCK')">🚨 Демо TLOCK</div>
-                <div class="chip" onclick="loadDemoTLog('TDEADLOCK')">💀 Демо Deadlock</div>
-                <div class="chip" onclick="loadDemoTLog('EXCP')">💥 Демо EXCP</div>
-                <div class="chip" onclick="loadDemoTLog('DBPOSTGR')">🐢 Демо SQL</div>
+                <div class="chip" onclick="loadDemoTLog('TLOCK')">TLOCK</div>
+                <div class="chip" onclick="loadDemoTLog('TDEADLOCK')">TDEADLOCK</div>
+                <div class="chip" onclick="loadDemoTLog('EXCP')">EXCP</div>
+                <div class="chip" onclick="loadDemoTLog('DBPOSTGR')">DBPOSTGR</div>
             </div>
             <textarea id="techlogInput" style="min-height:90px;" placeholder="Вставьте строку или фрагмент лога ТЖ..."></textarea>
             <button onclick="analyzeTechLog()">Диагностировать инциденты</button>
@@ -992,7 +1077,7 @@ ${bspSummary}`;
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Граф метаданных 1С</div>
-                <button class="sm secondary" onclick="scanMetadata()">🔄 Сканировать</button>
+                <button class="sm secondary" onclick="scanMetadata()">Сканировать</button>
             </div>
             <div class="card-desc">Кэширует структуру объектов конфигурации для точной генерации запросов и реквизитов.</div>
             <div id="metadataSummaryBox" class="code-box" style="max-height:160px;">Нажмите «Сканировать», чтобы прочитать структуру проекта или выгрузки.</div>
@@ -1068,7 +1153,10 @@ ${bspSummary}`;
 
         // Theme management
         function initTheme() {
-            const saved = localStorage.getItem('normahub_1c_theme') || 'espresso';
+            let saved = 'espresso';
+            try {
+                saved = localStorage.getItem('normahub_1c_theme') || 'espresso';
+            } catch (_) {}
             applyTheme(saved);
         }
 
@@ -1076,23 +1164,21 @@ ${bspSummary}`;
             const current = document.body.classList.contains('theme-warm-sand') ? 'warm-sand' : 'espresso';
             const next = current === 'warm-sand' ? 'espresso' : 'warm-sand';
             applyTheme(next);
-            localStorage.setItem('normahub_1c_theme', next);
+            try {
+                localStorage.setItem('normahub_1c_theme', next);
+            } catch (_) {}
         }
 
         function applyTheme(theme) {
             document.body.classList.remove('theme-warm-sand', 'theme-espresso');
-            const btn = document.getElementById('themeBtn');
-            const icon = document.getElementById('themeIcon');
             const label = document.getElementById('themeLabel');
 
             if (theme === 'warm-sand') {
                 document.body.classList.add('theme-warm-sand');
-                icon.innerText = '🌙';
-                label.innerText = 'Тёмная';
+                if (label) { label.innerText = 'Тёмная'; }
             } else {
                 document.body.classList.add('theme-espresso');
-                icon.innerText = '☀️';
-                label.innerText = 'Песочная';
+                if (label) { label.innerText = 'Песочная'; }
             }
         }
 
@@ -1101,6 +1187,7 @@ ${bspSummary}`;
         // Toast feedback
         function showToast(msg) {
             const t = document.getElementById('toast');
+            if (!t) return;
             t.innerText = msg || '✓ Скопировано в буфер обмена!';
             t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 1500);
@@ -1110,11 +1197,16 @@ ${bspSummary}`;
         function switchTab(name) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById('tab-' + name).classList.add('active');
+            const btn = document.getElementById('tab-btn-' + name);
+            if (btn) btn.classList.add('active');
+            const panel = document.getElementById('tab-' + name);
+            if (panel) panel.classList.add('active');
 
-            if (name === 'bsp' && document.getElementById('bspListContainer').children.length === 0) {
-                renderBspList();
+            if (name === 'bsp') {
+                const bspContainer = document.getElementById('bspListContainer');
+                if (bspContainer && bspContainer.children.length === 0) {
+                    renderBspList();
+                }
             }
             if (name === 'sidecar') {
                 checkSidecar();
@@ -1205,10 +1297,12 @@ ${bspSummary}`;
 
         function filterBsp() { renderBspList(); }
 
-        function setBspSubsystem(sub) {
+        function setBspSubsystem(sub, el) {
             activeBspSubsystem = sub;
             document.querySelectorAll('#bspFilters .chip').forEach(c => c.classList.remove('active'));
-            event.target.classList.add('active');
+            if (el) {
+                el.classList.add('active');
+            }
             renderBspList();
         }
 
@@ -1267,7 +1361,7 @@ ${bspSummary}`;
                 'TLOCK': '04:12.123000-1420000,TLOCK,3,process=rphost,t:clientID=12,Regions=AccumRegister.ТоварыНаСкладах,WaitConnections=14,Context=Документ.РеализацияТоваровУслуг.МодульОбъекта : 142',
                 'TDEADLOCK': '12:45.892000-0,TDEADLOCK,4,process=rphost,WaitConnections=18,Context=Документ.ЗаказКлиента.МодульОбъекта : 88,Regions=Doc.ЗаказКлиента,AccumRegister.ТоварыНаСкладах',
                 'EXCP': '08:15.004000-0,EXCP,2,process=rphost,ClientID=9,Exception=RuntimeError,Descr="Попытка передачи мутабельного значения типа ТаблицаЗначений с клиента на сервер",Context=Форма.ФормаДокумента.Модуль : 54',
-                'DBPOSTGR': '19:22.451000-8450000,DBPOSTGR,3,process=rphost,Sql="SELECT * FROM _AccumReg1234 WHERE _Period >= \'2026-01-01\'",Context=РегистрНакопления.ТоварыНаСкладах.МодульМенеджера : 110'
+                'DBPOSTGR': '19:22.451000-8450000,DBPOSTGR,3,process=rphost,Sql="SELECT * FROM _AccumReg1234 WHERE _Period >= \\'2026-01-01\\'",Context=РегистрНакопления.ТоварыНаСкладах.МодульМенеджера : 110'
             };
             document.getElementById('techlogInput').value = samples[type] || '';
         }
@@ -1322,7 +1416,7 @@ ${bspSummary}`;
                 } else {
                     let out = message.code;
                     if (message.optimizations && message.optimizations.length) {
-                        out = '// ПРИМЕНЕННЫЕ ОПТИМИЗАЦИИ ИТС:\n// ' + message.optimizations.join('\n// ') + '\n\n' + out;
+                        out = '// ПРИМЕНЕННЫЕ ОПТИМИЗАЦИИ ИТС:\\n// ' + message.optimizations.join('\\n// ') + '\\n\\n' + out;
                     }
                     box.innerText = out;
                     document.getElementById('refactorActions').style.display = 'flex';
@@ -1346,7 +1440,7 @@ ${bspSummary}`;
                                 <span class="issue-link" onclick="jumpTo(\${iss.line})">Строка \${iss.line}</span>
                             </div>
                             <div style="margin-top:3px; font-weight:500;">\${iss.message}</div>
-                            <div style="margin-top:2px; color:var(--text-muted); font-size:10px;">💡 \${iss.suggestion}</div>
+                            <div style="margin-top:2px; color:var(--text-muted); font-size:10px;">Рекомендация: \${iss.suggestion}</div>
                         \`;
                         container.appendChild(card);
                     });
