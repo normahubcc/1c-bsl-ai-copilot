@@ -1,14 +1,19 @@
 import * as vscode from 'vscode';
 import { NormaHubClient } from './normahubClient';
 import { MetadataScanner } from './metadataScanner';
+import { BSPHelper } from './bspHelper';
 
 /**
- * Native VS Code Inline Completion Provider for 1C:Enterprise (BSL).
- * Provides low-latency, context-aware ghost text completions.
+ * Native VS Code Inline Completion Provider for 1C:Enterprise (BSL) - Senior Grade.
+ * 
+ * Provides low-latency, context-aware ghost text completions with:
+ * - Direct FIM (Fill-In-The-Middle) prompt formatting
+ * - BSP (Библиотека Стандартных Подсистем) context injection
+ * - Directive awareness (&НаКлиенте, &НаСервере, &Вместо, &ИзменениеИКонтроль)
+ * - Real metadata schema injection from Configuration.xml / EDT
  */
 export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemProvider {
     private lastRequestTime = 0;
-    private timer: NodeJS.Timeout | null = null;
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -32,7 +37,7 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
         const lineText = document.lineAt(position.line).text;
         const textBeforeCursor = lineText.substring(0, position.character);
 
-        // Don't trigger if line is completely empty or just whitespace
+        // Don't trigger if line is completely empty or just whitespace at start of empty doc
         if (!textBeforeCursor.trim() && position.line === 0) {
             return null;
         }
@@ -45,12 +50,12 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
         }
         this.lastRequestTime = now;
 
-        // Context window: up to 40 lines before, 10 lines after
-        const startLine = Math.max(0, position.line - 40);
+        // Context window: up to 50 lines before, 15 lines after
+        const startLine = Math.max(0, position.line - 50);
         const prefixRange = new vscode.Range(new vscode.Position(startLine, 0), position);
         const prefixText = document.getText(prefixRange);
 
-        const endLine = Math.min(document.lineCount - 1, position.line + 10);
+        const endLine = Math.min(document.lineCount - 1, position.line + 15);
         const suffixRange = new vscode.Range(position, new vscode.Position(endLine, document.lineAt(endLine).text.length));
         const suffixText = document.getText(suffixRange);
 
@@ -58,16 +63,23 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
         const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const metadata = await MetadataScanner.scanWorkspace(rootPath);
         const metadataSummary = MetadataScanner.formatForPrompt(metadata);
+        const bspSummary = BSPHelper.getBSPPromptInjection();
 
         const model = config.get<string>('autocompleteModel', 'deepseek-v4.1-flash');
-        const systemPrompt = `Ты — профессиональный архитектор 1С:Предприятие 8.3.
+        const systemPrompt = `Ты — ведущий системный архитектор 1С:Предприятие 8.3 (Стандарты фирмы «1С» и БСП).
 Твоя задача — мгновенно дописать код BSL (1C:Enterprise) на позиции курсора.
-Требования:
-1. Выводи ТОЛЬКО продолжение кода. Никаких markdown блоков, никаких пояснений, никаких кавычек.
-2. Соблюдай синтаксис 1С: Ключевые слова на русском (Если, Тогда, Иначе, КонецЕсли, Для Каждого, Цикл, КонецЦикла, Новый, Процедура, Функция).
-3. Используй точные имена метаданных из контекста.
 
-${metadataSummary}`;
+ТРЕБОВАНИЯ СТАНДАРТОВ 1С:
+1. Выводи ТОЛЬКО прямое продолжение кода. Никаких markdown блоков, никаких пояснений, никаких обратных кавычек.
+2. Синтаксис: Ключевые слова на русском (Если, Тогда, Иначе, КонецЕсли, Для Каждого, Цикл, КонецЦикла, Новый, Процедура, Функция, Возврат).
+3. Соблюдай контекст директив компиляции (&НаКлиенте, &НаСервере, &НаСервереБезКонтекста, &Вместо, &Перед, &После, &ИзменениеИКонтроль).
+4. Запрещено передавать мутабельные объекты (ТаблицаЗначений) между клиентом и сервером.
+5. При чтении реквизитов использовать функции БСП (ОбщегоНазначения.ЗначениеРеквизитаОбъекта), а не ПолучитьОбъект().
+
+КОНТЕКСТ МЕТАДАННЫХ БАЗЫ:
+${metadataSummary}
+
+${bspSummary}`;
 
         const userPrompt = `Код ДО курсора:
 ${prefixText}
@@ -88,7 +100,7 @@ ${suffixText}
                 systemPrompt,
                 userPrompt,
                 0.1,
-                150
+                200
             );
 
             if (token.isCancellationRequested || !completion.trim()) {

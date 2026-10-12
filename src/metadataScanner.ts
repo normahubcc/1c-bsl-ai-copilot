@@ -139,7 +139,7 @@ export class MetadataScanner {
             let desc = obj.name;
             if (obj.tabularSections && obj.tabularSections.length > 0) {
                 const ts = obj.tabularSections.map(t => t.name).join(', ');
-                desc += ` (ТЧ: ${ts})`;
+                desc += ` (Табличные части: ${ts})`;
             }
             grouped[obj.kind].push(desc);
         }

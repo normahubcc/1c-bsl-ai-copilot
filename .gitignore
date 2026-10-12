@@ -1,0 +1,4 @@
+node_modules/
+dist/test-suite.js
+*.log
+.DS_Store

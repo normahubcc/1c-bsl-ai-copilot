@@ -39,9 +39,9 @@
     "vscode:prepublish": "npm run build",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "build": "npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "package": "python3 build_vsix.py",
-    "test": "node ./dist/test-runner.js"
+    "test": "node ./tests/test_runner.js"
   },
   "contributes": {
     "viewsContainers": {
@@ -68,8 +68,24 @@
         "title": "1С: Сгенерировать запрос по описанию"
       },
       {
+        "command": "normahub1c.generateBatchQuery",
+        "title": "1С: Создать пакетный запрос с временными таблицами (ИТС)"
+      },
+      {
+        "command": "normahub1c.generateExtensionMethod",
+        "title": "1С: Сгенерировать метод для расширения (&Вместо / &ИзменениеИКонтроль)"
+      },
+      {
+        "command": "normahub1c.bspAssistant",
+        "title": "1С: Подобрать метод БСП (Библиотека Стандартных Подсистем)"
+      },
+      {
         "command": "normahub1c.auditStandards",
         "title": "1С: Проверить код по стандартам ИТС"
+      },
+      {
+        "command": "normahub1c.inspectQuery",
+        "title": "1С: Проверить оптимизацию запроса по стандартам ИТС"
       },
       {
         "command": "normahub1c.explainCode",
@@ -96,14 +112,34 @@
           "group": "normahub1c@1"
         },
         {
+          "command": "normahub1c.generateBatchQuery",
+          "when": "editorTextFocus",
+          "group": "normahub1c@2"
+        },
+        {
+          "command": "normahub1c.generateExtensionMethod",
+          "when": "editorTextFocus",
+          "group": "normahub1c@3"
+        },
+        {
+          "command": "normahub1c.bspAssistant",
+          "when": "editorTextFocus",
+          "group": "normahub1c@4"
+        },
+        {
           "command": "normahub1c.auditStandards",
           "when": "editorHasSelection",
-          "group": "normahub1c@2"
+          "group": "normahub1c@5"
+        },
+        {
+          "command": "normahub1c.inspectQuery",
+          "when": "editorHasSelection",
+          "group": "normahub1c@6"
         },
         {
           "command": "normahub1c.explainCode",
           "when": "editorHasSelection",
-          "group": "normahub1c@3"
+          "group": "normahub1c@7"
         }
       ]
     },
@@ -112,6 +148,18 @@
         "command": "normahub1c.generateQuery",
         "key": "ctrl+alt+q",
         "mac": "cmd+alt+q",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "normahub1c.generateExtensionMethod",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "normahub1c.bspAssistant",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b",
         "when": "editorTextFocus"
       },
       {

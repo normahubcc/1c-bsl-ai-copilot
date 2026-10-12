@@ -1,8 +1,18 @@
 import { StandardIssue } from './types';
+import { BSPHelper } from './bspHelper';
+import { QueryBuilder } from './queryBuilder';
 
 /**
- * 1C:Enterprise ITS Development Standards Auditor.
- * Inspects BSL source code for performance bottlenecks, deadlocks, and anti-patterns.
+ * 1C:Enterprise ITS Development Standards & Performance Auditor (Senior Grade).
+ * 
+ * Inspects BSL source code for:
+ * 1. ITS-PERF-001: Query execution inside loops
+ * 2. ITS-PERF-002: Virtual tables without parameters
+ * 3. ITS-LOCK-001: Missing DataLock (БлокировкаДанных) in ОбработкаПроведения
+ * 4. ITS-UI-003: Deprecated synchronous modal calls (Предупреждение/Вопрос)
+ * 5. ITS-MUTABLE-001: Attempting to pass mutable objects (ТаблицаЗначений) across client-server boundaries
+ * 6. ITS-SEC-001: Dangerous dynamic query string concatenation (SQL/1C injection risk)
+ * 7. ITS-BSP-001: Manual object fetching (ПолучитьОбъект) instead of lightweight BSP attribute reader
  */
 export class StandardsChecker {
     public static auditCode(code: string): StandardIssue[] {
@@ -10,7 +20,6 @@ export class StandardsChecker {
         const lines = code.split('\n');
 
         let inLoop = false;
-        let loopStartLine = 0;
         let inPostingHandler = false;
         let hasDataLock = false;
 
@@ -43,7 +52,6 @@ export class StandardsChecker {
             // Check loop boundaries
             if (/^\s*(Для\s+Каждого|Для\s+\w+\s*=|Пока\s+)/i.test(trimmed)) {
                 inLoop = true;
-                loopStartLine = lineNum;
             }
             if (/^\s*КонецЦикла;/i.test(trimmed)) {
                 inLoop = false;
@@ -56,7 +64,7 @@ export class StandardsChecker {
                     rule: 'ITS-PERF-001',
                     severity: 'error',
                     message: 'Выполнение запроса внутри цикла (Запрос.Выполнить()).',
-                    suggestion: 'Перенесите выгрузку данных в один пакетный запрос до цикла, либо используйте временную таблицу с соединением по массиву ссылок.'
+                    suggestion: 'Перенесите выгрузку данных в один пакетный запрос до цикла с помещением во временную таблицу и соединением по массиву ссылок.'
                 });
             }
 
@@ -81,6 +89,55 @@ export class StandardsChecker {
                     suggestion: 'Используйте асинхронные методы: ПоказатьПредупреждение(), ПоказатьВопрос() с передачей ОписаниеОповещения.'
                 });
             }
+
+            // 4. Anti-pattern: Passing mutable objects
+            if (/&(НаСервере|НаСервереБезКонтекста)/i.test(trimmed)) {
+                const nextLines = lines.slice(i, i + 5).join(' ');
+                if (/(ТаблицаЗначений|ДеревоЗначений)/i.test(nextLines) && /Функция|Процедура/i.test(nextLines)) {
+                    issues.push({
+                        line: lineNum,
+                        rule: 'ITS-MUTABLE-001',
+                        severity: 'error',
+                        message: 'Обнаружена потенциальная передача мутабельного объекта (ТаблицаЗначений) между клиентом и сервером.',
+                        suggestion: 'Таблицы значений не сериализуются между клиентом и сервером. Передавайте Массив Структур либо сериализуйте данные в Соответствие.'
+                    });
+                }
+            }
+
+            // 5. Anti-pattern: Dangerous dynamic query concatenation (1C injection)
+            if (/Запрос\.Текст\s*=\s*Запрос\.Текст\s*\+\s*["'].*(\+|&)/i.test(trimmed) && !/Параметр/i.test(trimmed)) {
+                issues.push({
+                    line: lineNum,
+                    rule: 'ITS-SEC-001',
+                    severity: 'warning',
+                    message: 'Динамическая склейка текста запроса со строковыми переменными (риск 1С-инъекции).',
+                    suggestion: 'Всегда передавайте значения через параметры запроса (Запрос.УстановитьПараметр), а не конкатенируйте текст.'
+                });
+            }
+        }
+
+        // Add BSP suggestions
+        const bspSuggestions = BSPHelper.analyzeForBSPOptimization(code);
+        for (const bsp of bspSuggestions) {
+            issues.push({
+                line: 1,
+                rule: 'ITS-BSP-001',
+                severity: 'info',
+                message: `Рекомендуется использование модуля БСП "${bsp.moduleName}": ${bsp.explanation}`,
+                suggestion: `Замените на: ${bsp.recommendedCall}`
+            });
+        }
+
+        // Add Query Builder issues
+        const queryInspection = QueryBuilder.inspectQuery(code);
+        for (const qIssue of queryInspection.issues) {
+            issues.push({
+                line: 1,
+                rule: qIssue.code,
+                severity: qIssue.severity,
+                message: qIssue.message,
+                suggestion: qIssue.recommendation
+            });
         }
 
         return issues;
@@ -88,7 +145,7 @@ export class StandardsChecker {
 
     public static formatAuditReport(issues: StandardIssue[]): string {
         if (issues.length === 0) {
-            return '✓ Замечаний по стандартам разработки фирмы «1С» (ИТС) не обнаружено.';
+            return '✓ Замечаний по стандартам разработки фирмы «1С» (ИТС) не обнаружено. Код соответствует корпоративному стандарту качества.';
         }
 
         const lines: string[] = [
@@ -96,9 +153,15 @@ export class StandardsChecker {
         ];
 
         for (const iss of issues) {
-            const badge = iss.severity === 'error' ? '🔴 [Критично]' : '🟡 [Предупреждение]';
-            lines.push(`${badge} Строка ${iss.line} | ${iss.rule}: ${iss.message}`);
-            lines.push(`   💡 Рекомендация: ${iss.suggestion}\n`);
+            let badge = 'ℹ️ [Рекомендация]';
+            if (iss.severity === 'error') {
+                badge = '🔴 [Критично]';
+            } else if (iss.severity === 'warning') {
+                badge = '🟡 [Предупреждение]';
+            }
+
+            lines.push(`${badge} ${iss.rule} (стр. ${iss.line}): ${iss.message}`);
+            lines.push(`   💡 Решение: ${iss.suggestion}\n`);
         }
 
         return lines.join('\n');
