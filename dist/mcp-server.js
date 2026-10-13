@@ -483,47 +483,83 @@ var QueryBuilder = class {
    */
   static generateBatchQuery(options) {
     const vtSource = `\u0412\u0422_${options.tabularSection}`;
-    const vtBalances = `\u0412\u0422_\u041E\u0441\u0442\u0430\u0442\u043A\u0438${options.registerName}`;
+    const cleanReg = options.registerName.replace(/^(РегистрНакопления|РегистрСведений|РегистрБухгалтерии)\./, "");
+    const vtBalances = `\u0412\u0422_\u041E\u0441\u0442\u0430\u0442\u043A\u0438${cleanReg}`;
+    let fullEntity = options.entityName.trim();
+    if (!fullEntity.includes(".")) {
+      fullEntity = `\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442.${fullEntity}`;
+    }
+    let registerKind = "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F";
+    const regType = options.registerType || "\u041E\u0441\u0442\u0430\u0442\u043A\u0438";
+    if (options.registerName.startsWith("\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439.") || regType === "\u0421\u0440\u0435\u0437\u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0445" || regType === "\u0421\u0440\u0435\u0437\u041F\u0435\u0440\u0432\u044B\u0445") {
+      registerKind = "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439";
+    } else if (options.registerName.startsWith("\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0411\u0443\u0445\u0433\u0430\u043B\u0442\u0435\u0440\u0438\u0438.")) {
+      registerKind = "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0411\u0443\u0445\u0433\u0430\u043B\u0442\u0435\u0440\u0438\u0438";
+    }
+    const rawFields = options.fields && options.fields.length > 0 ? options.fields : ["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"];
+    const resourceKeywords = /Количество|Сумма|Вес|Объем|Стоимость|Цена|Остаток/i;
+    const dimensions = rawFields.filter((f) => !resourceKeywords.test(f));
+    const resources = rawFields.filter((f) => resourceKeywords.test(f));
+    const mainDim = dimensions[0] || "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430";
+    const mainRes = resources[0] || "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E";
+    const srcSelectLines = [];
+    for (const dim of dimensions.length ? dimensions : [mainDim]) {
+      srcSelectLines.push(`    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.${dim} \u041A\u0410\u041A ${dim}`);
+    }
+    for (const res of resources.length ? resources : [mainRes]) {
+      srcSelectLines.push(`    \u0421\u0423\u041C\u041C\u0410(\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.${res}) \u041A\u0410\u041A ${res}`);
+    }
+    const groupByDims = (dimensions.length ? dimensions : [mainDim]).map((d) => `    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.${d}`).join(",\n");
+    const indexDims = (dimensions.length ? dimensions : [mainDim]).join(", ");
+    let vtResName = mainRes;
+    if (registerKind === "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F") {
+      if (regType === "\u041E\u0441\u0442\u0430\u0442\u043A\u0438") {
+        vtResName = `${mainRes}\u041E\u0441\u0442\u0430\u0442\u043E\u043A`;
+      } else if (regType === "\u041E\u0431\u043E\u0440\u043E\u0442\u044B") {
+        vtResName = `${mainRes}\u041E\u0431\u043E\u0440\u043E\u0442`;
+      }
+    }
+    const vtFilterCondition = `${mainDim} \u0412 (\u0412\u042B\u0411\u0420\u0410\u0422\u042C ${vtSource}.${mainDim} \u0418\u0417 ${vtSource})`;
+    const joinConditions = (dimensions.length ? dimensions : [mainDim]).map((d) => `\u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${d} = \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${d}`).join("\n        \u0418 ");
     let query = `\u0412\u042B\u0411\u0420\u0410\u0422\u042C
-    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430 \u041A\u0410\u041A \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430,
-    \u0421\u0423\u041C\u041C\u0410(\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E) \u041A\u0410\u041A \u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E
+${srcSelectLines.join(",\n")}
 \u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${vtSource}
 \u0418\u0417
-    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442.${options.entityName}.${options.tabularSection} \u041A\u0410\u041A \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430
+    ${fullEntity}.${options.tabularSection} \u041A\u0410\u041A \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430
 \u0413\u0414\u0415
     \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.\u0421\u0441\u044B\u043B\u043A\u0430 = &\u0421\u0441\u044B\u043B\u043A\u0430
 \u0421\u0413\u0420\u0423\u041F\u041F\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E
-    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430
+${groupByDims}
 \u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E
-    \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430
+    ${indexDims}
 ;
 
 ////////////////////////////////////////////////////////////////////////////////
 \u0412\u042B\u0411\u0420\u0410\u0422\u042C
-    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430 \u041A\u0410\u041A \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430,
-    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E\u041E\u0441\u0442\u0430\u0442\u043E\u043A \u041A\u0410\u041A \u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E\u041E\u0441\u0442\u0430\u0442\u043E\u043A
+    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${mainDim} \u041A\u0410\u041A ${mainDim},
+    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName} \u041A\u0410\u041A ${vtResName}
 \u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${vtBalances}
 \u0418\u0417
-    \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F.${options.registerName}.${options.registerType}(
+    ${registerKind}.${cleanReg}.${regType}(
         &\u041F\u0435\u0440\u0438\u043E\u0434\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044F,
-        \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430 \u0412 (\u0412\u042B\u0411\u0420\u0410\u0422\u042C ${vtSource}.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430 \u0418\u0417 ${vtSource})
+        ${vtFilterCondition}
     ) \u041A\u0410\u041A \u041E\u0441\u0442\u0430\u0442\u043A\u0438
 \u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E
-    \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430
+    ${mainDim}
 ;
 
 ////////////////////////////////////////////////////////////////////////////////
 \u0412\u042B\u0411\u0420\u0410\u0422\u042C
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430 \u041A\u0410\u041A \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430,
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u041A\u0410\u041A \u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F,
-    \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E\u041E\u0441\u0442\u0430\u0442\u043E\u043A, 0) \u041A\u0410\u041A \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E,
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E - \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E\u041E\u0441\u0442\u0430\u0442\u043E\u043A, 0) \u041A\u0410\u041A \u0414\u0435\u0444\u0438\u0446\u0438\u0442
+    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainDim} \u041A\u0410\u041A ${mainDim},
+    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainRes} \u041A\u0410\u041A \u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F,
+    \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName}, 0) \u041A\u0410\u041A \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E,
+    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainRes} - \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName}, 0) \u041A\u0410\u041A \u0414\u0435\u0444\u0438\u0446\u0438\u0442
 \u0418\u0417
     ${vtSource} \u041A\u0410\u041A \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435
     \u041B\u0415\u0412\u041E\u0415 \u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u0415 ${vtBalances} \u041A\u0410\u041A \u041E\u0441\u0442\u0430\u0442\u043A\u0438
-        \u041F\u041E \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430 = \u041E\u0441\u0442\u0430\u0442\u043A\u0438.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430
+        \u041F\u041E ${joinConditions}
 \u0413\u0414\u0415
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E > \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E\u041E\u0441\u0442\u0430\u0442\u043E\u043A, 0)
+    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainRes} > \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName}, 0)
 ;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -765,7 +801,8 @@ var BSLTokenizer = class {
         while (i < source.length && source[i] !== "'" && source[i] !== "\n") {
           i++;
         }
-        if (source[i] === "'") i++;
+        if (source[i] === "'")
+          i++;
         tokens.push({
           type: "DATE_LITERAL" /* DATE_LITERAL */,
           value: source.substring(start, i),
@@ -880,6 +917,8 @@ var StandardsChecker = class {
             suggestion: "\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u0443\u044E \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0443 \u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0435\u0440\u0435\u0434 \u0447\u0442\u0435\u043D\u0438\u0435\u043C \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432 \u0434\u043B\u044F \u043F\u0440\u0435\u0434\u043E\u0442\u0432\u0440\u0430\u0449\u0435\u043D\u0438\u044F \u0432\u0437\u0430\u0438\u043C\u043E\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043E\u043A (Deadlock) \u043F\u0440\u0438 \u043F\u0430\u0440\u0430\u043B\u043B\u0435\u043B\u044C\u043D\u043E\u043C \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0438."
           });
         }
+        inPosting = false;
+        hasDataLockInPosting = false;
       }
     }
     for (let i = 0; i < tokens.length; i++) {
@@ -890,7 +929,9 @@ var StandardsChecker = class {
       if (linesInsideLoop.has(tok.line) && (tok.type === "IDENTIFIER" /* IDENTIFIER */ || tok.type === "KEYWORD" /* KEYWORD */) && tok.value.toLowerCase() === "\u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C") {
         const prev = tokens[i - 1];
         const next = tokens[i + 1];
-        if (prev && prev.value === "." && next && next.value === "(") {
+        const caller = tokens[i - 2]?.value.toLowerCase();
+        const nonQueryCallers = ["\u0444\u043E\u043D\u043E\u0432\u044B\u0435\u0437\u0430\u0434\u0430\u043D\u0438\u044F", "\u0444\u043E\u043D\u043E\u0432\u043E\u0435\u0437\u0430\u0434\u0430\u043D\u0438\u0435", "\u043A\u043E\u043C\u0430\u043D\u0434\u0430", "\u043A\u043E\u043C\u0430\u043D\u0434\u044B", "\u0432\u043D\u0435\u0448\u043D\u044F\u044F\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430", "\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430", "\u0444\u043E\u0440\u043C\u0430", "\u0430\u043B\u0433\u043E\u0440\u0438\u0442\u043C"];
+        if (prev && prev.value === "." && next && next.value === "(" && (!caller || !nonQueryCallers.includes(caller))) {
           issues.push({
             line: tok.line,
             rule: "ITS-PERF-001",
@@ -1002,19 +1043,44 @@ var StandardsChecker = class {
 };
 
 // src/extensionGenerator.ts
+var CANONICAL_SIGNATURES = {
+  "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F": { params: ["\u041E\u0442\u043A\u0430\u0437", "\u0420\u0435\u0436\u0438\u043C\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F"] },
+  "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u044F\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F": { params: ["\u041E\u0442\u043A\u0430\u0437"] },
+  "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F": { params: ["\u0414\u0430\u043D\u043D\u044B\u0435\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F", "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430"] },
+  "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0438\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F": { params: ["\u041E\u0442\u043A\u0430\u0437", "\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u0435\u043C\u044B\u0435\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B"] },
+  "\u041F\u0435\u0440\u0435\u0434\u0417\u0430\u043F\u0438\u0441\u044C\u044E": { params: ["\u041E\u0442\u043A\u0430\u0437"] },
+  "\u041F\u0440\u0438\u0417\u0430\u043F\u0438\u0441\u0438": { params: ["\u041E\u0442\u043A\u0430\u0437"] },
+  "\u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435": { params: ["\u041E\u0442\u043A\u0430\u0437", "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430"], defaultDirective: "&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435" },
+  "\u041F\u0440\u0438\u041E\u0442\u043A\u0440\u044B\u0442\u0438\u0438": { params: ["\u041E\u0442\u043A\u0430\u0437"], defaultDirective: "&\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435" },
+  "\u041F\u0435\u0440\u0435\u0434\u0417\u0430\u043A\u0440\u044B\u0442\u0438\u0435\u043C": { params: ["\u041E\u0442\u043A\u0430\u0437", "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0435\u0420\u0430\u0431\u043E\u0442\u044B", "\u0422\u0435\u043A\u0441\u0442\u041F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u044F", "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430"], defaultDirective: "&\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435" },
+  "\u041F\u043E\u0441\u043B\u0435\u0417\u0430\u043F\u0438\u0441\u0438": { params: ["\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B\u0417\u0430\u043F\u0438\u0441\u0438"], defaultDirective: "&\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435" },
+  "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041E\u043F\u043E\u0432\u0435\u0449\u0435\u043D\u0438\u044F": { params: ["\u0418\u043C\u044F\u0421\u043E\u0431\u044B\u0442\u0438\u044F", "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440", "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A"], defaultDirective: "&\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435" }
+};
 var ExtensionGenerator = class {
   /**
-   * Generates a fully compliant 1C Extension method interceptor.
+   * Generates a fully compliant 1C Extension method interceptor with verified signature.
    */
   static generateInterceptor(options) {
-    const keyword = options.isFunction ? "\u0424\u0443\u043D\u043A\u0446\u0438\u044F" : "\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430";
-    const endKeyword = options.isFunction ? "\u041A\u043E\u043D\u0435\u0446\u0424\u0443\u043D\u043A\u0446\u0438\u0438" : "\u041A\u043E\u043D\u0435\u0446\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B";
-    const paramsList = options.parameters.join(", ");
+    const canonical = CANONICAL_SIGNATURES[options.targetMethod];
+    let params = options.parameters;
+    if ((!params || params.length === 0) && canonical) {
+      params = canonical.params;
+    }
+    const isFunc = canonical?.isFunction !== void 0 ? canonical.isFunction : options.isFunction;
+    const keyword = isFunc ? "\u0424\u0443\u043D\u043A\u0446\u0438\u044F" : "\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430";
+    const endKeyword = isFunc ? "\u041A\u043E\u043D\u0435\u0446\u0424\u0443\u043D\u043A\u0446\u0438\u0438" : "\u041A\u043E\u043D\u0435\u0446\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B";
+    const paramsList = params.join(", ");
     const directiveName = `&${options.directive}("${options.targetMethod}")`;
+    let compilationHeader = "";
+    if (options.moduleType === "\u041C\u043E\u0434\u0443\u043B\u044C\u0424\u043E\u0440\u043C\u044B" || options.compilationDirective || canonical?.defaultDirective) {
+      const comp = options.compilationDirective || canonical?.defaultDirective || "&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435";
+      compilationHeader = `${comp}
+`;
+    }
     let body = "";
     switch (options.directive) {
       case "\u0412\u043C\u0435\u0441\u0442\u043E":
-        if (options.isFunction) {
+        if (isFunc) {
           body = `    // \u041A\u0430\u0441\u0442\u043E\u043C\u043D\u0430\u044F \u043B\u043E\u0433\u0438\u043A\u0430 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u043F\u0435\u0440\u0435\u0434 \u0432\u044B\u0437\u043E\u0432\u043E\u043C \u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043C\u0435\u0442\u043E\u0434\u0430
     ${options.customLogic || "// \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u0435\u0434\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432"}
 
@@ -1036,7 +1102,7 @@ var ExtensionGenerator = class {
       case "\u041F\u0435\u0440\u0435\u0434":
         body = `    // \u041B\u043E\u0433\u0438\u043A\u0430, \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u043C\u0430\u044F \u0414\u041E \u0432\u044B\u0437\u043E\u0432\u0430 \u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043C\u0435\u0442\u043E\u0434\u0430 \u043F\u043E\u0441\u0442\u0430\u0432\u0449\u0438\u043A\u0430
     ${options.customLogic || "// \u0412\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u044F \u0432\u0445\u043E\u0434\u043D\u044B\u0445 \u0434\u0430\u043D\u043D\u044B\u0445 \u0438\u043B\u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043F\u0440\u0430\u0432"}
-    // \u041F\u0440\u0438 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 \u043F\u0440\u0435\u0440\u044B\u0432\u0430\u043D\u0438\u044F \u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F (\u0435\u0441\u043B\u0438 \u0435\u0441\u0442\u044C \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440 \u041E\u0442\u043A\u0430\u0437):
+    // \u041F\u0440\u0438 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 \u043F\u0440\u0435\u0440\u044B\u0432\u0430\u043D\u0438\u044F \u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F:
     // \u041E\u0442\u043A\u0430\u0437 = \u0418\u0441\u0442\u0438\u043D\u0430;`;
         break;
       case "\u041F\u043E\u0441\u043B\u0435":
@@ -1056,7 +1122,7 @@ var ExtensionGenerator = class {
         break;
     }
     return `// &${options.directive} \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 \u0434\u043B\u044F \u043C\u0435\u0442\u043E\u0434\u0430 "${options.targetMethod}"
-${directiveName}
+${compilationHeader}${directiveName}
 ${keyword} \u0420\u0430\u0441\u0448_${options.targetMethod}(${paramsList})
 ${body}
 ${endKeyword}`;
@@ -1065,7 +1131,8 @@ ${endKeyword}`;
    * Generates a complete Managed Form extension handler with dynamic button injection.
    */
   static generateFormButtonExtension(buttonName, buttonTitle, commandName) {
-    return `&\u041F\u043E\u0441\u043B\u0435("\u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435")
+    return `&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435
+&\u041F\u043E\u0441\u043B\u0435("\u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435")
 \u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430 \u0420\u0430\u0441\u0448_\u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435(\u041E\u0442\u043A\u0430\u0437, \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430)
     // 1. \u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0444\u043E\u0440\u043C\u044B \u0432 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0438
     \u041A\u043E\u043C\u0430\u043D\u0434\u0430\u0424\u043E\u0440\u043C\u044B = \u041A\u043E\u043C\u0430\u043D\u0434\u044B.\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C("${commandName}");
@@ -1112,24 +1179,39 @@ ${endKeyword}`;
 var fs = __toESM(require("fs"));
 var path = __toESM(require("path"));
 var MetadataScanner = class {
-  static cachedMetadata = null;
+  static cache = /* @__PURE__ */ new Map();
   static async scanWorkspace(rootPath) {
-    if (this.cachedMetadata) {
-      return this.cachedMetadata;
+    const normalizedRoot = rootPath ? path.resolve(rootPath) : "";
+    if (this.cache.has(normalizedRoot)) {
+      return this.cache.get(normalizedRoot);
     }
     const objects = [];
-    const candidates = [
-      path.join(rootPath, "src", "cf"),
-      path.join(rootPath, "src"),
-      path.join(rootPath, "cf"),
-      rootPath
-    ];
-    for (const dir of candidates) {
-      if (fs.existsSync(dir)) {
-        this.findMetadataInDir(dir, objects);
+    let configName = "\u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044F 1\u0421";
+    let configVersion = "8.3";
+    let foundRealMetadata = false;
+    if (normalizedRoot && fs.existsSync(normalizedRoot)) {
+      const configNameDetected = this.detectConfigurationName(normalizedRoot);
+      if (configNameDetected) {
+        configName = configNameDetected;
+        foundRealMetadata = true;
+      }
+      const candidates = [
+        path.join(normalizedRoot, "src", "cf"),
+        path.join(normalizedRoot, "src"),
+        path.join(normalizedRoot, "cf"),
+        normalizedRoot
+      ];
+      for (const dir of candidates) {
+        if (fs.existsSync(dir)) {
+          this.findMetadataInDir(dir, objects);
+        }
+      }
+      if (objects.length > 0) {
+        foundRealMetadata = true;
       }
     }
-    if (objects.length === 0) {
+    const isDemoFallback = !foundRealMetadata || objects.length === 0;
+    if (isDemoFallback) {
       objects.push(
         {
           kind: "\u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A",
@@ -1182,13 +1264,37 @@ var MetadataScanner = class {
         }
       );
     }
-    this.cachedMetadata = {
-      name: "\u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044F 1\u0421",
-      version: "8.3",
-      objects: objects.slice(0, 50)
+    const result = {
+      name: configName,
+      version: configVersion,
+      objects: objects.slice(0, 100),
       // Keep context compact
+      isDemoFallback,
+      sourcePath: normalizedRoot
     };
-    return this.cachedMetadata;
+    this.cache.set(normalizedRoot, result);
+    return result;
+  }
+  static detectConfigurationName(rootPath) {
+    const possibleConfigFiles = [
+      path.join(rootPath, "Configuration.xml"),
+      path.join(rootPath, "src", "cf", "Configuration.xml"),
+      path.join(rootPath, "src", "Configuration.mdo"),
+      path.join(rootPath, "cf", "Configuration.xml")
+    ];
+    for (const filePath of possibleConfigFiles) {
+      if (fs.existsSync(filePath)) {
+        try {
+          const content = fs.readFileSync(filePath, "utf-8").slice(0, 5e3);
+          const match = content.match(/<Name>([^<]+)<\/Name>/i) || content.match(/<name>([^<]+)<\/name>/i);
+          if (match && match[1]) {
+            return match[1].trim();
+          }
+        } catch (_) {
+        }
+      }
+    }
+    return null;
   }
   static findMetadataInDir(dir, result) {
     try {
@@ -1215,16 +1321,72 @@ var MetadataScanner = class {
     try {
       const items = fs.readdirSync(folder);
       for (const item of items) {
-        const cleanName = item.replace(/\.xml$/, "");
-        if (cleanName && !result.some((r) => r.name === cleanName)) {
-          result.push({ kind, name: cleanName });
+        const itemPath = path.join(folder, item);
+        const stat = fs.statSync(itemPath);
+        let cleanName = "";
+        let xmlFilePath = "";
+        if (stat.isFile() && (item.endsWith(".xml") || item.endsWith(".mdo"))) {
+          cleanName = item.replace(/\.(xml|mdo)$/i, "");
+          xmlFilePath = itemPath;
+        } else if (stat.isDirectory()) {
+          cleanName = item;
+          const candidateXml = path.join(itemPath, `${item}.xml`);
+          const candidateMdo = path.join(itemPath, `${item}.mdo`);
+          if (fs.existsSync(candidateXml)) {
+            xmlFilePath = candidateXml;
+          } else if (fs.existsSync(candidateMdo)) {
+            xmlFilePath = candidateMdo;
+          }
+        }
+        if (cleanName && !result.some((r) => r.name === cleanName && r.kind === kind)) {
+          const metadataObj = { kind, name: cleanName };
+          if (xmlFilePath && fs.existsSync(xmlFilePath)) {
+            try {
+              const fileStat = fs.statSync(xmlFilePath);
+              if (fileStat.size < 2 * 1024 * 1024) {
+                const content = fs.readFileSync(xmlFilePath, "utf-8");
+                this.enrichMetadataObjectFromXml(metadataObj, content);
+              }
+            } catch (_) {
+            }
+          }
+          result.push(metadataObj);
         }
       }
     } catch (_) {
     }
   }
+  static enrichMetadataObjectFromXml(obj, content) {
+    const tsMatches = content.matchAll(/<(?:TabularSection|tabularSections)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
+    const tabularSections = [];
+    for (const match of tsMatches) {
+      const tsName = match[1].trim();
+      if (tsName && !tabularSections.some((t) => t.name === tsName)) {
+        tabularSections.push({ name: tsName, fields: [] });
+      }
+    }
+    if (tabularSections.length > 0) {
+      obj.tabularSections = tabularSections;
+    }
+    const attrMatches = content.matchAll(/<(?:Attribute|attributes)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
+    const fields = [];
+    for (const match of attrMatches) {
+      const attrName = match[1].trim();
+      if (attrName && !fields.some((f) => f.name === attrName)) {
+        fields.push({ name: attrName });
+      }
+    }
+    if (fields.length > 0) {
+      obj.fields = fields.slice(0, 30);
+    }
+    const synMatch = content.match(/<Synonym[\s\S]*?<v8:content>([^<]+)<\/v8:content>/i);
+    if (synMatch && synMatch[1]) {
+      obj.synonym = synMatch[1].trim();
+    }
+  }
   static formatForPrompt(metadata) {
-    const lines = ["// \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0435 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 1\u0421:"];
+    const header = metadata.isDemoFallback ? `// \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 (\u0414\u0435\u043C\u043E-\u0441\u0445\u0435\u043C\u0430, \u0444\u0430\u0439\u043B\u044B \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B \u0432 \u0440\u0430\u0431\u043E\u0447\u0435\u0439 \u043E\u0431\u043B\u0430\u0441\u0442\u0438):` : `// \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 1\u0421 "${metadata.name}":`;
+    const lines = [header];
     const grouped = {};
     for (const obj of metadata.objects) {
       if (!grouped[obj.kind]) {
@@ -1238,12 +1400,17 @@ var MetadataScanner = class {
       grouped[obj.kind].push(desc);
     }
     for (const [kind, list] of Object.entries(grouped)) {
-      lines.push(`// ${kind}: ${list.slice(0, 10).join(", ")}`);
+      lines.push(`// ${kind}: ${list.slice(0, 15).join(", ")}`);
     }
     return lines.join("\n");
   }
-  static clearCache() {
-    this.cachedMetadata = null;
+  static clearCache(rootPath) {
+    if (rootPath) {
+      const normalized = path.resolve(rootPath);
+      this.cache.delete(normalized);
+    } else {
+      this.cache.clear();
+    }
   }
 };
 
@@ -1437,7 +1604,8 @@ var TechLogAnalyzer = class {
       if (/^\d{2}:\d{2}\.\d{4,6}-\d+,\w+,\d+/.test(line.trim())) {
         if (currentEventText) {
           const parsed = this.parseSingleEvent(currentEventText);
-          if (parsed) events.push(parsed);
+          if (parsed)
+            events.push(parsed);
         }
         currentEventText = line.trim();
       } else if (currentEventText) {
@@ -1446,13 +1614,15 @@ var TechLogAnalyzer = class {
     }
     if (currentEventText) {
       const parsed = this.parseSingleEvent(currentEventText);
-      if (parsed) events.push(parsed);
+      if (parsed)
+        events.push(parsed);
     }
     return events;
   }
   static parseSingleEvent(eventText) {
     const headerMatch = eventText.match(/^(\d{2}:\d{2}\.\d{4,6})-(\d+),(\w+),(\d+),(.*)/s);
-    if (!headerMatch) return null;
+    if (!headerMatch)
+      return null;
     const timestamp = headerMatch[1];
     const durationMicrosec = parseInt(headerMatch[2], 10);
     const durationSec = durationMicrosec / 1e6;
@@ -1649,7 +1819,8 @@ var McpServer1C = class {
   start() {
     this.rl.on("line", (line) => {
       const trimmed = line.trim();
-      if (!trimmed) return;
+      if (!trimmed)
+        return;
       try {
         const request = JSON.parse(trimmed);
         this.handleRequest(request);
@@ -1892,7 +2063,7 @@ var McpServer1C = class {
             tabularSection: args.tabularSection,
             registerName: args.registerName,
             registerType: args.registerType || "\u041E\u0441\u0442\u0430\u0442\u043A\u0438",
-            fields: ["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"],
+            fields: args.fields || ["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"],
             includeScaffolding: args.includeScaffolding !== false
           });
           this.sendToolResponse(id, { queryCode: generated });
@@ -1914,9 +2085,9 @@ var McpServer1C = class {
           const interceptor = ExtensionGenerator.generateInterceptor({
             targetMethod: args.targetMethod,
             directive: args.directive,
-            moduleType: "\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430",
+            moduleType: args.moduleType || "\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430",
             isFunction: Boolean(args.isFunction),
-            parameters: args.parameters || ["\u041E\u0442\u043A\u0430\u0437"],
+            parameters: args.parameters || [],
             customLogic: args.customLogic
           });
           this.sendToolResponse(id, { code: interceptor });
@@ -1940,6 +2111,7 @@ var McpServer1C = class {
             configName: metadata.name,
             version: metadata.version,
             objectsCount: metadata.objects.length,
+            isDemoFallback: metadata.isDemoFallback,
             summary
           });
           break;

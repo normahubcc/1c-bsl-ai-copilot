@@ -15,10 +15,33 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
 class SidecarHandler(BaseHTTPRequestHandler):
     config: SidecarConfig = SidecarConfig()
 
+    # Sidecar auth token: if set via SIDECAR_AUTH_TOKEN, requests must include
+    # Authorization: Bearer <token>. Prevents other local processes from
+    # using the API key stored in the sidecar config.
+    _auth_token: str = ""
+
+    def _check_auth(self) -> bool:
+        """Validates bearer token if SIDECAR_AUTH_TOKEN is configured."""
+        if not self._auth_token:
+            return True  # No token configured — open access (localhost only)
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header == f"Bearer {self._auth_token}":
+            return True
+        self._set_headers(401)
+        self.wfile.write(json.dumps({"error": "Unauthorized: invalid or missing sidecar token"}).encode("utf-8"))
+        return False
+
     def _set_headers(self, status: int = 200):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # Restrict CORS to VS Code webview origins and localhost only
+        origin = self.headers.get("Origin", "")
+        allowed_origins = ["vscode-webview://", "http://localhost", "http://127.0.0.1"]
+        if any(origin.startswith(prefix) for prefix in allowed_origins):
+            self.send_header("Access-Control-Allow-Origin", origin)
+        else:
+            # Default: no CORS header (browser will block cross-origin)
+            self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
@@ -27,6 +50,8 @@ class SidecarHandler(BaseHTTPRequestHandler):
         self._set_headers(204)
 
     def do_GET(self):
+        if not self._check_auth():
+            return
         if self.path in ("/health", "/status", "/", "/v1/health", "/v1/status"):
             resp = {
                 "status": "ok",
@@ -42,6 +67,8 @@ class SidecarHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Not Found"}).encode("utf-8"))
 
     def do_POST(self):
+        if not self._check_auth():
+            return
         content_length = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(content_length)
 
@@ -100,9 +127,10 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 )
                 self._set_headers(200)
                 self.wfile.write(json.dumps({"result": result}, ensure_ascii=False).encode("utf-8"))
-            except Exception as e:
-                self._set_headers(500)
-                self.wfile.write(json.dumps({"error": str(e)}, ensure_ascii=False).encode("utf-8"))
+            except Exception:
+                # Sanitize: never leak internal error details, API keys, or stack traces
+                self._set_headers(502)
+                self.wfile.write(json.dumps({"error": "Ошибка вызова NormaHub LLM. Проверьте API-ключ и сетевое подключение."}, ensure_ascii=False).encode("utf-8"))
 
         elif self.path == "/v1/bdd":
             entity = payload.get("entity", "РеализацияТоваровУслуг")
@@ -128,8 +156,14 @@ class SidecarHandler(BaseHTTPRequestHandler):
 
 
 def run_server(config: SidecarConfig):
+    import os
     SidecarHandler.config = config
+    SidecarHandler._auth_token = os.getenv("SIDECAR_AUTH_TOKEN", "")
     server = ThreadingHTTPServer((config.host, config.port), SidecarHandler)
+    if SidecarHandler._auth_token:
+        print("✓ Sidecar auth token is configured (bearer authentication enabled)")
+    else:
+        print("⚠ No SIDECAR_AUTH_TOKEN set — sidecar is open to any local process")
     print(f"✓ 1C Configurator Global Sidecar listening on http://{config.host}:{config.port}")
     try:
         server.serve_forever()

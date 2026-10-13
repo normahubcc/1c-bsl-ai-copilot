@@ -3,6 +3,7 @@
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
@@ -89,15 +90,31 @@ class SidecarCore:
     @staticmethod
     def build_batch_query(entity: str, tabular: str, register: str, register_type: str = "Остатки") -> str:
         """Generates a professional 1C Batch Query with Temp Tables and indexing."""
+        clean_entity = entity.strip()
+        full_entity = clean_entity if "." in clean_entity else f"Документ.{clean_entity}"
+
+        clean_reg = re.sub(r"^(РегистрНакопления|РегистрСведений|РегистрБухгалтерии)\.", "", register.strip())
+        reg_type = register_type.strip() or "Остатки"
+
+        if register.startswith("РегистрСведений.") or reg_type in ("СрезПоследних", "СрезПервых"):
+            reg_kind = "РегистрСведений"
+            vt_res_name = "Цена"
+        elif register.startswith("РегистрБухгалтерии."):
+            reg_kind = "РегистрБухгалтерии"
+            vt_res_name = "СуммаОстаток"
+        else:
+            reg_kind = "РегистрНакопления"
+            vt_res_name = "КоличествоОстаток" if reg_type == "Остатки" else "КоличествоОборот"
+
         vt_source = f"ВТ_{tabular}"
-        vt_balances = f"ВТ_Остатки{register}"
+        vt_balances = f"ВТ_Остатки{clean_reg}"
 
         query = f"""ВЫБРАТЬ
     ДокументТаблица.Номенклатура КАК Номенклатура,
     СУММА(ДокументТаблица.Количество) КАК Количество
 ПОМЕСТИТЬ {vt_source}
 ИЗ
-    Документ.{entity}.{tabular} КАК ДокументТаблица
+    {full_entity}.{tabular} КАК ДокументТаблица
 ГДЕ
     ДокументТаблица.Ссылка = &Ссылка
 СГРУППИРОВАТЬ ПО
@@ -109,10 +126,10 @@ class SidecarCore:
 ////////////////////////////////////////////////////////////////////////////////
 ВЫБРАТЬ
     Остатки.Номенклатура КАК Номенклатура,
-    Остатки.КоличествоОстаток КАК КоличествоОстаток
+    Остатки.{vt_res_name} КАК {vt_res_name}
 ПОМЕСТИТЬ {vt_balances}
 ИЗ
-    РегистрНакопления.{register}.{register_type}(
+    {reg_kind}.{clean_reg}.{reg_type}(
         &ПериодКонтроля,
         Номенклатура В (ВЫБРАТЬ {vt_source}.Номенклатура ИЗ {vt_source})
     ) КАК Остатки
@@ -124,14 +141,14 @@ class SidecarCore:
 ВЫБРАТЬ
     Исходные.Номенклатура КАК Номенклатура,
     Исходные.Количество КАК Требуется,
-    ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК Доступно,
-    Исходные.Количество - ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК Дефицит
+    ЕСТЬNULL(Остатки.{vt_res_name}, 0) КАК Доступно,
+    Исходные.Количество - ЕСТЬNULL(Остатки.{vt_res_name}, 0) КАК Дефицит
 ИЗ
     {vt_source} КАК Исходные
     ЛЕВОЕ СОЕДИНЕНИЕ {vt_balances} КАК Остатки
         ПО Исходные.Номенклатура = Остатки.Номенклатура
 ГДЕ
-    Исходные.Количество > ЕСТЬNULL(Остатки.КоличествоОстаток, 0)
+    Исходные.Количество > ЕСТЬNULL(Остатки.{vt_res_name}, 0)
 ;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -275,6 +292,18 @@ class SidecarCore:
         """Calls NormaHub LLM gateway directly via HTTPS."""
         if not api_key:
             raise ValueError("NORMAHUB_API_KEY не задан")
+
+        parsed = urllib.parse.urlparse(base_url)
+        hostname = (parsed.hostname or "").lower()
+        trusted_hosts = ("api.normahub.cc", "normahub.cc", "localhost", "127.0.0.1", "::1")
+        is_trusted = (
+            hostname in trusted_hosts
+            or hostname.endswith(".normahub.cc")
+        )
+        if not is_trusted:
+            raise ValueError(
+                f"Untrusted baseUrl host: '{hostname}'. NormaHub API key will not be sent to untrusted domains."
+            )
 
         url = f"{base_url.rstrip('/')}/chat/completions"
         payload = json.dumps({

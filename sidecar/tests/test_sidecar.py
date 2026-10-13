@@ -42,6 +42,22 @@ class TestSidecarCore(unittest.TestCase):
         self.assertIn("УНИЧТОЖИТЬ ВТ_Товары", query)
         self.assertIn("МенеджерВременныхТаблиц", query)
 
+    def test_build_batch_query_srez_poslednih(self):
+        query = SidecarCore.build_batch_query("УстановкаЦен", "Товары", "ЦеныНоменклатуры", register_type="СрезПоследних")
+        self.assertIn("РегистрСведений.ЦеныНоменклатуры.СрезПоследних", query)
+        self.assertNotIn("РегистрНакопления.ЦеныНоменклатуры", query)
+
+    def test_call_normahub_llm_rejects_untrusted_host(self):
+        with self.assertRaises(ValueError) as ctx:
+            SidecarCore.call_normahub_llm(
+                api_key="secret",
+                base_url="https://evil-untrusted-server.com/v1",
+                model="deepseek-v4.1-flash",
+                system_prompt="test",
+                user_prompt="test"
+            )
+        self.assertIn("Untrusted baseUrl host", str(ctx.exception))
+
     def test_refactor_query(self):
         query = """
         ВЫБРАТЬ Док.Номенклатура, Остатки.КоличествоОстаток
@@ -206,6 +222,25 @@ class TestSidecarHTTPServer(unittest.TestCase):
             self.assertEqual(data["events_count"], 1)
             self.assertEqual(data["diagnoses_count"], 1)
             self.assertIn("Транзакционные блокировки (TLOCK)", data["report"])
+
+    def test_auth_token_enforcement(self):
+        SidecarHandler._auth_token = "test-token-xyz"
+        url = f"http://127.0.0.1:{self.port}/health"
+
+        # 1. Unauthenticated request must return 401
+        try:
+            with urllib.request.urlopen(url) as resp:
+                self.fail("Expected HTTP 401 without auth token")
+        except urllib.error.HTTPError as err:
+            self.assertEqual(err.code, 401)
+
+        # 2. Authenticated request with Bearer token must succeed
+        req = urllib.request.Request(url, headers={"Authorization": "Bearer test-token-xyz"})
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+
+        # Reset
+        SidecarHandler._auth_token = ""
 
 
 if __name__ == "__main__":

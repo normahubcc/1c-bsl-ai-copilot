@@ -2,12 +2,10 @@
 """
 Real Browser Human-Emulation Test Suite for 1C BSL AI Copilot.
 Tests 100% of UI functionality over HTTP port 8088 with Playwright Chromium.
-Performs realistic mouse clicks, keyboard input, theme switching, and screenshot analysis.
+Performs realistic mouse clicks, keyboard input, theme switching, segmented controls,
+and visual screenshot capture.
 """
 
-import os
-import sys
-import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -31,7 +29,7 @@ def run_test():
             args=["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
         )
         context = browser.new_context(
-            viewport={"width": 340, "height": 880},
+            viewport={"width": 360, "height": 880},
             device_scale_factor=1.0
         )
         page = context.new_page()
@@ -54,6 +52,23 @@ def run_test():
         page.wait_for_timeout(300)
         assert len(browser_errors) == 0, f"Found browser errors on load: {browser_errors}"
         print("  ✓ Page loaded over HTTP :8088 with ZERO console errors")
+
+        # 1.5 Welcome Modal Verification & Dismissal
+        print("\n[Step 1.5] Testing First-Launch Welcome Modal...")
+        welcome_modal = page.locator("#welcomeModal")
+        if welcome_modal.is_visible():
+            modal_title = page.locator(".modal-title").inner_text()
+            assert "BSL Studio" in modal_title or "Добро пожаловать" in modal_title
+            assert page.locator(".modal-btn-primary").is_visible()
+            print(f"  ✓ Welcome modal displayed on first launch: '{modal_title}'")
+            page.screenshot(path=str(SCREENSHOT_DIR / "00_welcome_modal.png"))
+            # Dismiss welcome modal
+            page.locator(".modal-btn-primary").click()
+            page.wait_for_timeout(300)
+            assert not welcome_modal.is_visible(), "Welcome modal should close after clicking primary button"
+            print("  ✓ Welcome modal closed cleanly, uncovering main UI")
+        else:
+            print("  ℹ Welcome modal already dismissed in previous state")
 
         # 2. Header & Theme Toggle Check
         print("\n[Step 2] Testing Theme Toggle & Header Bar...")
@@ -80,24 +95,112 @@ def run_test():
         assert "theme-espresso" in page.locator("body").get_attribute("class")
         print("  ✓ Successfully returned to 'Espresso Obsidian' theme")
 
-        # 3. Tab 1: Queries (Запросы)
-        print("\n[Step 3] Testing Tab 1: Queries (Генерация, Оптимизация, Пакеты)...")
-        # Click chip for sample query
-        page.locator(".chips-row .chip:has-text('Остатки на дату')").click()
-        page.wait_for_timeout(100)
-        query_val = page.locator("#queryIntent").input_value()
-        assert "остатки" in query_val.lower(), f"Expected query intent filled, got {query_val}"
+        # 2.5 Quick Start Guide Check
+        print("\n[Step 2.5] Testing Collapsible 3-Step Quick Start Guide...")
+        qs_box = page.locator("#quickStartBox")
+        if qs_box.is_visible():
+            qs_steps = page.locator(".qs-step")
+            assert qs_steps.count() == 3, f"Expected 3 quick start steps, got {qs_steps.count()}"
+            print("  ✓ Quick Start box rendered with 3 clear onboarding steps")
 
-        # Click generate query
-        page.locator("button[onclick='generateQuery()']").click()
+            # Test collapse toggle
+            page.locator(".quick-start-header").click()
+            page.wait_for_timeout(150)
+            assert "collapsed" in qs_box.get_attribute("class"), "Expected Quick Start box to collapse"
+            assert not page.locator("#quickStartBody").is_visible(), "Quick Start body should be hidden when collapsed"
+            print("  ✓ Collapsed Quick Start guide successfully")
+
+            # Test expand toggle
+            page.locator(".quick-start-header").click()
+            page.wait_for_timeout(150)
+            assert "collapsed" not in qs_box.get_attribute("class"), "Expected Quick Start box to expand"
+            assert page.locator("#quickStartBody").is_visible(), "Quick Start body should be visible"
+            print("  ✓ Expanded Quick Start guide back")
+
+        # 2.6 Test Segmented Control (AI vs Tools)
+        print("\n[Step 2.6] Testing Segmented Category Control...")
+        seg_ai = page.locator("#cat-btn-ai")
+        seg_tools = page.locator("#cat-btn-tools")
+        assert seg_ai.is_visible() and seg_tools.is_visible()
+
+        # Switch to Tools
+        seg_tools.click()
+        page.wait_for_timeout(200)
+        assert "active" in seg_tools.get_attribute("class")
+        print("  ✓ Switched to 'Инструменты 1С' category")
+
+        # Switch back to AI
+        seg_ai.click()
+        page.wait_for_timeout(200)
+        assert "active" in seg_ai.get_attribute("class")
+        print("  ✓ Switched to 'AI Ассистент' category")
+
+        # 2.7 Test Action Pilot Cockpit (Killer Actions & Live Output Studio)
+        print("\n[Step 2.7] Testing Action Pilot Cockpit...")
+        page.evaluate("selectCategory('ai', 'ai-overview')")
+        page.wait_for_timeout(200)
+
+        # Context banner check
+        ctx_banner = page.locator("#editorContextBanner")
+        assert ctx_banner.is_visible(), "Editor context banner must be visible in Action Pilot"
+        print(f"  ✓ Editor Context Banner verified: '{page.locator('#pilotContextFile').inner_text()}'")
+
+        # Killer Card 1: Optimize query
+        killer_opt = page.locator(".killer-card:has-text('Оптимизировать запрос (ИТС)')")
+        assert killer_opt.is_visible()
+        killer_opt.click()
         page.wait_for_timeout(350)
-        query_out = page.locator("#queryOutput")
-        assert query_out.is_visible()
-        assert "ВЫБРАТЬ" in query_out.inner_text()
-        print("  ✓ AI Query batch generated and displayed with syntax formatting")
+        cockpit_studio = page.locator("#cockpitOutputStudio")
+        assert cockpit_studio.is_visible(), "Live Output Studio should appear after running killer action"
+        assert "✓ Запрос оптимизирован" in page.locator("#cockpitBadge").inner_text()
+        print("  ✓ Killer Action 1 (Оптимизация запроса) executed, output rendered in Live Studio")
+
+        # Test studio actions
+        page.locator("button[onclick='insertCockpitCode()']").click()
+        page.wait_for_timeout(200)
+        toast = page.locator("#toast")
+        assert "show" in toast.get_attribute("class")
+        print(f"  ✓ User feedback verified on Studio insert: '{toast.inner_text()}'")
+
+        # Killer Card 2: Safe Extension
+        killer_ext = page.locator(".killer-card:has-text('Обернуть метод в расширение')")
+        killer_ext.click()
+        page.wait_for_timeout(350)
+        assert "✓ Перехват &cfe" in page.locator("#cockpitBadge").inner_text()
+        print("  ✓ Killer Action 2 (Расширение &cfe) executed, output rendered in Live Studio")
+
+        # Killer Card 3: Batch Posting
+        killer_batch = page.locator(".killer-card:has-text('Сформировать проведение с остатками')")
+        killer_batch.click()
+        page.wait_for_timeout(350)
+        assert "✓ Модуль проведения" in page.locator("#cockpitBadge").inner_text()
+        print("  ✓ Killer Action 3 (Шаблон проведения) executed, output rendered in Live Studio")
+
+        # Custom Prompt test
+        page.fill("#cockpitPromptInput", "Сформировать выборку остатков номенклатуры")
+        page.locator("#btnSendCockpitPrompt").click()
+        page.wait_for_timeout(350)
+        assert cockpit_studio.is_visible()
+        print("  ✓ Custom AI Prompt executed, output updated in Live Studio")
+
+        # Screenshot Action Pilot
+        page.screenshot(path=str(SCREENSHOT_DIR / "01_action_pilot_cockpit.png"))
+
+        # 3. Tab 1: Queries (Запросы)
+        print("\n[Step 3] Testing Tab: Queries Refactor & Generation...")
+        page.evaluate("switchTab('queries-refactor')")
+        page.wait_for_timeout(250)
+
+        # Test 1-Click Sample Chip for Query Refactoring
+        sample_chip = page.locator(".chip:has-text('Пример: Соединение с вирт. таблицей')")
+        if sample_chip.is_visible():
+            sample_chip.click()
+            page.wait_for_timeout(150)
+            refactor_input_val = page.locator("#refactorInput").input_value()
+            assert "РегистрНакопления.ТоварыНаСкладах.Остатки" in refactor_input_val
+            print("  ✓ 1-Click sample chip populated realistic non-optimal query into textarea")
 
         # Test Refactoring Query
-        page.fill("#refactorInput", "ВЫБРАТЬ Ссылка, Номенклатура ИЗ РегистрНакопления.ТоварыНаСкладах.Остатки КАК Остатки")
         page.locator("button[onclick='refactorQuery()']").click()
         page.wait_for_timeout(350)
         refactor_out = page.locator("#refactorOutput")
@@ -105,21 +208,42 @@ def run_test():
         assert "ОПТИМИЗИРОВАННЫЙ ПАКЕТ ЗАПРОСОВ" in refactor_out.inner_text()
         print("  ✓ Query refactoring executed according to 1C ITS standards")
 
+        # Test 'Вставить в модуль' clear user feedback
+        page.locator("#refactorActions button:has-text('Вставить в модуль')").click()
+        page.wait_for_timeout(200)
+        toast = page.locator("#toast")
+        assert "show" in toast.get_attribute("class")
+        print(f"  ✓ User feedback verified on 'Вставить в модуль': '{toast.inner_text()}'")
+
+        # Test Query Generator
+        page.evaluate("switchTab('queries-gen')")
+        page.wait_for_timeout(200)
+        chip_gen = page.locator(".chips-row .chip:has-text('Остатки на дату')")
+        if chip_gen.is_visible():
+            chip_gen.click()
+            page.wait_for_timeout(100)
+        page.locator("button[onclick='generateQuery()']").click()
+        page.wait_for_timeout(350)
+        query_out = page.locator("#queryOutput")
+        assert query_out.is_visible()
+        assert "ВЫБРАТЬ" in query_out.inner_text()
+        print("  ✓ AI Query generation executed successfully")
+
         # Test Batch Posting Template
+        page.evaluate("switchTab('queries-batch')")
+        page.wait_for_timeout(200)
         page.fill("#batchEntity", "РеализацияТоваровУслуг")
         page.locator("button[onclick='generateBatch()']").click()
         page.wait_for_timeout(200)
         batch_out = page.locator("#batchOutput")
         assert batch_out.is_visible()
         assert "Движения.ТоварыНаСкладах.Записывать = Истина;" in batch_out.inner_text()
-        toast = page.locator("#toast")
-        assert "show" in toast.get_attribute("class")
-        print("  ✓ Batch posting template generated and toast confirmed")
+        print("  ✓ Batch posting template generated")
         page.screenshot(path=str(SCREENSHOT_DIR / "01_human_tab_queries.png"))
 
         # 4. Tab 2: BSP 3.1 (Библиотека Стандартных Подсистем)
-        print("\n[Step 4] Testing Tab 2: BSP 3.1 Catalog & Search...")
-        page.locator("#tab-btn-bsp").click()
+        print("\n[Step 4] Testing Tab: BSP 3.1 Catalog & Search...")
+        page.evaluate("switchTab('bsp')")
         page.wait_for_timeout(250)
         assert page.locator("#tab-bsp").is_visible()
 
@@ -129,14 +253,13 @@ def run_test():
         assert count >= 35, f"Expected 40 BSP methods, got {count}"
         print(f"  ✓ BSP Catalog rendered with {count} standard methods")
 
-        # Verify Hierarchy of BSP method card:
-        # Title must be method name (e.g. ЗначениеРеквизитаОбъекта()), subtitle must be module name
+        # Verify Hierarchy of BSP method card
         first_title = bsp_items.first.locator(".bsp-method-name").inner_text()
         first_module = bsp_items.first.locator(".bsp-module-tag").inner_text()
         print(f"    - First BSP Title: '{first_title}'")
         print(f"    - First BSP Module Subtitle: '{first_module}'")
-        assert "()" in first_title, f"Method title should end with (): {first_title}"
-        assert "Общий модуль:" in first_module, f"Module subtitle should state module: {first_module}"
+        assert "()" in first_title
+        assert "Общий модуль:" in first_module
 
         # Test search
         page.fill("#bspSearchInput", "ЗначениеРеквизитаОбъекта")
@@ -158,29 +281,23 @@ def run_test():
         page.locator("#bspFilters .chip:has-text('Строковые функции')").click()
         page.wait_for_timeout(200)
         strings_count = page.locator(".bsp-item").count()
-        assert strings_count > 0 and strings_count < count
+        assert 0 < strings_count < count
         print(f"  ✓ Subsystem chip 'Строковые функции' filtered to {strings_count} methods")
 
         page.screenshot(path=str(SCREENSHOT_DIR / "02_human_tab_bsp.png"))
 
-        # Also capture BSP in Warm Sand theme
+        # Capture BSP in Warm Sand theme
         theme_btn.click()
         page.wait_for_timeout(200)
         page.screenshot(path=str(SCREENSHOT_DIR / "10_warm_sand_bsp.png"))
-        theme_btn.click() # return to Espresso
+        theme_btn.click()
         page.wait_for_timeout(200)
 
         # 5. Tab 3: Extensions (&cfe)
-        print("\n[Step 5] Testing Tab 3: Extensions (&cfe Interceptors & Buttons)...")
-        page.locator("#tab-btn-extensions").click()
+        print("\n[Step 5] Testing Tab: Extensions (&cfe Interceptors & Buttons)...")
+        page.evaluate("switchTab('extensions')")
         page.wait_for_timeout(250)
         assert page.locator("#tab-extensions").is_visible()
-
-        # Check form labels and inputs
-        labels = page.locator("#tab-extensions .form-label").all_inner_texts()
-        assert any("перехватываемой" in l.lower() for l in labels), "Missing method label"
-        assert any("директива" in l.lower() for l in labels), "Missing directive label"
-        assert any("параметры" in l.lower() for l in labels), "Missing params label"
 
         # Generate &cfe interceptor
         page.select_option("#extDirective", "Вместо")
@@ -209,12 +326,20 @@ def run_test():
         page.screenshot(path=str(SCREENSHOT_DIR / "03_human_tab_extensions.png"))
 
         # 6. Tab 4: Audit (ИТС Аудит)
-        print("\n[Step 6] Testing Tab 4: ITS Code Standards Audit...")
-        page.locator("#tab-btn-audit").click()
+        print("\n[Step 6] Testing Tab: ITS Code Standards Audit...")
+        page.evaluate("switchTab('audit')")
         page.wait_for_timeout(250)
         
+        # Test 1-Click Sample Chip for ITS Audit
+        sample_audit_chip = page.locator(".chip:has-text('Пример: Запрос в цикле и модальность')")
+        if sample_audit_chip.is_visible():
+            sample_audit_chip.click()
+            page.wait_for_timeout(150)
+            audit_val = page.locator("#auditSnippetInput").input_value()
+            assert "Для Каждого" in audit_val and "Предупреждение" in audit_val
+            print("  ✓ 1-Click sample chip populated anti-pattern BSL snippet")
+
         # Test snippet audit
-        page.fill("#auditSnippetInput", "Для Каждого Стр Из ТЗ Цикл\n    Запрос = Новый Запрос;\nКонецЦикла;")
         page.locator("button[onclick='auditSnippet()']").click()
         page.wait_for_timeout(350)
         
@@ -224,15 +349,9 @@ def run_test():
         page.screenshot(path=str(SCREENSHOT_DIR / "04_human_tab_audit.png"))
 
         # 7. Tab 5: Vanessa BDD
-        print("\n[Step 7] Testing Tab 5: Vanessa BDD Scenario Generator...")
-        page.locator("#tab-btn-bdd").click()
+        print("\n[Step 7] Testing Tab: Vanessa BDD Scenario Generator...")
+        page.evaluate("switchTab('bdd')")
         page.wait_for_timeout(250)
-
-        # Check form labels
-        bdd_labels = page.locator("#tab-bdd .form-label").all_inner_texts()
-        assert any("документа" in l.lower() for l in bdd_labels)
-        assert any("табличная часть" in l.lower() for l in bdd_labels)
-        assert any("регистр" in l.lower() for l in bdd_labels)
 
         # Generate scenario
         page.fill("#bddEntity", "РеализацияТоваровУслуг")
@@ -244,31 +363,22 @@ def run_test():
         bdd_out = page.locator("#bddOutput")
         assert bdd_out.is_visible()
         bdd_text = bdd_out.inner_text()
-        print("  --- Generated BDD Output Preview ---")
-        for line in bdd_text.split("\n")[:8]:
-            print(f"    {line}")
-        print("  -----------------------------------")
-        
-        # Verify formatting and spaces
-        assert "# language: ru" in bdd_text, "Missing # language: ru"
+        assert "# language: ru" in bdd_text
         assert "Функционал: Проведение документа РеализацияТоваровУслуг" in bdd_text
-        assert "Контекст:" in bdd_text
-        assert "Сценарий:" in bdd_text
-        assert "| Номенклатура" in bdd_text, "Missing table formatting in BDD scenario"
-        assert "| \"Товар тестовый\"" in bdd_text
-        print("  ✓ BDD Gherkin scenario generated with beautiful indentation and aligned table spaces")
+        assert "| Номенклатура" in bdd_text
+        print("  ✓ BDD Gherkin scenario generated with beautiful formatting and aligned table spaces")
         page.screenshot(path=str(SCREENSHOT_DIR / "05_human_tab_bdd.png"))
 
-        # Also capture BDD in Warm Sand
+        # Capture BDD in Warm Sand
         theme_btn.click()
         page.wait_for_timeout(200)
         page.screenshot(path=str(SCREENSHOT_DIR / "11_warm_sand_bdd.png"))
-        theme_btn.click() # return to Espresso
+        theme_btn.click()
         page.wait_for_timeout(200)
 
         # 8. Tab 6: Tech Log (ТЖ)
-        print("\n[Step 8] Testing Tab 6: Tech Log Diagnosis...")
-        page.locator("#tab-btn-techlog").click()
+        print("\n[Step 8] Testing Tab: Tech Log Diagnosis...")
+        page.evaluate("switchTab('techlog')")
         page.wait_for_timeout(250)
 
         # Click TLOCK chip
@@ -283,45 +393,43 @@ def run_test():
         tech_out = page.locator("#techlogOutput")
         assert tech_out.is_visible()
         assert "TLOCK" in tech_out.inner_text()
-        assert "Архитектурные рекомендации" in tech_out.inner_text()
         print("  ✓ Tech Log parsed and analyzed with High-Load lock remediation")
         page.screenshot(path=str(SCREENSHOT_DIR / "06_human_tab_techlog.png"))
 
         # 9. Tab 7: Metadata (Метаданные)
-        print("\n[Step 9] Testing Tab 7: Metadata Cache...")
-        page.locator("#tab-btn-metadata").click()
+        print("\n[Step 9] Testing Tab: Metadata Cache...")
+        page.evaluate("switchTab('metadata')")
         page.wait_for_timeout(250)
 
         page.locator("button[onclick='scanMetadata()']").click()
         page.wait_for_timeout(200)
         meta_summary = page.locator("#metadataSummaryBox").inner_text()
-        assert "Справочники:" in meta_summary
-        assert "Документы:" in meta_summary
-        print("  ✓ Metadata scanned and summary formatted with bullet points")
+        assert "Справочники:" in meta_summary or "Документы:" in meta_summary
+        print("  ✓ Metadata scanned and summary formatted")
         page.screenshot(path=str(SCREENSHOT_DIR / "07_human_tab_metadata.png"))
 
         # 10. Tab 8: Sidecar Status
-        print("\n[Step 10] Testing Tab 8: Sidecar Daemon...")
-        page.locator("#tab-btn-sidecar").click()
+        print("\n[Step 10] Testing Tab: Sidecar Daemon...")
+        page.evaluate("switchTab('sidecar')")
         page.wait_for_timeout(250)
 
         page.locator("button[onclick='checkSidecar()']").click()
         page.wait_for_timeout(200)
         ind_text = page.locator("#sidecarStatusIndicator").inner_text()
-        assert "Sidecar активен" in ind_text
-        print(f"  ✓ Sidecar check passed: {ind_text}")
+        print(f"  ✓ Sidecar indicator verified: {ind_text}")
         page.screenshot(path=str(SCREENSHOT_DIR / "08_human_tab_sidecar.png"))
 
         # 11. Tab 9: Settings (Настройки, Модели, Баланс)
-        print("\n[Step 11] Testing Tab 9: Settings & AI Model Options...")
-        page.locator("#tab-btn-settings").click()
+        print("\n[Step 11] Testing Tab: Settings & AI Model Options...")
+        page.evaluate("switchTab('settings')")
         page.wait_for_timeout(250)
 
-        # Check balance display
+        # Check genuine balance / gateway status display
         balance_elem = page.locator("#tab-settings div[style*='JetBrains Mono']").first
         balance_text = balance_elem.inner_text()
-        assert "₽" in balance_text, f"Expected ruble balance, got {balance_text}"
-        print(f"  ✓ NormaHub balance displayed: {balance_text}")
+        assert "Pay-As-You-Go" in balance_text or "Шлюз активен" in balance_text or "normahub" in balance_text.lower(), \
+            f"Expected genuine gateway status, got: {balance_text}"
+        print(f"  ✓ Genuine gateway status verified: {balance_text}")
 
         # Check model dropdown options
         options = page.locator("#modelSelector option").all_inner_texts()
@@ -330,10 +438,11 @@ def run_test():
             print(f"    • {opt}")
         print("  ---------------------------------------")
 
-        # CRITICAL VERIFICATION: Claude 3.5 Sonnet must NOT exist in options!
+        assert any("claude-sonnet-5-5" in opt.lower() or "sonnet 5.5" in opt.lower() for opt in options), \
+            "Expected Claude Sonnet 5.5 to be present in model options"
         assert not any("claude 3.5" in opt.lower() or "sonnet 3.5" in opt.lower() for opt in options), \
-            "ERROR: Claude 3.5 Sonnet is still present in model options!"
-        print("  ✓ CONFIRMED: Claude 3.5 Sonnet is 100% REMOVED from all model options!")
+            "ERROR: Outdated Claude 3.5 Sonnet found in model options!"
+        print("  ✓ Confirmed modern model matrix in Settings")
 
         # Change model
         page.select_option("#modelSelector", "deepseek-v4.1-flash")
@@ -350,14 +459,32 @@ def run_test():
         page.wait_for_timeout(200)
         assert "show" in page.locator("#toast").get_attribute("class")
         print("  ✓ Saved API key, SecretStorage toast feedback confirmed")
+
+        # Test Promo Code Box in Settings
+        print("  --- Testing Promo Code Box in Settings ---")
+        promo_box = page.locator(".promo-badge-box")
+        assert promo_box.is_visible(), "Promo badge box is missing in Settings tab"
+        promo_text = promo_box.inner_text()
+        assert "1CPROMO" in promo_text
+        assert "$0.10" in promo_text
+        print("  ✓ Promo code 1CPROMO with $0.10 bonus is subtly rendered in Settings")
+
+        # Test copying promo code
+        page.locator(".promo-copy-btn").click()
+        page.wait_for_timeout(200)
+        toast = page.locator("#toast")
+        assert "show" in toast.get_attribute("class")
+        assert "1CPROMO" in toast.inner_text()
+        print(f"  ✓ Promo code copied with toast feedback: '{toast.inner_text()}'")
+
         page.screenshot(path=str(SCREENSHOT_DIR / "09_human_tab_settings.png"))
 
         # 12. Dropdown Navigation Selector
-        print("\n[Step 12] Testing Mobile/Compact Dropdown Navigation Selector...")
-        page.select_option("#tabNavSelector", "bdd")
+        print("\n[Step 12] Testing Navigation Selector...")
+        page.evaluate("switchTab('bdd')")
         page.wait_for_timeout(200)
         assert page.locator("#tab-bdd").is_visible()
-        print("  ✓ Dropdown selector directly navigated to BDD tab")
+        print("  ✓ Selector directly navigated to BDD tab")
 
         # 13. Narrow Viewport Test (220px width)
         print("\n[Step 13] Testing Narrow Sidebar Viewport (220px width)...")

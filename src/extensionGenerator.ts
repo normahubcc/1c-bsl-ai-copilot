@@ -7,6 +7,7 @@
  * 3. &После with post-processing and event logging
  * 4. &ИзменениеИКонтроль with #Вставка / #КонецВставки and #Удаление / #КонецУдаления
  * 5. Managed Form extension scaffolds (ПриСозданииНаСервере, dynamic UI injection)
+ * 6. Automatic signature inference for well-known 1C event handlers
  */
 
 export type ExtensionDirective = 'Вместо' | 'Перед' | 'После' | 'ИзменениеИКонтроль';
@@ -19,23 +20,51 @@ export interface ExtensionMethodOptions {
     parameters: string[];
     description?: string;
     customLogic?: string;
+    compilationDirective?: '&НаКлиенте' | '&НаСервере' | '&НаКлиентеНаСервереБезКонтекста' | '&НаСервереБезКонтекста';
 }
+
+const CANONICAL_SIGNATURES: Record<string, { params: string[]; isFunction?: boolean; defaultDirective?: string }> = {
+    'ОбработкаПроведения': { params: ['Отказ', 'РежимПроведения'] },
+    'ОбработкаУдаленияПроведения': { params: ['Отказ'] },
+    'ОбработкаЗаполнения': { params: ['ДанныеЗаполнения', 'СтандартнаяОбработка'] },
+    'ОбработкаПроверкиЗаполнения': { params: ['Отказ', 'ПроверяемыеРеквизиты'] },
+    'ПередЗаписью': { params: ['Отказ'] },
+    'ПриЗаписи': { params: ['Отказ'] },
+    'ПриСозданииНаСервере': { params: ['Отказ', 'СтандартнаяОбработка'], defaultDirective: '&НаСервере' },
+    'ПриОткрытии': { params: ['Отказ'], defaultDirective: '&НаКлиенте' },
+    'ПередЗакрытием': { params: ['Отказ', 'ЗавершениеРаботы', 'ТекстПредупреждения', 'СтандартнаяОбработка'], defaultDirective: '&НаКлиенте' },
+    'ПослеЗаписи': { params: ['ПараметрыЗаписи'], defaultDirective: '&НаКлиенте' },
+    'ОбработкаОповещения': { params: ['ИмяСобытия', 'Параметр', 'Источник'], defaultDirective: '&НаКлиенте' },
+};
 
 export class ExtensionGenerator {
     /**
-     * Generates a fully compliant 1C Extension method interceptor.
+     * Generates a fully compliant 1C Extension method interceptor with verified signature.
      */
     public static generateInterceptor(options: ExtensionMethodOptions): string {
-        const keyword = options.isFunction ? 'Функция' : 'Процедура';
-        const endKeyword = options.isFunction ? 'КонецФункции' : 'КонецПроцедуры';
-        const paramsList = options.parameters.join(', ');
+        const canonical = CANONICAL_SIGNATURES[options.targetMethod];
+        let params = options.parameters;
+        if ((!params || params.length === 0) && canonical) {
+            params = canonical.params;
+        }
+
+        const isFunc = canonical?.isFunction !== undefined ? canonical.isFunction : options.isFunction;
+        const keyword = isFunc ? 'Функция' : 'Процедура';
+        const endKeyword = isFunc ? 'КонецФункции' : 'КонецПроцедуры';
+        const paramsList = params.join(', ');
         const directiveName = `&${options.directive}("${options.targetMethod}")`;
+
+        let compilationHeader = '';
+        if (options.moduleType === 'МодульФормы' || options.compilationDirective || canonical?.defaultDirective) {
+            const comp = options.compilationDirective || canonical?.defaultDirective || '&НаСервере';
+            compilationHeader = `${comp}\n`;
+        }
 
         let body = '';
 
         switch (options.directive) {
             case 'Вместо':
-                if (options.isFunction) {
+                if (isFunc) {
                     body = `    // Кастомная логика расширения перед вызовом типового метода
     ${options.customLogic || '// Дополнительная предобработка параметров'}
 
@@ -58,7 +87,7 @@ export class ExtensionGenerator {
             case 'Перед':
                 body = `    // Логика, выполняемая ДО вызова типового метода поставщика
     ${options.customLogic || '// Валидация входных данных или проверка прав'}
-    // При необходимости прерывания типового выполнения (если есть параметр Отказ):
+    // При необходимости прерывания типового выполнения:
     // Отказ = Истина;`;
                 break;
 
@@ -81,7 +110,7 @@ export class ExtensionGenerator {
         }
 
         return `// &${options.directive} перехват для метода "${options.targetMethod}"
-${directiveName}
+${compilationHeader}${directiveName}
 ${keyword} Расш_${options.targetMethod}(${paramsList})
 ${body}
 ${endKeyword}`;
@@ -91,7 +120,8 @@ ${endKeyword}`;
      * Generates a complete Managed Form extension handler with dynamic button injection.
      */
     public static generateFormButtonExtension(buttonName: string, buttonTitle: string, commandName: string): string {
-        return `&После("ПриСозданииНаСервере")
+        return `&НаСервере
+&После("ПриСозданииНаСервере")
 Процедура Расш_ПриСозданииНаСервере(Отказ, СтандартнаяОбработка)
     // 1. Создание команды формы в расширении
     КомандаФормы = Команды.Добавить("${commandName}");

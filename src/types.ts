@@ -23,6 +23,8 @@ export interface ConfigurationMetadata {
     name: string;
     version?: string;
     objects: MetadataObject[];
+    isDemoFallback?: boolean;
+    sourcePath?: string;
 }
 
 export interface StandardIssue {

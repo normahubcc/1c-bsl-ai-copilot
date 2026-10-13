@@ -71,6 +71,8 @@ export class StandardsChecker {
                         suggestion: 'Установите управляемую блокировку данных перед чтением остатков для предотвращения взаимоблокировок (Deadlock) при параллельном проведении.'
                     });
                 }
+                inPosting = false;
+                hasDataLockInPosting = false;
             }
         }
 
@@ -87,7 +89,9 @@ export class StandardsChecker {
                 tok.value.toLowerCase() === 'выполнить') {
                 const prev = tokens[i - 1];
                 const next = tokens[i + 1];
-                if (prev && prev.value === '.' && next && next.value === '(') {
+                const caller = tokens[i - 2]?.value.toLowerCase();
+                const nonQueryCallers = ['фоновыезадания', 'фоновоезадание', 'команда', 'команды', 'внешняяобработка', 'обработка', 'форма', 'алгоритм'];
+                if (prev && prev.value === '.' && next && next.value === '(' && (!caller || !nonQueryCallers.includes(caller))) {
                     issues.push({
                         line: tok.line,
                         rule: 'ITS-PERF-001',

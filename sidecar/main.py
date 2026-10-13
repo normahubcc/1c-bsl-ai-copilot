@@ -8,10 +8,10 @@ _root = str(Path(__file__).resolve().parent.parent)
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-from sidecar.config import load_config
-from sidecar.core import SidecarCore
-from sidecar.server import run_server
-from sidecar.clipboard_watcher import ClipboardWatcher
+from sidecar.config import load_config  # noqa: E402
+from sidecar.core import SidecarCore  # noqa: E402
+from sidecar.server import run_server  # noqa: E402
+from sidecar.clipboard_watcher import ClipboardWatcher  # noqa: E402
 
 
 def main():

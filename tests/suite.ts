@@ -58,6 +58,21 @@ console.log('\n[1/5] Testing StandardsChecker...');
     const cleanIssues = StandardsChecker.auditCode(cleanCode);
     assert.strictEqual(cleanIssues.length, 0, 'Clean compliant code must pass with 0 issues');
     console.log('  ✓ Compliant code passes audit with 0 issues');
+
+    // E: inPosting state leak regression test
+    const multiProcCode = `
+    Процедура ОбработкаПроведения(Отказ, РежимПроведения)
+        Блокировка = Новый БлокировкаДанных;
+        Блокировка.Заблокировать();
+    КонецПроцедуры
+
+    Процедура ПриЗаписи(Отказ)
+        // Вторая процедура без блокировки данных не должна ложно флагаться
+    КонецПроцедуры
+    `;
+    const multiIssues = StandardsChecker.auditCode(multiProcCode);
+    assert.strictEqual(multiIssues.length, 0, 'Subsequent procedures must not inherit inPosting state');
+    console.log('  ✓ inPosting state does not leak to subsequent procedures');
 }
 
 // 2. Test BSPHelper
@@ -136,7 +151,18 @@ console.log('\n[3/5] Testing QueryBuilder (Пакетные запросы и в
     assert.ok(refactorResult.refactoredQuery.includes('ЕСТЬNULL(Остатки.КоличествоОстаток, 0)'), 'Refactored query must wrap with ЕСТЬNULL');
     assert.ok(refactorResult.refactoredQuery.includes('УНИЧТОЖИТЬ ВТ_Остатки'), 'Refactored query must destroy temp table');
     assert.ok(refactorResult.appliedOptimizations.length >= 3, 'Must record applied optimizations');
-    console.log('  ✓ Intelligent query refactoring isolates virtual tables, indexes temp tables and wraps ЕСТЬNULL');
+    // E: QueryBuilder with СрезПоследних must use РегистрСведений
+    const srezQuery = QueryBuilder.generateBatchQuery({
+        entityName: 'УстановкаЦенНоменклатуры',
+        tabularSection: 'Товары',
+        registerName: 'ЦеныНоменклатуры',
+        registerType: 'СрезПоследних',
+        fields: ['Номенклатура', 'Цена'],
+        includeScaffolding: false
+    });
+    assert.ok(srezQuery.includes('РегистрСведений.ЦеныНоменклатуры.СрезПоследних'), 'СрезПоследних must target РегистрСведений');
+    assert.ok(!srezQuery.includes('РегистрНакопления.ЦеныНоменклатуры'), 'Must NOT target РегистрНакопления for СрезПоследних');
+    console.log('  ✓ QueryBuilder correctly targets РегистрСведений for СрезПоследних');
 }
 
 // 4. Test ExtensionGenerator (cfe)
@@ -173,6 +199,17 @@ console.log('\n[4/5] Testing ExtensionGenerator (Расширения конфи
     assert.ok(formCode.includes('Элементы.Добавить("КнопкаПечатиАкта"'), 'Must dynamically add form button');
     assert.ok(formCode.includes('Команды.Добавить("КомандаПечатиАкта"'), 'Must register form command');
     console.log('  ✓ Managed form dynamic UI injection extension generated');
+
+    // D: Canonical signature inference
+    const autoSig = ExtensionGenerator.generateInterceptor({
+        targetMethod: 'ОбработкаПроведения',
+        directive: 'Вместо',
+        moduleType: 'МодульОбъекта',
+        isFunction: false,
+        parameters: []
+    });
+    assert.ok(autoSig.includes('Расш_ОбработкаПроведения(Отказ, РежимПроведения)'), 'Must infer canonical signature');
+    console.log('  ✓ ExtensionGenerator infers canonical 1C event handler signatures');
 }
 
 // 5. Test MetadataScanner

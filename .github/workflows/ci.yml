@@ -29,8 +29,13 @@ jobs:
       - name: Typecheck TypeScript
         run: npm run compile
 
-      - name: Run Unit Tests
-        run: node tests/test_runner.js
+      - name: Lint Python Sidecar
+        run: |
+          pip install ruff
+          ruff check sidecar/
+
+      - name: Run Test Suite
+        run: npm test
 
       - name: Build Bundle
         run: npm run build

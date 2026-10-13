@@ -303,7 +303,7 @@ export class McpServer1C {
                         tabularSection: args.tabularSection,
                         registerName: args.registerName,
                         registerType: args.registerType || 'Остатки',
-                        fields: ['Номенклатура', 'Количество'],
+                        fields: args.fields || ['Номенклатура', 'Количество'],
                         includeScaffolding: args.includeScaffolding !== false
                     });
                     this.sendToolResponse(id, { queryCode: generated });
@@ -328,9 +328,9 @@ export class McpServer1C {
                     const interceptor = ExtensionGenerator.generateInterceptor({
                         targetMethod: args.targetMethod,
                         directive: args.directive as ExtensionDirective,
-                        moduleType: 'МодульОбъекта',
+                        moduleType: args.moduleType || 'МодульОбъекта',
                         isFunction: Boolean(args.isFunction),
-                        parameters: args.parameters || ['Отказ'],
+                        parameters: args.parameters || [],
                         customLogic: args.customLogic
                     });
                     this.sendToolResponse(id, { code: interceptor });
@@ -359,6 +359,7 @@ export class McpServer1C {
                         configName: metadata.name,
                         version: metadata.version,
                         objectsCount: metadata.objects.length,
+                        isDemoFallback: metadata.isDemoFallback,
                         summary
                     });
                     break;

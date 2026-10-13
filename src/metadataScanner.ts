@@ -5,33 +5,56 @@ import { ConfigurationMetadata, MetadataObject } from './types';
 /**
  * Scans workspace for 1C:Enterprise configuration files (XML dump or EDT format)
  * to feed the LLM with real business entity names instead of hallucinations.
+ *
+ * Provides isolated caching per workspace root path and explicit distinction
+ * between real inspected schemas and synthetic fallback demos.
  */
 export class MetadataScanner {
-    private static cachedMetadata: ConfigurationMetadata | null = null;
+    private static cache = new Map<string, ConfigurationMetadata>();
 
     public static async scanWorkspace(rootPath: string): Promise<ConfigurationMetadata> {
-        if (this.cachedMetadata) {
-            return this.cachedMetadata;
+        const normalizedRoot = rootPath ? path.resolve(rootPath) : '';
+
+        if (this.cache.has(normalizedRoot)) {
+            return this.cache.get(normalizedRoot)!;
         }
 
         const objects: MetadataObject[] = [];
+        let configName = 'Конфигурация 1С';
+        let configVersion = '8.3';
+        let foundRealMetadata = false;
 
-        // 1. Check for standard 1C XML dump folder or EDT structure
-        const candidates = [
-            path.join(rootPath, 'src', 'cf'),
-            path.join(rootPath, 'src'),
-            path.join(rootPath, 'cf'),
-            rootPath
-        ];
+        if (normalizedRoot && fs.existsSync(normalizedRoot)) {
+            // Check for Configuration.xml / Configuration.mdo
+            const configNameDetected = this.detectConfigurationName(normalizedRoot);
+            if (configNameDetected) {
+                configName = configNameDetected;
+                foundRealMetadata = true;
+            }
 
-        for (const dir of candidates) {
-            if (fs.existsSync(dir)) {
-                this.findMetadataInDir(dir, objects);
+            // 1. Check for standard 1C XML dump folder or EDT structure
+            const candidates = [
+                path.join(normalizedRoot, 'src', 'cf'),
+                path.join(normalizedRoot, 'src'),
+                path.join(normalizedRoot, 'cf'),
+                normalizedRoot
+            ];
+
+            for (const dir of candidates) {
+                if (fs.existsSync(dir)) {
+                    this.findMetadataInDir(dir, objects);
+                }
+            }
+
+            if (objects.length > 0) {
+                foundRealMetadata = true;
             }
         }
 
-        // If no 1C metadata files found on disk, provide common standard enterprise entities
-        if (objects.length === 0) {
+        const isDemoFallback = !foundRealMetadata || objects.length === 0;
+
+        // If no 1C metadata files found on disk, provide common standard enterprise entities as fallback
+        if (isDemoFallback) {
             objects.push(
                 {
                     kind: 'Справочник',
@@ -85,13 +108,38 @@ export class MetadataScanner {
             );
         }
 
-        this.cachedMetadata = {
-            name: 'Конфигурация 1С',
-            version: '8.3',
-            objects: objects.slice(0, 50) // Keep context compact
+        const result: ConfigurationMetadata = {
+            name: configName,
+            version: configVersion,
+            objects: objects.slice(0, 100), // Keep context compact
+            isDemoFallback,
+            sourcePath: normalizedRoot
         };
 
-        return this.cachedMetadata;
+        this.cache.set(normalizedRoot, result);
+        return result;
+    }
+
+    private static detectConfigurationName(rootPath: string): string | null {
+        const possibleConfigFiles = [
+            path.join(rootPath, 'Configuration.xml'),
+            path.join(rootPath, 'src', 'cf', 'Configuration.xml'),
+            path.join(rootPath, 'src', 'Configuration.mdo'),
+            path.join(rootPath, 'cf', 'Configuration.xml')
+        ];
+
+        for (const filePath of possibleConfigFiles) {
+            if (fs.existsSync(filePath)) {
+                try {
+                    const content = fs.readFileSync(filePath, 'utf-8').slice(0, 5000);
+                    const match = content.match(/<Name>([^<]+)<\/Name>/i) || content.match(/<name>([^<]+)<\/name>/i);
+                    if (match && match[1]) {
+                        return match[1].trim();
+                    }
+                } catch (_) {}
+            }
+        }
+        return null;
     }
 
     private static findMetadataInDir(dir: string, result: MetadataObject[]) {
@@ -120,16 +168,87 @@ export class MetadataScanner {
         try {
             const items = fs.readdirSync(folder);
             for (const item of items) {
-                const cleanName = item.replace(/\.xml$/, '');
-                if (cleanName && !result.some(r => r.name === cleanName)) {
-                    result.push({ kind, name: cleanName });
+                const itemPath = path.join(folder, item);
+                const stat = fs.statSync(itemPath);
+
+                let cleanName = '';
+                let xmlFilePath = '';
+
+                if (stat.isFile() && (item.endsWith('.xml') || item.endsWith('.mdo'))) {
+                    cleanName = item.replace(/\.(xml|mdo)$/i, '');
+                    xmlFilePath = itemPath;
+                } else if (stat.isDirectory()) {
+                    cleanName = item;
+                    // Check if there is an XML file inside with the same name
+                    const candidateXml = path.join(itemPath, `${item}.xml`);
+                    const candidateMdo = path.join(itemPath, `${item}.mdo`);
+                    if (fs.existsSync(candidateXml)) {
+                        xmlFilePath = candidateXml;
+                    } else if (fs.existsSync(candidateMdo)) {
+                        xmlFilePath = candidateMdo;
+                    }
+                }
+
+                if (cleanName && !result.some(r => r.name === cleanName && r.kind === kind)) {
+                    const metadataObj: MetadataObject = { kind, name: cleanName };
+
+                    // Parse attributes and tabular sections if XML file is accessible and under 2MB
+                    if (xmlFilePath && fs.existsSync(xmlFilePath)) {
+                        try {
+                            const fileStat = fs.statSync(xmlFilePath);
+                            if (fileStat.size < 2 * 1024 * 1024) {
+                                const content = fs.readFileSync(xmlFilePath, 'utf-8');
+                                this.enrichMetadataObjectFromXml(metadataObj, content);
+                            }
+                        } catch (_) {}
+                    }
+
+                    result.push(metadataObj);
                 }
             }
         } catch (_) {}
     }
 
+    private static enrichMetadataObjectFromXml(obj: MetadataObject, content: string) {
+        // Tabular sections: <TabularSection ...><Properties><Name>Товары</Name>
+        const tsMatches = content.matchAll(/<(?:TabularSection|tabularSections)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
+        const tabularSections: { name: string; fields: { name: string }[] }[] = [];
+        for (const match of tsMatches) {
+            const tsName = match[1].trim();
+            if (tsName && !tabularSections.some(t => t.name === tsName)) {
+                tabularSections.push({ name: tsName, fields: [] });
+            }
+        }
+        if (tabularSections.length > 0) {
+            obj.tabularSections = tabularSections;
+        }
+
+        // Attributes: <Attribute ...><Properties><Name>Контрагент</Name>
+        const attrMatches = content.matchAll(/<(?:Attribute|attributes)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
+        const fields: { name: string }[] = [];
+        for (const match of attrMatches) {
+            const attrName = match[1].trim();
+            if (attrName && !fields.some(f => f.name === attrName)) {
+                fields.push({ name: attrName });
+            }
+        }
+        if (fields.length > 0) {
+            obj.fields = fields.slice(0, 30);
+        }
+
+        // Synonym: <Synonym><v8:item><v8:content>Номенклатура</v8:content>
+        const synMatch = content.match(/<Synonym[\s\S]*?<v8:content>([^<]+)<\/v8:content>/i);
+        if (synMatch && synMatch[1]) {
+            obj.synonym = synMatch[1].trim();
+        }
+    }
+
     public static formatForPrompt(metadata: ConfigurationMetadata): string {
-        const lines: string[] = ['// Доступные метаданные конфигурации 1С:'];
+        const header = metadata.isDemoFallback
+            ? `// Метаданные (Демо-схема, файлы конфигурации не найдены в рабочей области):`
+            : `// Метаданные конфигурации 1С "${metadata.name}":`;
+
+        const lines: string[] = [header];
         const grouped: Record<string, string[]> = {};
 
         for (const obj of metadata.objects) {
@@ -145,13 +264,18 @@ export class MetadataScanner {
         }
 
         for (const [kind, list] of Object.entries(grouped)) {
-            lines.push(`// ${kind}: ${list.slice(0, 10).join(', ')}`);
+            lines.push(`// ${kind}: ${list.slice(0, 15).join(', ')}`);
         }
 
         return lines.join('\n');
     }
 
-    public static clearCache() {
-        this.cachedMetadata = null;
+    public static clearCache(rootPath?: string) {
+        if (rootPath) {
+            const normalized = path.resolve(rootPath);
+            this.cache.delete(normalized);
+        } else {
+            this.cache.clear();
+        }
     }
 }

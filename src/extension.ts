@@ -80,15 +80,15 @@ export function activate(context: vscode.ExtensionContext) {
 async function updateStatusBar(context: vscode.ExtensionContext) {
     const apiKey = await NormaHubClient.getApiKey(context);
     if (!apiKey) {
-        statusBarItem.text = '$(hubot) 1С Copilot: [Укажите ключ]';
+        statusBarItem.text = '$(hubot) 1С Copilot: [Ключ не задан]';
         return;
     }
 
     const info = await NormaHubClient.checkBalance(apiKey);
     if (info.status === 'active') {
-        statusBarItem.text = `$(hubot) 1С Copilot: ${info.balanceRub.toFixed(2)} ₽`;
+        statusBarItem.text = '$(hubot) 1С Copilot: Активен';
     } else {
-        statusBarItem.text = `$(alert) 1С Copilot: ${info.error || 'Ошибка'}`;
+        statusBarItem.text = `$(alert) 1С Copilot: ${info.error || 'Ошибка ключа'}`;
     }
 }
 
@@ -98,8 +98,8 @@ async function showStatusMenu(context: vscode.ExtensionContext) {
 
     const items = [
         {
-            label: `$(credit-card) Пополнить баланс (СБП / Карты МИР)`,
-            detail: `Текущий баланс: ${balanceInfo.balanceRub.toFixed(2)} ₽. Оплата только за реальные токены.`,
+            label: `$(credit-card) Личный кабинет и баланс (normahub.cc)`,
+            detail: `Шлюз: ${balanceInfo.status === 'active' ? 'Подключен (Pay-As-You-Go)' : (balanceInfo.error || 'Ключ не задан')}. Управление токенами на normahub.cc.`,
             action: 'billing'
         },
 

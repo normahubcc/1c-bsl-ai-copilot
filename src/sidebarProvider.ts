@@ -40,8 +40,47 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
 
         await updateHtml();
 
+        const sendEditorContext = () => {
+            const editor = vscode.window.activeTextEditor;
+            if (editor && editor.document) {
+                const docName = editor.document.fileName.split(/[/\\]/).pop() || 'Модуль.bsl';
+                const isBsl = docName.endsWith('.bsl') || docName.endsWith('.os');
+                const sel = editor.selection;
+                const lineCount = (!sel.isEmpty && sel.end.line >= sel.start.line) ? (sel.end.line - sel.start.line + 1) : 0;
+                const selText = !sel.isEmpty ? editor.document.getText(sel) : '';
+                webviewView.webview.postMessage({
+                    type: 'editorContext',
+                    fileName: docName,
+                    isBsl,
+                    lineCount,
+                    hasSelection: !sel.isEmpty,
+                    selectedText: selText
+                });
+            } else {
+                webviewView.webview.postMessage({
+                    type: 'editorContext',
+                    fileName: '',
+                    isBsl: false,
+                    lineCount: 0,
+                    hasSelection: false,
+                    selectedText: ''
+                });
+            }
+        };
+
+        this._context.subscriptions.push(
+            vscode.window.onDidChangeActiveTextEditor(sendEditorContext),
+            vscode.window.onDidChangeTextEditorSelection(sendEditorContext)
+        );
+
+        sendEditorContext();
+
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
+                case 'getEditorContext':
+                    sendEditorContext();
+                    break;
+
                 case 'saveKey':
                     await NormaHubClient.setApiKey(this._context, data.value);
                     vscode.window.showInformationMessage('API-ключ сохранен в защищенном SecretStorage.');
@@ -189,7 +228,7 @@ ${bspSummary}`;
             entityName: entity || 'РеализацияТоваровУслуг',
             tabularSection: tabular || 'Товары',
             registerName: register || 'ТоварыНаСкладах',
-            registerType: (registerType as 'Остатки' | 'Обороты' | 'СрезПоследних') || 'Остатки',
+            registerType: (registerType as 'Остатки' | 'Обороты' | 'СрезПоследних' | 'СрезПервых') || 'Остатки',
             fields: ['Номенклатура', 'Количество'],
             includeScaffolding: true
         });
@@ -284,12 +323,18 @@ ${bspSummary}`;
     private async _handleInsertCode(code: string) {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
-            editor.edit(editBuilder => {
+            await editor.edit(editBuilder => {
                 editBuilder.insert(editor.selection.active, code);
             });
             vscode.window.showInformationMessage('Код успешно вставлен в модуль 1С.');
+            if (this._view) {
+                this._view.webview.postMessage({ type: 'toast', message: '✓ Код успешно вставлен в активный BSL-модуль' });
+            }
         } else {
-            vscode.window.showWarningMessage('Откройте файл модуля 1С для вставки кода.');
+            vscode.window.showWarningMessage('Откройте файл модуля 1С (.bsl) для вставки кода.');
+            if (this._view) {
+                this._view.webview.postMessage({ type: 'toast', message: '⚠️ Откройте файл .bsl в редакторе для вставки' });
+            }
         }
     }
 
@@ -383,9 +428,15 @@ ${bspSummary}`;
 
     private _getHtmlForWebview(apiKey: string, balance: any, selectedModel: string): string {
         const maskedKey = apiKey ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : 'Не задан';
-        const balanceDisplay = balance.status === 'active'
-            ? `${balance.balanceRub.toFixed(2)} ₽`
-            : 'Ключ не активен';
+        const isGatewayActive = balance && balance.status === 'active';
+        const isInsufficient = balance && balance.status === 'insufficient_funds';
+        const balanceDisplay = isGatewayActive
+            ? 'Pay-As-You-Go (Шлюз активен)'
+            : (isInsufficient ? 'Баланс исчерпан на normahub.cc' : (apiKey ? (balance?.error || 'Ошибка ключа') : 'Ключ не настроен'));
+        const gatewayStatusLabel = isGatewayActive
+            ? '● Шлюз подключен'
+            : (isInsufficient ? '⚠️ Баланс исчерпан' : (apiKey ? '❌ Ошибка' : '○ Не настроен'));
+        const gatewayStatusBadge = isGatewayActive ? 'badge-ok' : (isInsufficient ? 'badge-warn' : (apiKey ? 'badge-crit' : 'badge-warn'));
 
         // Serialize all 40+ BSP standard modules for instant, zero-latency client-side search
         const bspModulesJson = JSON.stringify(BSPHelper.STANDARD_MODULES);
@@ -524,6 +575,7 @@ ${bspSummary}`;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 6px;
             margin-bottom: 8px;
             padding-bottom: 8px;
             border-bottom: 1px solid var(--border-light);
@@ -532,7 +584,8 @@ ${bspSummary}`;
         .brand-block {
             display: flex;
             align-items: center;
-            gap: 7px;
+            gap: 6px;
+            flex-shrink: 0;
         }
 
         .brand-badge {
@@ -548,16 +601,45 @@ ${bspSummary}`;
         }
 
         .brand-title {
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 700;
             letter-spacing: 0.1px;
             color: var(--text-main);
+            white-space: nowrap;
         }
 
-        .header-actions {
+        /* Embedded Header Micro-Pills */
+        .header-badges {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .meta-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 5px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 10px;
+            color: var(--text-main);
+            font-weight: 500;
+            white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            cursor: default;
+        }
+
+        .meta-pill .pill-num {
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .meta-pill .pill-text {
+            color: var(--text-muted);
+            font-size: 9px;
         }
 
         /* Compact Top-Right Theme Switcher Button */
@@ -567,14 +649,16 @@ ${bspSummary}`;
             color: var(--text-main);
             cursor: pointer;
             border-radius: 6px;
-            padding: 3px 8px;
-            font-size: 10.5px;
+            padding: 2px 6px;
+            font-size: 10px;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: 3px;
             font-weight: 600;
             box-shadow: 0 1px 2px rgba(0,0,0,0.06);
             transition: all 0.18s ease;
+            width: auto;
+            margin: 0;
         }
 
         .theme-toggle-btn:hover {
@@ -583,123 +667,92 @@ ${bspSummary}`;
         }
 
         .theme-toggle-btn .theme-icon {
-            font-size: 11px;
+            font-size: 10.5px;
             line-height: 1;
         }
 
-        /* Quick Navigation Bar (Segmented & Dropdown) */
-        .nav-controls {
-            margin-bottom: 10px;
-        }
-
-        .nav-select-wrapper {
-            margin-bottom: 6px;
-        }
-
-        .nav-select {
-            width: 100%;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 11.5px;
-            font-weight: 600;
-            color: var(--text-main);
-            outline: none;
-            cursor: pointer;
-            transition: all 0.15s ease;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-        }
-
-        .nav-select:focus {
-            border-color: var(--border-focus);
-        }
-
-        /* Segmented Pill Navigation Strip */
-        .tabs {
-            display: flex;
-            gap: 3px;
-            background: var(--bg-card-subtle);
-            border: 1px solid var(--border-light);
-            border-radius: 7px;
-            padding: 2.5px;
-            margin-bottom: 10px;
-            overflow-x: auto;
-            white-space: nowrap;
-            scrollbar-width: none;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .tabs::-webkit-scrollbar {
-            display: none;
-        }
-
-        .tab {
-            font-size: 11px;
-            padding: 4px 8px;
-            cursor: pointer;
-            color: var(--text-muted);
-            border-radius: 5px;
-            user-select: none;
-            white-space: nowrap;
-            flex-shrink: 0;
-            transition: all 0.15s ease;
-            font-weight: 500;
-            border: 1px solid transparent;
-        }
-
-        .tab:hover {
-            color: var(--text-main);
-            background: rgba(128, 128, 128, 0.08);
-        }
-
-        .tab.active {
-            color: var(--tab-active-text);
-            background: var(--tab-active-bg);
-            font-weight: 600;
-            border-color: var(--border-color);
-            box-shadow: var(--tab-active-shadow);
-        }
-
-        /* Engineering Context Bar */
-        .context-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 4px 8px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-light);
-            border-radius: 6px;
-            padding: 5px 8px;
-            margin-bottom: 10px;
-            font-size: 10.5px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-        }
-
-        .context-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            color: var(--text-secondary);
-            font-weight: 500;
-            white-space: nowrap;
-        }
-
+        /* Status Dots */
         .status-dot {
-            width: 7px;
-            height: 7px;
+            width: 6.5px;
+            height: 6.5px;
             border-radius: 50%;
             display: inline-block;
         }
 
         .status-dot.online {
             background-color: #10B981;
-            box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+            box-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
         }
 
         .status-dot.idle {
             background-color: #9CA3AF;
+        }
+
+        /* High-Level Segmented Category Switcher: [⚡ AI Ассистент] vs [🛠️ Инструменты 1С] */
+        .category-segmented {
+            display: flex;
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 2.5px;
+            margin-bottom: 7px;
+            gap: 3px;
+        }
+
+        .seg-btn {
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            padding: 5px 6px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+            width: auto;
+            margin: 0;
+        }
+
+        .seg-btn.active {
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            border-color: var(--border-focus);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+        }
+
+        .seg-btn:not(.active):hover {
+            background: var(--bg-card);
+            color: var(--text-main);
+        }
+
+        /* Dropdown Selector for Sub-Tools */
+        .tool-dropdown-wrapper {
+            margin-bottom: 9px;
+        }
+
+        .tool-select {
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6.5px 9px;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: var(--text-main);
+            outline: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            box-shadow: var(--card-shadow);
+        }
+
+        .tool-select:focus {
+            border-color: var(--border-focus);
         }
 
         /* Cards & Section Blocks */
@@ -1076,74 +1129,1194 @@ ${bspSummary}`;
             from { opacity: 0; transform: translateY(2px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* Quick Start Guide */
+        .quick-start-box {
+            margin: 0 0 10px 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 7px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            transition: all 0.2s ease;
+        }
+
+        .quick-start-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 9px;
+            cursor: pointer;
+            user-select: none;
+            background: var(--bg-card-subtle);
+            border-bottom: 1px solid var(--border-light);
+            transition: background 0.15s ease;
+        }
+
+        .quick-start-header:hover {
+            background: var(--bg-sub);
+        }
+
+        .quick-start-box.collapsed .quick-start-header {
+            border-bottom: none;
+        }
+
+        .quick-start-title {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .quick-start-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .quick-start-toggle {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 9.5px;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            cursor: pointer;
+            padding: 1px 3px;
+            width: auto;
+            margin: 0;
+            font-weight: 500;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .quick-start-toggle:hover {
+            color: var(--btn-primary);
+        }
+
+        .quick-start-dismiss {
+            background: transparent;
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            color: var(--text-muted);
+            font-size: 9px;
+            padding: 1px 5px;
+            cursor: pointer;
+            width: auto;
+            margin: 0;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+
+        .quick-start-dismiss:hover {
+            color: #EF4444;
+            border-color: #EF4444;
+            background: rgba(239, 68, 68, 0.08);
+        }
+
+        .quick-start-body {
+            padding: 8px 9px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .quick-start-box.collapsed .quick-start-body {
+            display: none;
+        }
+
+        .qs-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .qs-num {
+            flex-shrink: 0;
+            width: 17px;
+            height: 17px;
+            border-radius: 50%;
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            font-size: 10px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .qs-text {
+            flex: 1;
+            color: var(--text-secondary);
+        }
+
+        .qs-text strong {
+            color: var(--text-main);
+        }
+
+        .qs-link {
+            color: var(--btn-primary);
+            text-decoration: underline;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* Hotkeys Footer */
+        .hotkeys-footer {
+            margin-top: 12px;
+            padding: 6px 8px;
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 7px;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .hotkeys-footer-title {
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+
+        .hotkey-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .hotkey-item kbd {
+            background: var(--bg-card);
+            color: var(--text-main);
+            border-color: var(--border-color);
+            font-weight: 600;
+        }
+
+        /* Promo Badge Box in Settings */
+        .promo-badge-box {
+            margin-top: 9px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: var(--bg-card-subtle);
+            border: 1px dashed var(--border-color);
+            font-size: 11px;
+        }
+
+        .promo-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .promo-gift-icon {
+            font-size: 12px;
+        }
+
+        .promo-label {
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .promo-code {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            color: var(--btn-primary);
+            background: rgba(128, 128, 128, 0.12);
+            padding: 1px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            user-select: all;
+            font-size: 11px;
+        }
+
+        .promo-copy-btn {
+            padding: 2px 7px;
+            font-size: 9.5px;
+            border-radius: 4px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            line-height: 1.3;
+            width: auto;
+            margin: 0;
+            font-weight: 500;
+        }
+
+        .promo-copy-btn:hover {
+            color: var(--btn-primary);
+            border-color: var(--border-focus);
+        }
+
+        .promo-hint {
+            margin-top: 4px;
+            font-size: 10px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .promo-link {
+            color: var(--btn-primary);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        /* Welcome First-Launch Modal */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(14, 12, 10, 0.78);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            animation: modalFadeIn 0.2s ease-out;
+        }
+
+        body.theme-warm-sand .modal-backdrop {
+            background: rgba(44, 38, 33, 0.65);
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.97); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+            max-width: 440px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-light);
+            background: var(--bg-card-subtle);
+        }
+
+        .modal-brand {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .modal-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .modal-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 2px 6px;
+            line-height: 1;
+            width: auto;
+            margin: 0;
+        }
+
+        .modal-close-btn:hover {
+            color: var(--text-main);
+        }
+
+        .modal-body {
+            padding: 12px 14px;
+            font-size: 11px;
+            line-height: 1.45;
+            color: var(--text-main);
+        }
+
+        .modal-lead {
+            margin: 0 0 10px 0;
+            color: var(--text-secondary);
+            font-size: 11.5px;
+        }
+
+        .modal-features {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .modal-feature-item {
+            display: flex;
+            gap: 9px;
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: 7px;
+            padding: 8px 10px;
+        }
+
+        .modal-feature-icon {
+            font-size: 16px;
+            flex-shrink: 0;
+            line-height: 1.2;
+        }
+
+        .modal-feature-title {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 2px;
+        }
+
+        .modal-feature-desc {
+            font-size: 10.5px;
+            color: var(--text-secondary);
+            line-height: 1.35;
+        }
+
+        .modal-footer {
+            padding: 10px 14px;
+            border-top: 1px solid var(--border-light);
+            background: var(--bg-card-subtle);
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .modal-btn-primary {
+            padding: 7px 16px;
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            border: none;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 700;
+            cursor: pointer;
+            width: auto;
+            margin: 0;
+            transition: background 0.15s ease;
+        }
+
+        .modal-btn-primary:hover {
+            background: var(--btn-primary-hover);
+        }
+
+        /* AI Overview Dashboard */
+        .ai-hero-card {
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-subtle) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 9px;
+        }
+
+        .ai-hero-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 3px;
+        }
+
+        .ai-hero-subtitle {
+            font-size: 10.5px;
+            color: var(--text-secondary);
+            line-height: 1.35;
+        }
+
+        .overview-action-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 9px 11px;
+            margin-bottom: 8px;
+            box-shadow: var(--card-shadow);
+            transition: border-color 0.16s ease, transform 0.16s ease;
+        }
+
+        .overview-action-card:hover {
+            border-color: var(--border-focus);
+        }
+
+        .action-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+
+        .action-card-title {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .action-card-desc {
+            font-size: 10.5px;
+            color: var(--text-secondary);
+            line-height: 1.35;
+            margin-bottom: 7px;
+        }
+
+        .action-card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .kbd-guide {
+            font-size: 10.5px;
+            color: var(--text-muted);
+        }
+
+        .action-btn-primary {
+            padding: 4px 10px;
+            font-size: 10.5px;
+            font-weight: 600;
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: auto;
+            margin: 0;
+            transition: background 0.15s ease;
+        }
+
+        .action-btn-primary:hover {
+            background: var(--btn-primary-hover);
+        }
+
+        .action-btn-secondary {
+            padding: 4px 9px;
+            font-size: 10.5px;
+            font-weight: 500;
+            background: var(--bg-card-subtle);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            cursor: pointer;
+            width: auto;
+            margin: 0;
+            transition: all 0.15s ease;
+        }
+
+        .action-btn-secondary:hover {
+            border-color: var(--border-focus);
+            background: var(--bg-sub);
+        }
+
+        .action-btn-sm {
+            padding: 2px 7px;
+            font-size: 10px;
+            width: auto;
+            margin: 0;
+        }
+
+        /* Action Pilot (Cockpit) Styles */
+        .pilot-context-bar {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 5px 8px;
+            margin-bottom: 8px;
+            font-size: 10.5px;
+            line-height: 1.3;
+        }
+
+        .pilot-context-dot {
+            font-size: 9px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .pilot-context-info {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .pilot-context-file {
+            font-weight: 700;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pilot-context-sel {
+            font-size: 9.5px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 3 Killer Action Cards */
+        .killer-actions-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            margin-bottom: 9px;
+        }
+
+        .killer-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 10px;
+            cursor: pointer;
+            transition: all 0.16s ease;
+            box-shadow: var(--card-shadow);
+            position: relative;
+        }
+
+        .killer-card:hover {
+            border-color: var(--border-focus);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+        }
+
+        .killer-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 3px;
+        }
+
+        .killer-card-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1.5px 5px;
+            border-radius: 4px;
+            background: rgba(230, 162, 60, 0.15);
+            color: var(--btn-primary);
+            border: 1px solid rgba(230, 162, 60, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .killer-card-title {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .killer-card-desc {
+            font-size: 10px;
+            color: var(--text-secondary);
+            line-height: 1.35;
+            margin-bottom: 6px;
+        }
+
+        .killer-card-action {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .killer-card-btn {
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            border: none;
+            border-radius: 5px;
+            padding: 3.5px 9px;
+            font-size: 10.5px;
+            font-weight: 600;
+            cursor: pointer;
+            width: auto;
+            margin: 0;
+            transition: background 0.15s ease;
+        }
+
+        .killer-card-btn:hover {
+            background: var(--btn-primary-hover);
+        }
+
+        /* Pilot Custom Prompt Box */
+        .pilot-prompt-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-bottom: 9px;
+            box-shadow: var(--card-shadow);
+        }
+
+        .pilot-prompt-title {
+            font-size: 10.5px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .pilot-prompt-row {
+            display: flex;
+            gap: 5px;
+            align-items: stretch;
+        }
+
+        .pilot-prompt-row textarea {
+            flex: 1;
+            min-height: 48px;
+            height: 48px;
+            margin-bottom: 0;
+            font-size: 11px;
+            padding: 5px 8px;
+            resize: vertical;
+        }
+
+        .pilot-send-btn {
+            width: 44px;
+            flex-shrink: 0;
+            margin: 0;
+            background: var(--btn-primary);
+            color: var(--btn-primary-text);
+            border: none;
+            border-radius: 5px;
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s ease;
+        }
+
+        .pilot-send-btn:hover {
+            background: var(--btn-primary-hover);
+        }
+
+        .pilot-prompt-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 9.5px;
+            color: var(--text-muted);
+        }
+
+        .pilot-model-select {
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            border-radius: 4px;
+            font-size: 9.5px;
+            padding: 2px 4px;
+            width: auto;
+            margin: 0;
+        }
+
+        /* Metadata Accordion Drawer */
+        .metadata-drawer {
+            background: var(--bg-card-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            padding: 5px 8px;
+            margin-bottom: 9px;
+            font-size: 10px;
+        }
+
+        .metadata-drawer summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-secondary);
+            user-select: none;
+            outline: none;
+        }
+
+        .metadata-drawer summary:hover {
+            color: var(--text-main);
+        }
+
+        .metadata-drawer-body {
+            margin-top: 7px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .metadata-drawer-body .form-group {
+            margin-bottom: 0;
+        }
+
+        .metadata-drawer-body input {
+            padding: 4px 6px;
+            font-size: 10.5px;
+            margin-bottom: 2px;
+        }
+
+        /* Unified Live Output Studio */
+        .output-studio {
+            background: var(--bg-card);
+            border: 1.5px solid var(--border-focus);
+            border-radius: 8px;
+            padding: 9px 10px;
+            margin-bottom: 9px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .studio-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 7px;
+            gap: 6px;
+        }
+
+        .studio-badge {
+            font-size: 10px;
+            font-weight: 700;
+            color: #10B981;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .studio-meta {
+            font-size: 9.5px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .studio-actions-bar {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 7px;
+        }
+
+        .studio-btn-primary {
+            flex: 2;
+            background: #10B981;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 5px;
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: background 0.15s ease;
+        }
+
+        .studio-btn-primary:hover {
+            background: #059669;
+        }
+
+        .studio-btn-secondary {
+            flex: 1;
+            background: var(--btn-sec);
+            color: var(--btn-sec-text);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 6px 8px;
+            font-size: 10.5px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .studio-btn-secondary:hover {
+            border-color: var(--border-focus);
+        }
+
+        .studio-btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-light);
+            border-radius: 5px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            margin: 0;
+            width: auto;
+        }
+
+        .studio-btn-ghost:hover {
+            color: var(--text-main);
+            border-color: var(--border-color);
+        }
+
+        .studio-code-details {
+            margin-top: 5px;
+        }
+
+        .studio-code-details summary {
+            font-size: 10px;
+            color: var(--text-muted);
+            cursor: pointer;
+            margin-bottom: 4px;
+            user-select: none;
+        }
+
+        .studio-code-pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10.5px;
+            line-height: 1.45;
+            white-space: pre;
+            overflow-x: auto;
+            max-height: 220px;
+            margin: 0;
+        }
+
+        /* Responsive Breakpoints for narrow sidebars */
+        @media (max-width: 250px) {
+            .meta-pill .pill-text {
+                display: none;
+            }
+            .theme-label-text {
+                display: none;
+            }
+            .brand-title {
+                font-size: 11px;
+            }
+            .seg-label {
+                font-size: 10px;
+            }
+            .seg-btn {
+                padding: 4px 3px;
+                gap: 3px;
+            }
+        }
     </style>
 </head>
 <body class="theme-espresso">
-    <!-- Верхняя компактная шапка с брендом и кнопкой темы справа -->
+    <!-- Модальное окно первого запуска (Welcome Modal) -->
+    <div id="welcomeModal" class="modal-backdrop" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-brand">
+                    <div class="brand-badge">1C</div>
+                    <div class="modal-title">Добро пожаловать в BSL Studio</div>
+                </div>
+                <button class="modal-close-btn" onclick="closeWelcomeModal()" type="button" title="Закрыть">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-lead">
+                    Инженерная среда для ускорения разработки на платформе «1С:Предприятие 8.3» и проверки стандартов ИТС.
+                </div>
+                <div class="modal-features">
+                    <div class="modal-feature-item">
+                        <div class="modal-feature-icon">⌨️</div>
+                        <div class="modal-feature-content">
+                            <div class="modal-feature-title">1. Автодополнение по Tab</div>
+                            <div class="modal-feature-desc">Пишите код в любых <code>.bsl</code> файлах — подсказки FIM появляются на лету с учетом метаданных и контекста смежных открытых модулей.</div>
+                        </div>
+                    </div>
+                    <div class="modal-feature-item">
+                        <div class="modal-feature-icon">⚡</div>
+                        <div class="modal-feature-content">
+                            <div class="modal-feature-title">2. Разделение на AI и Инструменты 1С</div>
+                            <div class="modal-feature-desc">Переключайтесь между генеративным ИИ (запросы, рефакторинг, тесты BDD) и 100% офлайн-инструментами (база БСП 3.1, &cfe перехваты, аудит ИТС, Техжурнал).</div>
+                        </div>
+                    </div>
+                    <div class="modal-feature-item">
+                        <div class="modal-feature-icon">🎁</div>
+                        <div class="modal-feature-content">
+                            <div class="modal-feature-title">3. Быстрый шлюз NormaHub без VPN</div>
+                            <div class="modal-feature-desc">Для AI-функций используется единый API-шлюз. Новым пользователям доступен промокод <code>1CPROMO</code> на $0.10 при регистрации на normahub.cc.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn-primary" onclick="closeWelcomeModal()" type="button">Понятно, начать работу</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Верхняя компактная шапка с брендом и встроенными мета-бейджами -->
     <div class="top-navbar">
         <div class="brand-block">
             <div class="brand-badge">1C</div>
             <div class="brand-title">BSL Studio</div>
         </div>
-        <div class="header-actions">
+        <div class="header-badges">
+            <div class="meta-pill" title="Загруженная структура метаданных конфигурации 1С">
+                <span class="status-dot online"></span>
+                <span class="pill-num">50</span>
+                <span class="pill-text">мета</span>
+            </div>
+            <div class="meta-pill" title="Смежные открытые BSL-модули в рабочей области">
+                <span class="status-dot ${openTabsCount > 0 ? 'online' : 'idle'}"></span>
+                <span class="pill-num">${openTabsCount}</span>
+                <span class="pill-text">вкл.</span>
+            </div>
             <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeBtn" title="Переключить тему (Эспрессо / Песочная)">
                 <span class="theme-icon">🎨</span>
-                <span id="themeLabel">Песочная</span>
+                <span id="themeLabel" class="theme-label-text">Песочная</span>
             </button>
         </div>
     </div>
 
-    <!-- Индикатор активного инженерного контекста -->
-    <div class="context-bar">
-        <div class="context-item" title="Структура метаданных конфигурации 1С">
-            <span class="status-dot online"></span> Метаданные 1С (50)
+    <!-- Блок быстрого старта (сворачиваемый и скрываемый навсегда) -->
+    <div id="quickStartBox" class="quick-start-box">
+        <div class="quick-start-header">
+            <div class="quick-start-title" onclick="toggleQuickStart()">
+                <span class="quick-start-icon">💡</span>
+                <span>Быстрый старт за 3 шага</span>
+            </div>
+            <div class="quick-start-actions">
+                <button class="quick-start-toggle" id="quickStartToggleBtn" type="button" onclick="toggleQuickStart()" title="Свернуть или развернуть памятку">
+                    <span id="quickStartToggleArrow">▲</span>
+                </button>
+                <button class="quick-start-dismiss" type="button" onclick="dismissQuickStartForever(event)" title="Скрыть навсегда">
+                    ✕ Скрыть
+                </button>
+            </div>
         </div>
-        <div class="context-item" title="Смежные открытые BSL-модули в рабочей области">
-            <span class="status-dot ${openTabsCount > 0 ? 'online' : 'idle'}"></span> Вкладок в контексте: ${openTabsCount}
+        <div id="quickStartBody" class="quick-start-body">
+            <div class="qs-step">
+                <div class="qs-num">1</div>
+                <div class="qs-text">
+                    <strong>Ключ и статус:</strong> В категории AI откройте <span class="qs-link" onclick="selectSubTool('settings')">⚙️ Шлюз NormaHub</span>. Новым разработчикам доступен промокод <code>1CPROMO</code> на $0.10 при регистрации на normahub.cc.
+                </div>
+            </div>
+            <div class="qs-step">
+                <div class="qs-num">2</div>
+                <div class="qs-text">
+                    <strong>Автодополнение:</strong> Пишите код в любом <code>.bsl</code> файле в редакторе — умные подсказки появляются автоматически, принимайте по нажатию <kbd>Tab</kbd>.
+                </div>
+            </div>
+            <div class="qs-step">
+                <div class="qs-num">3</div>
+                <div class="qs-text">
+                    <strong>Инструменты:</strong> Переключитесь на <strong>🛠️ Инструменты 1С</strong> для доступа к базе БСП 3.1, перехватам &cfe, аудиту ИТС и разбору Техжурнала без интернета.
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Улучшенная навигация: выпадающий селектор + лента табов с иконками -->
-    <div class="nav-controls">
-        <div class="nav-select-wrapper">
-            <select id="tabNavSelector" class="nav-select" onchange="switchTab(this.value)">
-                <option value="queries">⚡ Запросы и проведение</option>
-                <option value="bsp">📦 База знаний БСП 3.1</option>
-                <option value="extensions">🧩 Расширения (&cfe)</option>
-                <option value="audit">🛡️ ИТС Аудит качества</option>
-                <option value="bdd">🧪 Тесты Vanessa BDD</option>
-                <option value="techlog">📊 Техжурнал (ТЖ)</option>
-                <option value="metadata">🗂️ Граф метаданных</option>
-                <option value="sidecar">🔌 Sidecar и Конфигуратор</option>
-                <option value="settings">⚙️ Настройки и баланс</option>
-            </select>
-        </div>
-
-        <div class="tabs">
-            <div id="tab-btn-queries" class="tab active" onclick="switchTab('queries')" title="Пакетные запросы и оптимизация">⚡ Запросы</div>
-            <div id="tab-btn-bsp" class="tab" onclick="switchTab('bsp')" title="Библиотека Стандартных Подсистем 3.1">📦 БСП</div>
-            <div id="tab-btn-extensions" class="tab" onclick="switchTab('extensions')" title="Перехватчики расширений">&cfe</div>
-            <div id="tab-btn-audit" class="tab" onclick="switchTab('audit')" title="Стандарты разработки фирмы 1С">🛡️ ИТС</div>
-            <div id="tab-btn-bdd" class="tab" onclick="switchTab('bdd')" title="Vanessa Automation BDD">🧪 BDD</div>
-            <div id="tab-btn-techlog" class="tab" onclick="switchTab('techlog')" title="Анализ Технологического Журнала">📊 ТЖ</div>
-            <div id="tab-btn-metadata" class="tab" onclick="switchTab('metadata')" title="Метаданные конфигурации">🗂️ Мета</div>
-            <div id="tab-btn-sidecar" class="tab" onclick="switchTab('sidecar')" title="1C Sidecar Daemon">🔌 Sidecar</div>
-            <div id="tab-btn-settings" class="tab" onclick="switchTab('settings')" title="Баланс и выбор модели">⚙️ Баланс</div>
-        </div>
+    <!-- Высокоуровневая сегментированная навигация: AI vs Инструменты 1С -->
+    <div class="category-segmented">
+        <button id="cat-btn-ai" class="seg-btn active" type="button" onclick="selectCategory('ai')">
+            <span class="seg-icon">⚡</span>
+            <span class="seg-label">AI Ассистент</span>
+        </button>
+        <button id="cat-btn-tools" class="seg-btn" type="button" onclick="selectCategory('tools')">
+            <span class="seg-icon">🛠️</span>
+            <span class="seg-label">Инструменты 1С</span>
+        </button>
     </div>
 
-    <!-- ТАБ 1: ЗАПРОСЫ (AI + REFACTOR + BATCH) -->
-    <div id="tab-queries" class="tab-panel active">
-        <!-- Рефакторинг существующих запросов 1С -->
+    <!-- Выпадающий селектор конкретного инструмента -->
+    <div class="tool-dropdown-wrapper">
+        <select id="toolSelector" class="tool-select" onchange="selectSubTool(this.value)">
+            <option value="ai-overview">⚡ Action Pilot (Главный пульт AI)</option>
+            <option value="queries-gen">✨ Генерация пакета запроса</option>
+            <option value="queries-refactor">⚡ Оптимизация запроса (ИТС)</option>
+            <option value="queries-batch">📋 Шаблонизатор движений регистров</option>
+            <option value="bdd">🧪 Сценарии тестов Vanessa BDD</option>
+            <option value="settings">⚙️ Шлюз NormaHub и статус</option>
+        </select>
+        <select id="tabNavSelector" style="display:none;" onchange="switchTab(this.value)">
+            <option value="queries">⚡ Запросы и проведение</option>
+            <option value="bsp">📦 База знаний БСП 3.1</option>
+            <option value="extensions">🧩 Расширения (&cfe)</option>
+            <option value="audit">🛡️ ИТС Аудит качества</option>
+            <option value="bdd">🧪 Тесты Vanessa BDD</option>
+            <option value="techlog">📊 Техжурнал (ТЖ)</option>
+            <option value="metadata">🗂️ Граф метаданных</option>
+            <option value="sidecar">🔌 Sidecar и Конфигуратор</option>
+            <option value="settings">⚙️ Настройки и баланс</option>
+        </select>
+    </div>
+
+    <!-- Резервный контейнер для обратной совместимости -->
+    <div id="tab-queries" style="display:none;"></div>
+
+    <!-- AI ACTION PILOT: Главный командный пульт 1C Copilot Studio -->
+    <div id="tab-ai-overview" class="tab-panel active">
+        <!-- 1. Контекст редактора -->
+        <div class="pilot-context-bar" id="editorContextBanner">
+            <span class="pilot-context-dot" id="pilotContextDot">🟢</span>
+            <div class="pilot-context-info">
+                <span class="pilot-context-file" id="pilotContextFile">Документ.РеализацияТоваровУслуг (МодульОбъекта)</span>
+                <span class="pilot-context-sel" id="pilotContextSel">Выделен фрагмент кода • 14 строк BSL</span>
+            </div>
+            <button class="action-btn-sm" type="button" onclick="refreshEditorContext()" title="Обновить контекст" style="background:transparent; border:none; cursor:pointer;">🔄</button>
+        </div>
+
+        <!-- 2. Студия вывода результата (появляется при любом действии) -->
+        <div id="cockpitOutputStudio" class="output-studio" style="display:none;">
+            <div class="studio-header">
+                <div class="studio-badge" id="cockpitBadge">✓ Код оптимизирован по стандартам ИТС</div>
+                <div class="studio-meta" id="cockpitMeta">18 строк BSL</div>
+            </div>
+            <div class="studio-actions-bar">
+                <button class="studio-btn-primary" type="button" onclick="insertCockpitCode()">
+                    <span>↵ Вставить в активный файл</span>
+                </button>
+                <button class="studio-btn-secondary" type="button" onclick="copyCockpitCode()">
+                    <span>📋 Скопировать</span>
+                </button>
+                <button class="studio-btn-ghost" type="button" onclick="clearCockpitOutput()" title="Закрыть">✕</button>
+            </div>
+            <details open class="studio-code-details">
+                <summary>Предпросмотр BSL-кода</summary>
+                <pre class="studio-code-pre"><code id="cockpitCodePre"></code></pre>
+            </details>
+        </div>
+
+        <!-- 3. Три Главных действия (Killer Actions) -->
+        <div class="killer-actions-grid">
+            <!-- Действие 1: Оптимизировать запрос -->
+            <div class="killer-card" onclick="runCockpitAction('optimize-query')">
+                <div class="killer-card-header">
+                    <div class="killer-card-title"><span>⚡</span> <span>Оптимизировать запрос (ИТС)</span></div>
+                    <span class="killer-card-badge">Высокая нагрузка</span>
+                </div>
+                <div class="killer-card-desc">Выносит вирт. таблицы во временные таблицы (ВТ_) с индексацией и ЕСТЬNULL</div>
+                <div class="killer-card-action">
+                    <button class="killer-card-btn" type="button">⚡ Применить к запросу</button>
+                </div>
+            </div>
+
+            <!-- Действие 2: Обернуть в расширение (&cfe) -->
+            <div class="killer-card" onclick="runCockpitAction('create-extension')">
+                <div class="killer-card-header">
+                    <div class="killer-card-title"><span>🛡️</span> <span>Обернуть метод в расширение</span></div>
+                    <span class="killer-card-badge">&cfe перехват</span>
+                </div>
+                <div class="killer-card-desc">Генерирует &Вместо с вызовом ПродолжитьВызов() и канонической сигнатурой 1С</div>
+                <div class="killer-card-action">
+                    <button class="killer-card-btn" type="button">🛡️ Сформировать &cfe</button>
+                </div>
+            </div>
+
+            <!-- Действие 3: Модуль проведения с контролем остатков -->
+            <div class="killer-card" onclick="runCockpitAction('generate-posting')">
+                <div class="killer-card-header">
+                    <div class="killer-card-title"><span>📦</span> <span>Сформировать проведение с остатками</span></div>
+                    <span class="killer-card-badge">Стандарт ИТС</span>
+                </div>
+                <div class="killer-card-desc">БлокировкаДанных + выборка табчасти + остатки + проверка на минус</div>
+                <div class="killer-card-action">
+                    <button class="killer-card-btn" type="button">📦 Создать проведение</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Свободный AI Промпт-бар -->
+        <div class="pilot-prompt-card">
+            <div class="pilot-prompt-title"><span>💬</span> <span>Свободный запрос к AI Copilot:</span></div>
+            <div class="pilot-prompt-row">
+                <textarea id="cockpitPromptInput" placeholder="Опишите задачу или вставьте код... (например: Напиши парсер JSON в структуру или проверь алгоритм)"></textarea>
+                <button id="btnSendCockpitPrompt" class="pilot-send-btn" type="button" onclick="runCockpitPrompt()" title="Сгенерировать (Ctrl+Enter)">
+                    <span>🚀</span>
+                </button>
+            </div>
+            <div class="pilot-prompt-footer">
+                <div class="pilot-model-wrapper">
+                    <span>🧠 Модель:</span>
+                    <select id="cockpitModelSelect" class="pilot-model-select" onchange="syncModelSelection(this.value)">
+                        <option value="deepseek-v4.1-flash">DeepSeek v4.1 Flash (★ 1С)</option>
+                        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (Архитектура)</option>
+                        <option value="gpt-6.1-sol">GPT-6.1 Sol (Флагман)</option>
+                    </select>
+                </div>
+                <span><kbd>Ctrl+Enter</kbd></span>
+            </div>
+        </div>
+
+        <!-- 5. Опциональный спойлер параметров метаданных -->
+        <details class="metadata-drawer">
+            <summary>⚙️ Уточнить имена метаданных (документ, регистр)...</summary>
+            <div class="metadata-drawer-body">
+                <div class="form-group">
+                    <label class="form-label" for="drawerEntity">Документ конфигурации:</label>
+                    <input type="text" id="drawerEntity" value="РеализацияТоваровУслуг" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="drawerTabular">Табличная часть:</label>
+                    <input type="text" id="drawerTabular" value="Товары" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="drawerRegister">Регистр накопления:</label>
+                    <input type="text" id="drawerRegister" value="ТоварыНаСкладах" />
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- ТАБ: ОПТИМИЗАЦИЯ ЗАПРОСА (ИТС) -->
+    <div id="tab-queries-refactor" class="tab-panel">
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Оптимизация запроса (ИТС)</div>
                 <span class="badge badge-ok">ИТС Стандарт</span>
             </div>
             <div class="card-desc">Выносит прямые соединения с виртуальными таблицами во временные таблицы с индексацией и ЕСТЬNULL.</div>
+            <div class="chips-row">
+                <div class="chip" onclick="loadSampleRefactor('virtual_join')">Пример: Соединение с вирт. таблицей</div>
+                <div class="chip" onclick="loadSampleRefactor('subquery')">Пример: Вложенный запрос в ГДЕ</div>
+            </div>
             <div class="form-group">
                 <label class="form-label" for="refactorInput">Текст исходного запроса 1С:</label>
-                <textarea id="refactorInput" placeholder="Вставьте текст неоптимального запроса или соединение с виртуальной таблицей..."></textarea>
+                <textarea id="refactorInput" placeholder="Вставьте текст неоптимального запроса или выберите тестовый пример выше..."></textarea>
             </div>
             <button onclick="refactorQuery()">Оптимизировать запрос <kbd>Ctrl+Enter</kbd></button>
             <div id="refactorStatus" style="font-size:11px; color:var(--text-muted); margin-top:4px;"></div>
@@ -1153,8 +2326,10 @@ ${bspSummary}`;
                 <button class="secondary" onclick="copyCodeFrom('refactorOutput')">Копировать</button>
             </div>
         </div>
+    </div>
 
-        <!-- AI Генератор по описанию -->
+    <!-- ТАБ: AI ГЕНЕРАТОР ЗАПРОСОВ ПО ОПИСАНИЮ -->
+    <div id="tab-queries-gen" class="tab-panel">
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Генерация пакета запроса</div>
@@ -1178,8 +2353,10 @@ ${bspSummary}`;
                 <button class="secondary" onclick="copyCodeFrom('queryOutput')">Копировать</button>
             </div>
         </div>
+    </div>
 
-        <!-- Шаблонизатор проведения -->
+    <!-- ТАБ: КОНСТРУКТОР ДВИЖЕНИЙ ПРОВЕДЕНИЯ -->
+    <div id="tab-queries-batch" class="tab-panel">
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Конструктор движений проведения</div>
@@ -1328,7 +2505,11 @@ ${bspSummary}`;
             
             <div class="form-group" style="margin-top:8px;">
                 <label class="form-label" for="auditSnippetInput">Или вставьте BSL-фрагмент для экспресс-проверки:</label>
-                <textarea id="auditSnippetInput" placeholder="Вставьте процедуры, функции или запросы для экспресс-аудита..."></textarea>
+                <div class="chips-row">
+                    <div class="chip" onclick="loadSampleAudit('loop_and_modal')">Пример: Запрос в цикле и модальность</div>
+                    <div class="chip" onclick="loadSampleAudit('heavy_objects')">Пример: Ссылка.ПолучитьОбъект()</div>
+                </div>
+                <textarea id="auditSnippetInput" placeholder="Вставьте процедуры, функции или выберите тестовый пример выше..."></textarea>
             </div>
             <button class="secondary" onclick="auditSnippet()">Проверить фрагмент</button>
             <div id="auditOutputContainer" style="margin-top:8px;"></div>
@@ -1446,12 +2627,26 @@ ${bspSummary}`;
     <div id="tab-settings" class="tab-panel">
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Баланс NormaHub</div>
-                <span class="badge badge-ok">Pay-As-You-Go</span>
+                <div class="card-title">Шлюз NormaHub</div>
+                <span class="badge ${gatewayStatusBadge}">${gatewayStatusLabel}</span>
             </div>
-            <div style="font-size:19px; font-weight:800; color:#10B981; margin: 4px 0 8px 0; font-family:'JetBrains Mono', monospace;">${balanceDisplay}</div>
+            <div style="font-size:15px; font-weight:700; color:${isGatewayActive ? '#10B981' : 'var(--text-muted)'}; margin: 4px 0 8px 0; font-family:'JetBrains Mono', monospace;">${balanceDisplay}</div>
+            <div class="card-desc" style="margin-bottom:8px;">
+                Официальный AI-шлюз без VPN. Тарификация Pay-As-You-Go с посекундным списанием токенов.
+            </div>
             <div class="btn-group">
-                <button onclick="openBilling()">Пополнить баланс</button>
+                <button onclick="openBilling()">Управление балансом на normahub.cc</button>
+            </div>
+            <div class="promo-badge-box">
+                <div class="promo-header">
+                    <span class="promo-gift-icon">🎁</span>
+                    <span class="promo-label">Промокод на $0.10:</span>
+                    <code class="promo-code" onclick="copyPromoCode()" title="Нажмите, чтобы скопировать">1CPROMO</code>
+                    <button class="promo-copy-btn" onclick="copyPromoCode()" type="button" title="Скопировать промокод">Скопировать</button>
+                </div>
+                <div class="promo-hint">
+                    <strong>Обратите внимание:</strong> Промокод <code>1CPROMO</code> дает бонус <strong>$0.10</strong> и указывается <u>исключительно при регистрации</u> нового аккаунта на <a href="https://normahub.cc" target="_blank" class="promo-link">normahub.cc</a> (внутри личного кабинета применить промокод невозможно).
+                </div>
             </div>
         </div>
 
@@ -1464,6 +2659,7 @@ ${bspSummary}`;
             <div class="form-group">
                 <select id="modelSelector" onchange="changeModel()">
                     <option value="deepseek-v4.1-flash" ${selectedModel === 'deepseek-v4.1-flash' ? 'selected' : ''}>DeepSeek v4.1 Flash (★ Рекомендуется для 1С, ~0.04 ₽)</option>
+                    <option value="claude-sonnet-5-5" ${selectedModel === 'claude-sonnet-5-5' ? 'selected' : ''}>Claude Sonnet 5.5 (Архитектура, расширения и рефакторинг)</option>
                     <option value="gpt-6.1-sol" ${selectedModel === 'gpt-6.1-sol' ? 'selected' : ''}>GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика)</option>
                     <option value="gpt-6-sol" ${selectedModel === 'gpt-6-sol' ? 'selected' : ''}>GPT-6 Sol (Высокая точность и рассуждения)</option>
                     <option value="gpt-6-astra" ${selectedModel === 'gpt-6-astra' ? 'selected' : ''}>GPT-6 Astra (Баланс скорости и интеллекта)</option>
@@ -1485,6 +2681,25 @@ ${bspSummary}`;
             </div>
             <button class="secondary" onclick="saveKey()">Сохранить ключ в SecretStorage</button>
         </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Справка и подсказки</div>
+                <span class="badge badge-context">Интерфейс</span>
+            </div>
+            <div class="btn-group">
+                <button class="secondary" onclick="restoreQuickStart()">Показать памятку «Быстрый старт»</button>
+                <button class="secondary" onclick="openWelcomeModal()">Открыть вводный гид</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Шпаргалка по горячим клавишам (Футер) -->
+    <div class="hotkeys-footer">
+        <div class="hotkeys-footer-title">Горячие клавиши:</div>
+        <div class="hotkey-item" title="В редакторе BSL: примите предложенный фрагмент автодополнения"><kbd>Tab</kbd><span>Автодополнение</span></div>
+        <div class="hotkey-item" title="Быстрый вызов генератора запросов 1С"><kbd>Ctrl+Alt+Q</kbd><span>Запрос</span></div>
+        <div class="hotkey-item" title="Интеграция с TurboConf и Конфигуратором 1С"><kbd>Ctrl+Alt+Space</kbd><span>TurboConf</span></div>
     </div>
     </div>
 <div id="toast" class="toast">✓ Скопировано в буфер обмена!</div>
@@ -1607,10 +2822,15 @@ ${bspSummary}`;
                     const tabular = msg.tabular || 'Товары';
                     const register = msg.register || 'ТоварыНаСкладах';
                     const registerType = msg.registerType || 'Остатки';
+                    const isInfoReg = registerType === 'СрезПоследних' || registerType === 'СрезПервых' || register.startsWith('РегистрСведений.');
+                    const regKind = isInfoReg ? 'РегистрСведений' : 'РегистрНакопления';
+                    const cleanReg = register.replace(/^(РегистрНакопления|РегистрСведений)\./, '');
+                    const resField = isInfoReg ? 'Значение' : (registerType === 'Обороты' ? 'КоличествоОборот' : 'КоличествоОстаток');
+
                     const lines = [
                         '// Шаблон проведения документа ' + entity,
-                        'Движения.' + register + '.Записывать = Истина;',
-                        'Движения.' + register + '.БлокироватьДляИзменения = Истина;',
+                        'Движения.' + cleanReg + '.Записывать = Истина;',
+                        isInfoReg ? '' : 'Движения.' + cleanReg + '.БлокироватьДляИзменения = Истина;',
                         '',
                         'Запрос = Новый Запрос;',
                         'Запрос.МенеджерВременныхТаблиц = Новый МенеджерВременныхТаблиц;',
@@ -1632,10 +2852,10 @@ ${bspSummary}`;
                         '    |ВЫБРАТЬ',
                         '    |    ВТ.Номенклатура КАК Номенклатура,',
                         '    |    ВТ.Количество КАК Требуется,',
-                        '    |    ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК Остаток',
+                        '    |    ЕСТЬNULL(Остатки.' + resField + ', 0) КАК ' + (isInfoReg ? 'Значение' : 'Остаток'),
                         '    |ИЗ',
                         '    |    ВТ_Товары КАК ВТ',
-                        '    |    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.' + register + '.' + registerType + '(',
+                        '    |    ЛЕВОЕ СОЕДИНЕНИЕ ' + regKind + '.' + cleanReg + '.' + registerType + '(',
                         '    |        &МоментВремени,',
                         '    |        Номенклатура В (ВЫБРАТЬ ВТ.Номенклатура ИЗ ВТ_Товары КАК ВТ)',
                         '    |    ) КАК Остатки',
@@ -1644,7 +2864,7 @@ ${bspSummary}`;
                         'Запрос.УстановитьПараметр("Ссылка", ЭтотОбъект.Ссылка);',
                         'Запрос.УстановитьПараметр("МоментВремени", ЭтотОбъект.МоментВремени());',
                         'Выборка = Запрос.Выполнить().Выбрать();'
-                    ];
+                    ].filter(l => l !== '');
                     const out = document.getElementById('batchOutput');
                     if (out) {
                         out.style.display = 'block';
@@ -1652,6 +2872,12 @@ ${bspSummary}`;
                         const act = document.getElementById('batchActions');
                         if (act) act.style.display = 'flex';
                     }
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'batchResult',
+                            code: lines.join(NL)
+                        }
+                    }));
                     showToast('✓ Шаблон проведения сформирован');
                 }, 100);
             } else if (msg.type === 'generateExtension') {
@@ -1843,7 +3069,217 @@ ${bspSummary}`;
             }
         }
 
-        initTheme();
+        // Data structures for tools by category
+        const categoryTools = {
+            'ai': [
+                { id: 'ai-overview', name: '⚡ Action Pilot (Главный пульт AI)' },
+                { id: 'queries-gen', name: '✨ Генерация пакета запроса' },
+                { id: 'queries-refactor', name: '⚡ Оптимизация запроса (ИТС)' },
+                { id: 'queries-batch', name: '📋 Шаблонизатор движений регистров' },
+                { id: 'bdd', name: '🧪 Сценарии тестов Vanessa BDD' },
+                { id: 'settings', name: '⚙️ Шлюз NormaHub и статус' }
+            ],
+            'tools': [
+                { id: 'bsp', name: '📦 База знаний БСП 3.1 (40+ методов, офлайн)' },
+                { id: 'extensions', name: '🧩 Перехватчики расширений (&cfe)' },
+                { id: 'audit', name: '🛡️ Стандарты разработки фирмы 1С (ИТС)' },
+                { id: 'techlog', name: '📊 Анализ Техжурнала 1С (ТЖ)' },
+                { id: 'metadata', name: '🗂️ Граф метаданных конфигурации' },
+                { id: 'sidecar', name: '🔌 1C Sidecar Daemon (:18833)' }
+            ]
+        };
+
+        let currentCategory = 'ai';
+        let currentTool = 'ai-overview';
+
+        function selectCategory(cat, targetTool) {
+            currentCategory = cat;
+            document.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById('cat-btn-' + cat);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            // Populate toolSelector
+            const selector = document.getElementById('toolSelector');
+            if (selector) {
+                selector.innerHTML = '';
+                const list = categoryTools[cat] || [];
+                list.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = t.name;
+                    selector.appendChild(opt);
+                });
+            }
+
+            const defaultTool = targetTool || (cat === 'ai' ? 'ai-overview' : 'bsp');
+            selectSubTool(defaultTool);
+        }
+
+        function selectSubTool(toolId) {
+            currentTool = toolId;
+            let foundCat = 'ai';
+            if (categoryTools['tools'].some(t => t.id === toolId)) {
+                foundCat = 'tools';
+            }
+
+            if (foundCat !== currentCategory) {
+                currentCategory = foundCat;
+                document.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('active'));
+                const activeBtn = document.getElementById('cat-btn-' + foundCat);
+                if (activeBtn) activeBtn.classList.add('active');
+
+                const selector = document.getElementById('toolSelector');
+                if (selector) {
+                    selector.innerHTML = '';
+                    categoryTools[foundCat].forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t.id;
+                        opt.textContent = t.name;
+                        selector.appendChild(opt);
+                    });
+                }
+            }
+
+            const selector = document.getElementById('toolSelector');
+            if (selector && selector.value !== toolId) {
+                selector.value = toolId;
+            }
+
+            const legacyNav = document.getElementById('tabNavSelector');
+            if (legacyNav) {
+                legacyNav.value = toolId;
+            }
+
+            // Hide all tab-panels and show target
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            const panel = document.getElementById('tab-' + toolId);
+            if (panel) {
+                panel.classList.add('active');
+            }
+
+            // Trigger lazy-load actions
+            if (toolId === 'bsp') {
+                const bspContainer = document.getElementById('bspListContainer');
+                if (bspContainer && bspContainer.children.length === 0) {
+                    renderBspList();
+                }
+            }
+            if (toolId === 'sidecar') {
+                checkSidecar();
+            }
+        }
+
+        // Backwards-compatible adapter for tests and legacy links
+        function switchTab(name) {
+            if (name === 'queries') {
+                selectCategory('ai', 'queries-refactor');
+            } else if (name === 'queries-gen') {
+                selectCategory('ai', 'queries-gen');
+            } else if (name === 'queries-refactor') {
+                selectCategory('ai', 'queries-refactor');
+            } else if (name === 'queries-batch') {
+                selectCategory('ai', 'queries-batch');
+            } else if (name === 'bdd') {
+                selectCategory('ai', 'bdd');
+            } else if (name === 'settings') {
+                selectCategory('ai', 'settings');
+            } else if (categoryTools['tools'].some(t => t.id === name)) {
+                selectCategory('tools', name);
+            } else {
+                selectCategory('ai', name);
+            }
+        }
+
+        // Quick Start Guide controls
+        function toggleQuickStart() {
+            const box = document.getElementById('quickStartBox');
+            if (!box) return;
+            const isCollapsed = box.classList.toggle('collapsed');
+            const arr = document.getElementById('quickStartToggleArrow');
+            if (arr) arr.innerText = isCollapsed ? '▼' : '▲';
+            try {
+                localStorage.setItem('1c_copilot_qs_collapsed', isCollapsed ? '1' : '0');
+            } catch (_) {}
+        }
+
+        function dismissQuickStartForever(e) {
+            if (e) e.stopPropagation();
+            const box = document.getElementById('quickStartBox');
+            if (box) box.style.display = 'none';
+            try {
+                localStorage.setItem('1c_copilot_qs_hidden_forever', '1');
+            } catch (_) {}
+            showToast('✓ Памятка скрыта. Вы можете вернуть её в настройках.');
+        }
+
+        function restoreQuickStart() {
+            try {
+                localStorage.removeItem('1c_copilot_qs_hidden_forever');
+            } catch (_) {}
+            const box = document.getElementById('quickStartBox');
+            if (box) {
+                box.style.display = 'block';
+                box.classList.remove('collapsed');
+            }
+            showToast('✓ Памятка "Быстрый старт" восстановлена');
+        }
+
+        function initQuickStart() {
+            try {
+                if (localStorage.getItem('1c_copilot_qs_hidden_forever') === '1') {
+                    const box = document.getElementById('quickStartBox');
+                    if (box) box.style.display = 'none';
+                    return;
+                }
+                if (localStorage.getItem('1c_copilot_qs_collapsed') === '1') {
+                    const box = document.getElementById('quickStartBox');
+                    if (box) {
+                        box.classList.add('collapsed');
+                        const arr = document.getElementById('quickStartToggleArrow');
+                        if (arr) arr.innerText = '▼';
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // Welcome Modal controls
+        function initWelcomeModal() {
+            try {
+                if (localStorage.getItem('1c_copilot_welcomed') !== '1') {
+                    const modal = document.getElementById('welcomeModal');
+                    if (modal) modal.style.display = 'flex';
+                }
+            } catch (_) {}
+        }
+
+        function closeWelcomeModal() {
+            const modal = document.getElementById('welcomeModal');
+            if (modal) modal.style.display = 'none';
+            try {
+                localStorage.setItem('1c_copilot_welcomed', '1');
+            } catch (_) {}
+            showToast('✓ Приятной работы с 1C BSL Studio!');
+        }
+
+        function openWelcomeModal() {
+            const modal = document.getElementById('welcomeModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        // AI Overview Helpers
+        function showFimDemo() {
+            const box = document.getElementById('fimDemoBox');
+            if (box) {
+                box.style.display = box.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        function launchToolWithSample(toolId, sampleType) {
+            selectSubTool(toolId);
+            if (toolId === 'queries-refactor' && typeof loadSampleRefactor === 'function') {
+                loadSampleRefactor(sampleType);
+            }
+        }
 
         // Toast feedback
         function showToast(msg) {
@@ -1854,36 +3290,20 @@ ${bspSummary}`;
             setTimeout(() => t.classList.remove('show'), 1500);
         }
 
-        // Tabs
-        function switchTab(name) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-            const btn = document.getElementById('tab-btn-' + name);
-            if (btn) btn.classList.add('active');
-            const panel = document.getElementById('tab-' + name);
-            if (panel) panel.classList.add('active');
-
-            const navSel = document.getElementById('tabNavSelector');
-            if (navSel && navSel.value !== name) {
-                navSel.value = name;
-            }
-
-            if (name === 'bsp') {
-                const bspContainer = document.getElementById('bspListContainer');
-                if (bspContainer && bspContainer.children.length === 0) {
-                    renderBspList();
-                }
-            }
-            if (name === 'sidecar') {
-                checkSidecar();
-            }
-        }
+        initTheme();
+        initQuickStart();
+        initWelcomeModal();
+        selectCategory('ai', 'ai-overview');
 
         // Code Box helpers
         function insertCodeFrom(id) {
-            const code = document.getElementById(id).innerText;
-            if (code) {
+            const elem = document.getElementById(id);
+            const code = elem ? elem.innerText : '';
+            if (code && code.trim()) {
                 vscode.postMessage({ type: 'insertCode', code });
+                showToast('✓ Вставка в позицию курсора активного модуля');
+            } else {
+                showToast('⚠️ Нет кода для вставки');
             }
         }
 
@@ -1920,6 +3340,79 @@ ${bspSummary}`;
             const register = document.getElementById('batchRegister').value.trim() || 'ТоварыНаСкладах';
             const registerType = document.getElementById('batchRegisterType').value;
             vscode.postMessage({ type: 'generateBatchTemplate', entity, tabular, register, registerType });
+        }
+
+        // Sample Loaders
+        function loadSampleRefactor(type) {
+            const input = document.getElementById('refactorInput');
+            if (!input) return;
+            if (type === 'virtual_join') {
+                const sampleLines = [
+                    'ВЫБРАТЬ',
+                    '    ДокументТовары.Номенклатура КАК Номенклатура,',
+                    '    ДокументТовары.Количество КАК Количество,',
+                    '    Остатки.КоличествоОстаток КАК Остаток',
+                    'ИЗ',
+                    '    Документ.РеализацияТоваровУслуг.Товары КАК ДокументТовары',
+                    '    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.ТоварыНаСкладах.Остатки КАК Остатки',
+                    '        ПО ДокументТовары.Номенклатура = Остатки.Номенклатура',
+                    'ГДЕ',
+                    '    ДокументТовары.Ссылка = &Ссылка'
+                ];
+                input.value = sampleLines.join(NL);
+            } else {
+                const sampleLines = [
+                    'ВЫБРАТЬ',
+                    '    Реализация.Ссылка КАК Документ,',
+                    '    Реализация.СуммаДокумента КАК Сумма',
+                    'ИЗ',
+                    '    Документ.РеализацияТоваровУслуг КАК Реализация',
+                    'ГДЕ',
+                    '    Реализация.Контрагент В (',
+                    '        ВЫБРАТЬ Контрагент ИЗ Справочник.Контрагенты ГДЕ Недействителен = Истина',
+                    '    )'
+                ];
+                input.value = sampleLines.join(NL);
+            }
+            showToast('✓ Пример запроса загружен в поле');
+        }
+
+        function loadSampleAudit(type) {
+            const input = document.getElementById('auditSnippetInput');
+            if (!input) return;
+            if (type === 'loop_and_modal') {
+                const sampleLines = [
+                    'Для Каждого Стр Из Объект.Товары Цикл',
+                    '    Запрос = Новый Запрос;',
+                    '    Запрос.Текст = "ВЫБРАТЬ Цена ИЗ РегистрСведений.ЦеныНоменклатуры.СрезПоследних(&Период, Номенклатура = &Номенклатура)";',
+                    '    Запрос.УстановитьПараметр("Период", ТекущаяДата());',
+                    '    Запрос.УстановитьПараметр("Номенклатура", Стр.Номенклатура);',
+                    '    Выборка = Запрос.Выполнить().Выбрать();',
+                    '    Если Выборка.Следующий() Тогда',
+                    '        Стр.Цена = Выборка.Цена;',
+                    '    КонецЕсли;',
+                    'КонецЦикла;',
+                    '',
+                    'Предупреждение("Цены успешно пересчитаны!");'
+                ];
+                input.value = sampleLines.join(NL);
+            } else {
+                const sampleLines = [
+                    'Выборка = Справочники.Номенклатура.Выбрать();',
+                    'Пока Выборка.Следующий() Цикл',
+                    '    ОбъектНоменклатуры = Выборка.Ссылка.ПолучитьОбъект();',
+                    '    ОбъектНоменклатуры.Недействителен = Ложь;',
+                    '    ОбъектНоменклатуры.Записать();',
+                    'КонецЦикла;'
+                ];
+                input.value = sampleLines.join(NL);
+            }
+            showToast('✓ Тестовый BSL-пример загружен');
+        }
+
+        function copyPromoCode() {
+            vscode.postMessage({ type: 'copyToClipboard', text: '1CPROMO' });
+            showToast('✓ Промокод 1CPROMO скопирован!');
         }
 
         // BSP Tab
@@ -2066,15 +3559,156 @@ ${bspSummary}`;
         function openBilling() { vscode.postMessage({ type: 'openBilling' }); }
         function openB2B() { vscode.postMessage({ type: 'openB2B' }); }
 
+        // ==========================================
+        // ACTION PILOT CLIENT CONTROLLERS
+        // ==========================================
+        let currentCockpitCode = '';
+        let currentEditorContext = { fileName: '', isBsl: false, lineCount: 0, hasSelection: false, selectedText: '' };
+
+        function updateEditorContextUI(ctx) {
+            currentEditorContext = ctx || {};
+            const dot = document.getElementById('pilotContextDot');
+            const fileEl = document.getElementById('pilotContextFile');
+            const selEl = document.getElementById('pilotContextSel');
+            if (!fileEl || !selEl) return;
+
+            if (ctx && ctx.fileName) {
+                if (dot) dot.innerText = '🟢';
+                fileEl.innerText = ctx.fileName + (ctx.isBsl ? ' (BSL модуль)' : '');
+                if (ctx.hasSelection) {
+                    selEl.innerText = 'Выделен фрагмент • ' + ctx.lineCount + ' строк кода';
+                } else {
+                    selEl.innerText = 'Модуль открыт в редакторе • позиция курсора';
+                }
+            } else {
+                if (dot) dot.innerText = '⚪';
+                fileEl.innerText = 'Нет активного редактора BSL';
+                selEl.innerText = 'Откройте файл .bsl или выделите фрагмент запроса';
+            }
+        }
+
+        function refreshEditorContext() {
+            vscode.postMessage({ type: 'getEditorContext' });
+            showToast('✓ Контекст редактора обновлен');
+        }
+
+        function showInCockpitStudio(code, badgeText, metaText) {
+            currentCockpitCode = code || '';
+            const studio = document.getElementById('cockpitOutputStudio');
+            const badge = document.getElementById('cockpitBadge');
+            const meta = document.getElementById('cockpitMeta');
+            const pre = document.getElementById('cockpitCodePre');
+            if (!studio) return;
+
+            if (badge) badge.innerText = badgeText || '✓ Код сформирован по стандартам ИТС';
+            const linesCount = currentCockpitCode.split(NL).length;
+            if (meta) meta.innerText = linesCount + ' строк BSL' + (metaText ? ' • ' + metaText : '');
+            if (pre) pre.innerText = currentCockpitCode;
+
+            studio.style.display = 'block';
+            studio.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function insertCockpitCode() {
+            if (!currentCockpitCode) return;
+            vscode.postMessage({ type: 'insertCode', code: currentCockpitCode });
+            showToast('✓ Код вставлен в активный модуль редактора!');
+        }
+
+        function copyCockpitCode() {
+            if (!currentCockpitCode) return;
+            vscode.postMessage({ type: 'copyToClipboard', text: currentCockpitCode });
+            if (navigator.clipboard) { navigator.clipboard.writeText(currentCockpitCode); }
+            showToast('✓ Код скопирован в буфер обмена!');
+        }
+
+        function clearCockpitOutput() {
+            currentCockpitCode = '';
+            const studio = document.getElementById('cockpitOutputStudio');
+            if (studio) studio.style.display = 'none';
+        }
+
+        function syncModelSelection(val) {
+            const mainSel = document.getElementById('modelSelector');
+            if (mainSel && mainSel.value !== val) {
+                mainSel.value = val;
+                changeModel();
+            } else {
+                vscode.postMessage({ type: 'changeModel', model: val });
+                showToast('✓ Выбрана модель: ' + val);
+            }
+        }
+
+        function runCockpitAction(action) {
+            const entity = (document.getElementById('drawerEntity') ? document.getElementById('drawerEntity').value : 'РеализацияТоваровУслуг') || 'РеализацияТоваровУслуг';
+            const tabular = (document.getElementById('drawerTabular') ? document.getElementById('drawerTabular').value : 'Товары') || 'Товары';
+            const register = (document.getElementById('drawerRegister') ? document.getElementById('drawerRegister').value : 'ТоварыНаСкладах') || 'ТоварыНаСкладах';
+
+            if (action === 'optimize-query') {
+                const queryText = (currentEditorContext.hasSelection && currentEditorContext.selectedText)
+                    ? currentEditorContext.selectedText
+                    : (document.getElementById('refactorInput') && document.getElementById('refactorInput').value
+                        ? document.getElementById('refactorInput').value
+                        : [
+                            'ВЫБРАТЬ',
+                            '    ДокументТаблица.Номенклатура КАК Номенклатура,',
+                            '    ДокументТаблица.Количество КАК Количество,',
+                            '    Остатки.КоличествоОстаток КАК Остаток',
+                            'ИЗ',
+                            '    Документ.' + entity + '.' + tabular + ' КАК ДокументТаблица',
+                            '    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.' + register + '.Остатки(&МоментВремени) КАК Остатки',
+                            '    ПО ДокументТаблица.Номенклатура = Остатки.Номенклатура'
+                          ].join(NL));
+                
+                vscode.postMessage({ type: 'refactorQuery', rawQuery: queryText });
+                showToast('⚡ Оптимизация запроса по стандартам ИТС...');
+            } else if (action === 'create-extension') {
+                vscode.postMessage({
+                    type: 'generateExtension',
+                    method: 'ОбработкаПроведения',
+                    directive: 'Вместо',
+                    params: 'Отказ, РежимПроведения'
+                });
+                showToast('🛡️ Генерация безопасного перехвата &Вместо...');
+            } else if (action === 'generate-posting') {
+                vscode.postMessage({
+                    type: 'generateBatchTemplate',
+                    entity: entity,
+                    tabular: tabular,
+                    register: register,
+                    registerType: 'Остатки'
+                });
+                showToast('📦 Формирование проведения с блокировкой и остатками...');
+            }
+        }
+
+        function runCockpitPrompt() {
+            const input = document.getElementById('cockpitPromptInput');
+            if (!input || !input.value.trim()) {
+                showToast('Введите описание задачи');
+                return;
+            }
+            const promptText = input.value.trim();
+            vscode.postMessage({ type: 'generateQuery', intent: promptText });
+            showToast('🚀 Генерация решения...');
+        }
+
         // Host Message Listener
         window.addEventListener('message', event => {
             const message = event.data;
-            if (message.type === 'queryResult') {
+            if (message.type === 'editorContext') {
+                updateEditorContextUI(message);
+            } else if (message.type === 'toast' && message.message) {
+                showToast(message.message);
+            } else if (message.type === 'queryResult') {
                 document.getElementById('queryStatus').innerText = '';
                 const box = document.getElementById('queryOutput');
                 box.style.display = 'block';
                 box.innerText = message.code || message.error || '';
                 document.getElementById('queryActions').style.display = message.code ? 'flex' : 'none';
+                if (message.code) {
+                    showInCockpitStudio(message.code, '✓ Пакет запроса сформирован', 'Сгенерировано AI');
+                }
             } else if (message.type === 'refactorResult') {
                 document.getElementById('refactorStatus').innerText = '';
                 const box = document.getElementById('refactorOutput');
@@ -2088,6 +3722,7 @@ ${bspSummary}`;
                     }
                     box.innerText = out;
                     document.getElementById('refactorActions').style.display = 'flex';
+                    showInCockpitStudio(out, '✓ Запрос оптимизирован по стандартам ИТС', (message.optimizations ? message.optimizations.length + ' улучшений' : ''));
                 }
             } else if (message.type === 'batchResult') {
                 const box = document.getElementById('batchOutput');
@@ -2097,11 +3732,17 @@ ${bspSummary}`;
                     const act = document.getElementById('batchActions');
                     if (act) act.style.display = 'flex';
                 }
+                if (message.code) {
+                    showInCockpitStudio(message.code, '✓ Модуль проведения сформирован', 'Блокировка + остатки');
+                }
             } else if (message.type === 'extensionResult') {
                 const box = document.getElementById('extOutput');
                 box.style.display = 'block';
                 box.innerText = message.code || '';
                 document.getElementById('extActions').style.display = 'flex';
+                if (message.code) {
+                    showInCockpitStudio(message.code, '✓ Перехват &cfe сформирован', '&Вместо + ПродолжитьВызов');
+                }
             } else if (message.type === 'formBtnResult') {
                 const box = document.getElementById('btnFormOutput');
                 if (box) {

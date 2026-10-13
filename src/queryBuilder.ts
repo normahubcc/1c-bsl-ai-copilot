@@ -28,7 +28,7 @@ export interface PackageQueryOptions {
     entityName: string; // e.g. "ЗаказКлиента" or "РеализацияТоваровУслуг"
     tabularSection: string; // e.g. "Товары"
     registerName: string; // e.g. "ТоварыНаСкладах"
-    registerType: 'Остатки' | 'Обороты' | 'СрезПоследних';
+    registerType?: 'Остатки' | 'Обороты' | 'СрезПоследних' | 'СрезПервых';
     fields: string[]; // e.g. ["Номенклатура", "Характеристика", "Количество"]
     includeScaffolding: boolean;
 }
@@ -112,48 +112,102 @@ export class QueryBuilder {
      */
     public static generateBatchQuery(options: PackageQueryOptions): string {
         const vtSource = `ВТ_${options.tabularSection}`;
-        const vtBalances = `ВТ_Остатки${options.registerName}`;
+        const cleanReg = options.registerName.replace(/^(РегистрНакопления|РегистрСведений|РегистрБухгалтерии)\./, '');
+        const vtBalances = `ВТ_Остатки${cleanReg}`;
+
+        // Infer entity full path (Документ vs Справочник)
+        let fullEntity = options.entityName.trim();
+        if (!fullEntity.includes('.')) {
+            fullEntity = `Документ.${fullEntity}`;
+        }
+
+        // Infer correct register kind and virtual table
+        let registerKind = 'РегистрНакопления';
+        const regType = options.registerType || 'Остатки';
+        if (options.registerName.startsWith('РегистрСведений.') || regType === 'СрезПоследних' || regType === 'СрезПервых') {
+            registerKind = 'РегистрСведений';
+        } else if (options.registerName.startsWith('РегистрБухгалтерии.')) {
+            registerKind = 'РегистрБухгалтерии';
+        }
+
+        // Separate fields into dimensions and resources
+        const rawFields = (options.fields && options.fields.length > 0) ? options.fields : ['Номенклатура', 'Количество'];
+        const resourceKeywords = /Количество|Сумма|Вес|Объем|Стоимость|Цена|Остаток/i;
+        const dimensions = rawFields.filter(f => !resourceKeywords.test(f));
+        const resources = rawFields.filter(f => resourceKeywords.test(f));
+
+        const mainDim = dimensions[0] || 'Номенклатура';
+        const mainRes = resources[0] || 'Количество';
+
+        // Select items for source table
+        const srcSelectLines: string[] = [];
+        for (const dim of (dimensions.length ? dimensions : [mainDim])) {
+            srcSelectLines.push(`    ДокументТаблица.${dim} КАК ${dim}`);
+        }
+        for (const res of (resources.length ? resources : [mainRes])) {
+            srcSelectLines.push(`    СУММА(ДокументТаблица.${res}) КАК ${res}`);
+        }
+
+        const groupByDims = (dimensions.length ? dimensions : [mainDim]).map(d => `    ДокументТаблица.${d}`).join(',\n');
+        const indexDims = (dimensions.length ? dimensions : [mainDim]).join(', ');
+
+        // Resource name in virtual table
+        let vtResName = mainRes;
+        if (registerKind === 'РегистрНакопления') {
+            if (regType === 'Остатки') {
+                vtResName = `${mainRes}Остаток`;
+            } else if (regType === 'Обороты') {
+                vtResName = `${mainRes}Оборот`;
+            }
+        }
+
+        // Virtual table parameter filter
+        const vtFilterCondition = `${mainDim} В (ВЫБРАТЬ ${vtSource}.${mainDim} ИЗ ${vtSource})`;
+
+        // Join condition
+        const joinConditions = (dimensions.length ? dimensions : [mainDim])
+            .map(d => `Исходные.${d} = Остатки.${d}`)
+            .join('\n        И ');
 
         let query = `ВЫБРАТЬ
-    ДокументТаблица.Номенклатура КАК Номенклатура,
-    СУММА(ДокументТаблица.Количество) КАК Количество
+${srcSelectLines.join(',\n')}
 ПОМЕСТИТЬ ${vtSource}
 ИЗ
-    Документ.${options.entityName}.${options.tabularSection} КАК ДокументТаблица
+    ${fullEntity}.${options.tabularSection} КАК ДокументТаблица
 ГДЕ
     ДокументТаблица.Ссылка = &Ссылка
 СГРУППИРОВАТЬ ПО
-    ДокументТаблица.Номенклатура
+${groupByDims}
 ИНДЕКСИРОВАТЬ ПО
-    Номенклатура
+    ${indexDims}
 ;
 
 ////////////////////////////////////////////////////////////////////////////////
 ВЫБРАТЬ
-    Остатки.Номенклатура КАК Номенклатура,
-    Остатки.КоличествоОстаток КАК КоличествоОстаток
+    Остатки.${mainDim} КАК ${mainDim},
+    Остатки.${vtResName} КАК ${vtResName}
 ПОМЕСТИТЬ ${vtBalances}
 ИЗ
-    РегистрНакопления.${options.registerName}.${options.registerType}(
+    ${registerKind}.${cleanReg}.${regType}(
         &ПериодКонтроля,
-        Номенклатура В (ВЫБРАТЬ ${vtSource}.Номенклатура ИЗ ${vtSource})
+        ${vtFilterCondition}
     ) КАК Остатки
 ИНДЕКСИРОВАТЬ ПО
-    Номенклатура
+    ${mainDim}
 ;
 
 ////////////////////////////////////////////////////////////////////////////////
 ВЫБРАТЬ
-    Исходные.Номенклатура КАК Номенклатура,
-    Исходные.Количество КАК Требуется,
-    ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК Доступно,
-    Исходные.Количество - ЕСТЬNULL(Остатки.КоличествоОстаток, 0) КАК Дефицит
+    Исходные.${mainDim} КАК ${mainDim},
+    Исходные.${mainRes} КАК Требуется,
+    ЕСТЬNULL(Остатки.${vtResName}, 0) КАК Доступно,
+    Исходные.${mainRes} - ЕСТЬNULL(Остатки.${vtResName}, 0) КАК Дефицит
 ИЗ
     ${vtSource} КАК Исходные
     ЛЕВОЕ СОЕДИНЕНИЕ ${vtBalances} КАК Остатки
-        ПО Исходные.Номенклатура = Остатки.Номенклатура
+        ПО ${joinConditions}
 ГДЕ
-    Исходные.Количество > ЕСТЬNULL(Остатки.КоличествоОстаток, 0)
+    Исходные.${mainRes} > ЕСТЬNULL(Остатки.${vtResName}, 0)
 ;
 
 ////////////////////////////////////////////////////////////////////////////////
