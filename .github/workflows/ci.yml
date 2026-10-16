@@ -31,7 +31,7 @@ jobs:
 
       - name: Lint Python Sidecar
         run: |
-          pip install ruff
+          pip install "ruff==0.15.19"
           ruff check sidecar/
 
       - name: Run Test Suite
