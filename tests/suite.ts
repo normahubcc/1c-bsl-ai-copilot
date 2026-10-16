@@ -251,6 +251,12 @@ console.log('\n[6/7] Testing BDDGenerator (Vanessa-Automation BDD)...');
     assert.ok(featureText.includes('Сценарий: Успешное создание и проведение документа'), 'Must have positive scenario');
     assert.ok(featureText.includes('Сценарий: Контроль превышения остатка'), 'Must have negative scenario');
     assert.ok(featureText.includes('| \'Номенклатура\' | \'Количество\' | \'Цена\' |'), 'Must generate data table headers');
+    assert.strictEqual(
+        featureText.split("| 'Номенклатура' | 'Количество' | 'Цена' |").length - 1,
+        1,
+        'Must emit table headers exactly once'
+    );
+    assert.ok(featureText.includes("| 'Тестовый товар А' | '5' | '1200' |"), 'Must preserve the first data row');
     console.log('  ✓ Vanessa-Automation Russian Gherkin .feature generated with scenarios and tables');
 
     // B: Freeform Natural Language Intent Parsing

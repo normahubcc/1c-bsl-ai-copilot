@@ -2,7 +2,7 @@
   "name": "1c-bsl-ai-copilot",
   "displayName": "1C BSL AI Copilot (NormaHub)",
   "description": "Бесплатный AI-ассистент для разработчиков 1С:Предприятие (BSL) в VS Code и Cursor. Умный автокомплит на лету, конструктор запросов 1С и аудит стандартов ИТС без VPN.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "normahub",
   "icon": "icon.png",
   "license": "MIT",
@@ -41,7 +41,8 @@
     "compile": "tsc -p ./",
     "build": "npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify && npx esbuild ./src/mcp/server.ts --bundle --outfile=dist/mcp-server.js --format=cjs --platform=node",
     "package": "python3 build_vsix.py",
-    "test": "node ./tests/test_runner.js && python3 -m unittest discover -s sidecar/tests/ -v",
+    "qa:release": "npm run compile && npm run build && npm run package && python3 tests/release_qa.py",
+    "test": "node ./tests/test_runner.js && npm run compile && node ./tests/sidebar_host_test.js && node ./tests/inline_completion_baseline_test.js && node ./tests/inline_completion_lifecycle_test.js && node ./tests/inline_completion_context_test.js && node ./tests/inline_completion_normalizer_test.js && node ./tests/inline_completion_metrics_test.js && node ./tests/inline_completion_matrix_test.js && node ./tests/inline_completion_benchmark.js && node ./tests/inline_completion_coverage.js && python3 -m unittest discover -s sidecar/tests/ -v",
     "sidecar": "python3 sidecar/main.py daemon",
     "mcp": "node bin/mcp-server-1c.js"
   },
@@ -212,31 +213,18 @@
     "configuration": {
       "title": "1C BSL AI Copilot (NormaHub)",
       "properties": {
-        "normahub1c.baseUrl": {
-          "type": "string",
-          "default": "https://api.normahub.cc/v1",
-          "description": "Эндпоинт API-шлюза NormaHub"
-        },
         "normahub1c.autocompleteModel": {
           "type": "string",
           "default": "deepseek-v4.1-flash",
           "enum": [
             "deepseek-v4.1-flash",
-            "claude-sonnet-5-5",
             "gpt-6.1-sol",
-            "gpt-6-sol",
-            "gpt-6-astra",
-            "glm-5.3-flash",
-            "muse-spark-1.3"
+            "gpt-6-sol"
           ],
           "enumDescriptions": [
             "DeepSeek v4.1 Flash (★ Рекомендуется для 1С, сверхбыстрая и экономичная)",
-            "Claude Sonnet 5.5 (Архитектура, сложные расширения и рефакторинг)",
             "GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика и архитектура)",
-            "GPT-6 Sol (Высокая точность и сложные рассуждения)",
-            "GPT-6 Astra (Сбалансированная модель)",
-            "GLM 5.3 Flash (Сверхскоростная модель от Z.ai)",
-            "Muse Spark 1.3 (Креативность, комментарии и документация)"
+            "GPT-6 Sol (Высокая точность и сложные рассуждения)"
           ],
           "description": "Модель для мгновенного автокомплита BSL и кодогенерации"
         },
@@ -245,21 +233,13 @@
           "default": "gpt-6.1-sol",
           "enum": [
             "deepseek-v4.1-flash",
-            "claude-sonnet-5-5",
             "gpt-6.1-sol",
-            "gpt-6-sol",
-            "gpt-6-astra",
-            "glm-5.3-flash",
-            "muse-spark-1.3"
+            "gpt-6-sol"
           ],
           "enumDescriptions": [
             "DeepSeek v4.1 Flash (★ Рекомендуется для 1С, сверхбыстрая и экономичная)",
-            "Claude Sonnet 5.5 (Архитектура, сложные расширения и рефакторинг)",
             "GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика и архитектура)",
-            "GPT-6 Sol (Высокая точность и сложные рассуждения)",
-            "GPT-6 Astra (Сбалансированная модель)",
-            "GLM 5.3 Flash (Сверхскоростная модель от Z.ai)",
-            "Muse Spark 1.3 (Креативность, комментарии и документация)"
+            "GPT-6 Sol (Высокая точность и сложные рассуждения)"
           ],
           "description": "Модель для генерации сложных запросов 1С и глубокого рефакторинга"
         },
@@ -271,7 +251,32 @@
         "normahub1c.debounceMs": {
           "type": "number",
           "default": 250,
-          "description": "Задержка дебаунсинга автокомплита в мс перед отправкой в сеть"
+          "description": "Trailing debounce автокомплита в мс: серия нажатий схлопывается в один запрос к последней позиции (250 = баланс скорости и цены)"
+        },
+        "normahub1c.requestTimeoutMs": {
+          "type": "number",
+          "default": 25000,
+          "description": "Таймаут HTTPS-запроса автокомплита в мс; при истечении запрос уничтожается и ghost text молча отменяется (25000 = лимит шлюза)"
+        },
+        "normahub1c.maxCompletionLines": {
+          "type": "number",
+          "default": 20,
+          "description": "Максимум строк в одном ghost-дополнении; более длинные ответы модели отбрасываются (20 = компактная подсказка)"
+        },
+        "normahub1c.maxCompletionChars": {
+          "type": "number",
+          "default": 1000,
+          "description": "Максимум символов (code points) в одном ghost-дополнении; обрезка юникод-безопасна (1000 ≈ средний метод)"
+        },
+        "normahub1c.contextBudgetChars": {
+          "type": "number",
+          "default": 12000,
+          "description": "Жёсткий лимит суммарного контекста промпта (prefix+suffix+metadata+BSP+multi-tab); приоритет: текущий метод и префикс курсора (12000 ≈ быстрый и дешёвый запрос)"
+        },
+        "normahub1c.completionDebug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Диагностика inline completion в OutputChannel (только числа и классы ошибок, без кода и ключей; выключена по умолчанию)"
         }
       }
     }

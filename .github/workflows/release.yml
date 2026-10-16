@@ -36,11 +36,17 @@ jobs:
       - name: Package VSIX
         run: python3 build_vsix.py
 
+      - name: Release QA
+        run: python3 tests/release_qa.py
+
+      - name: Resolve exact release artifact
+        run: echo "RELEASE_VSIX=$(node -p \"require('./package.json').name + '-' + require('./package.json').version + '.vsix'\")" >> "$GITHUB_ENV"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            1c-bsl-ai-copilot-*.vsix
+            ${{ env.RELEASE_VSIX }}
             epf/NormaHubCopilot_Module.bsl
             epf/NormaHubCopilot_Form.bsl
             turboconf/normahub_copilot.os
@@ -53,13 +59,11 @@ jobs:
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          VSIX=$(ls 1c-bsl-ai-copilot-*.vsix | head -n 1)
-          npx --yes ovsx publish "$VSIX" --pat "$OVSX_PAT"
+          npx --yes ovsx publish "${RELEASE_VSIX}" --pat "$OVSX_PAT"
 
       - name: Publish to Visual Studio Marketplace (VS Code)
         if: env.VSCE_PAT != ''
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          VSIX=$(ls 1c-bsl-ai-copilot-*.vsix | head -n 1)
-          npx --yes @vscode/vsce@2.24.0 publish -p "$VSCE_PAT" --packagePath "$VSIX"
+          npx --yes @vscode/vsce@2.24.0 publish -p "$VSCE_PAT" --packagePath "${RELEASE_VSIX}"

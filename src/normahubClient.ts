@@ -4,13 +4,29 @@ import { NormaHubBalanceInfo } from './types';
 
 const SECRET_API_KEY = 'normahub1c.apiKey';
 
+/**
+ * Rejection reason for requests cancelled via AbortSignal.
+ * The provider maps it to a silent `null` (no user-facing error, no log noise).
+ */
+export class CompletionCancelledError extends Error {
+    constructor() {
+        super('Completion request cancelled');
+        this.name = 'CompletionCancelledError';
+    }
+}
+
+export interface CompletionRequestOptions {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+}
+
 export class NormaHubClient {
     public static async getApiKey(context: vscode.ExtensionContext): Promise<string> {
         const secret = await context.secrets.get(SECRET_API_KEY);
         if (secret && secret.trim()) {
             return secret.trim();
         }
-        const envKey = process.env.NORMAHUB_API_KEY || process.env.OPENAI_API_KEY;
+        const envKey = process.env.NORMAHUB_API_KEY;
         return envKey ? envKey.trim() : '';
     }
 
@@ -24,46 +40,8 @@ export class NormaHubClient {
 
     private static readonly DEFAULT_BASE_URL = 'https://api.normahub.cc/v1';
 
-    /**
-     * Trusted host patterns for API key transmission.
-     * Only HTTPS to NormaHub domains and localhost (for dev/sidecar) are allowed.
-     * Any other baseUrl override is rejected to prevent API key exfiltration.
-     */
-    private static readonly TRUSTED_HOST_PATTERNS: RegExp[] = [
-        /^api\.normahub\.cc$/i,
-        /^(.+\.)?normahub\.cc$/i,
-        /^localhost$/i,
-        /^127\.0\.0\.1$/i,
-        /^\[::1\]$/i,
-    ];
-
     public static getBaseUrl(): string {
-        const config = vscode.workspace.getConfiguration('normahub1c');
-        const userUrl = config.get<string>('baseUrl', this.DEFAULT_BASE_URL);
-
-        if (!userUrl || !userUrl.trim()) {
-            return this.DEFAULT_BASE_URL;
-        }
-
-        try {
-            const parsed = new URL(userUrl);
-            // Require HTTPS for remote hosts (allow HTTP only for localhost/127.0.0.1)
-            const isLocalhost = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(parsed.hostname);
-            if (parsed.protocol !== 'https:' && !isLocalhost) {
-                console.warn(`[NormaHub] Rejected insecure baseUrl (non-HTTPS, non-local): ${userUrl}`);
-                return this.DEFAULT_BASE_URL;
-            }
-            // Validate hostname against trusted patterns
-            const isTrusted = this.TRUSTED_HOST_PATTERNS.some(p => p.test(parsed.hostname));
-            if (!isTrusted) {
-                console.warn(`[NormaHub] Rejected untrusted baseUrl host: ${parsed.hostname}. API key will not be sent to unknown servers.`);
-                return this.DEFAULT_BASE_URL;
-            }
-            return userUrl;
-        } catch {
-            console.warn(`[NormaHub] Invalid baseUrl format: ${userUrl}`);
-            return this.DEFAULT_BASE_URL;
-        }
+        return this.DEFAULT_BASE_URL;
     }
 
     public static async checkBalance(apiKey: string): Promise<NormaHubBalanceInfo> {
@@ -148,14 +126,27 @@ export class NormaHubClient {
         });
     }
 
+    public static isCancelledError(err: unknown): boolean {
+        return err instanceof CompletionCancelledError
+            || (err instanceof Error && err.name === 'AbortError');
+    }
+
     public static async complete(
         apiKey: string,
         model: string,
         systemPrompt: string,
         userPrompt: string,
         temperature = 0.1,
-        maxTokens = 1500
+        maxTokens = 1500,
+        options?: CompletionRequestOptions
     ): Promise<string> {
+        const signal = options?.signal;
+        const timeoutMs = options?.timeoutMs ?? 25000;
+
+        if (signal?.aborted) {
+            return Promise.reject(new CompletionCancelledError());
+        }
+
         return new Promise((resolve, reject) => {
             const baseUrl = this.getBaseUrl();
             const url = new URL(`${baseUrl}/chat/completions`);
@@ -169,6 +160,14 @@ export class NormaHubClient {
                 max_tokens: maxTokens
             });
 
+            let settled = false;
+            const settleResolve = (v: string) => {
+                if (!settled) { settled = true; cleanup(); resolve(v); }
+            };
+            const settleReject = (e: Error) => {
+                if (!settled) { settled = true; cleanup(); reject(e); }
+            };
+
             const req = https.request(
                 url,
                 {
@@ -178,7 +177,7 @@ export class NormaHubClient {
                         'Authorization': `Bearer ${apiKey}`,
                         'Content-Length': Buffer.byteLength(payload)
                     },
-                    timeout: 25000
+                    timeout: timeoutMs
                 },
                 (res) => {
                     let data = '';
@@ -188,21 +187,39 @@ export class NormaHubClient {
                             try {
                                 const parsed = JSON.parse(data);
                                 const content = parsed.choices?.[0]?.message?.content || '';
-                                resolve(content);
+                                settleResolve(content);
                             } catch (e: any) {
-                                reject(new Error(`Ошибка парсинга ответа: ${e.message}`));
+                                settleReject(new Error(`Ошибка парсинга ответа: ${e.message}`));
                             }
                         } else {
-                            reject(new Error(`Ошибка шлюза NormaHub (HTTP ${res.statusCode}): ${data}`));
+                            settleReject(new Error(`Ошибка шлюза NormaHub (HTTP ${res.statusCode})`));
                         }
                     });
                 }
             );
 
-            req.on('error', err => reject(err));
+            const onAbort = () => {
+                try { req.destroy(); } catch (_) {}
+                settleReject(new CompletionCancelledError());
+            };
+
+            const cleanup = () => {
+                try { signal?.removeEventListener('abort', onAbort); } catch (_) {}
+            };
+
+            signal?.addEventListener('abort', onAbort, { once: true });
+
+            req.on('error', (err: any) => {
+                // Node emits the abort-driven socket error after destroy(); map it to cancellation.
+                if (signal?.aborted) {
+                    settleReject(new CompletionCancelledError());
+                } else {
+                    settleReject(err);
+                }
+            });
             req.on('timeout', () => {
-                req.destroy();
-                reject(new Error('Таймаут запроса к шлюзу NormaHub'));
+                try { req.destroy(); } catch (_) {}
+                settleReject(new Error('Таймаут запроса к шлюзу NormaHub'));
             });
 
             req.write(payload);

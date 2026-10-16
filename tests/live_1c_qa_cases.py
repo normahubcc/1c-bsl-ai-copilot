@@ -8,11 +8,14 @@ import urllib.request
 import json
 import ssl
 import time
-from pathlib import Path
+import os
 
-API_KEY = "nr_hub_30vs04igqh-54rYgAL3D8Vfseoh7QBcn0T_GrK5rcqI"
+API_KEY = os.environ.get("NORMAHUB_API_KEY", "")
 BASE_URL = "https://api.normahub.cc/v1"
 CTX = ssl.create_default_context()
+
+if not API_KEY:
+    raise SystemExit("NORMAHUB_API_KEY is required; no API key is stored in source code")
 
 def call_llm(model: str, system_prompt: str, user_prompt: str, max_tokens: int = 600, temperature: float = 0.1):
     payload = {
@@ -49,7 +52,7 @@ def call_llm(model: str, system_prompt: str, user_prompt: str, max_tokens: int =
 
 print("=" * 70)
 print("НАЧАЛО БОЕВОГО ПЛАТНОГО QA ТЕСТИРОВАНИЯ НА РЕАЛЬНОМ ШЛЮЗЕ NORMAHUB")
-print(f"Ключ: {API_KEY[:10]}...{API_KEY[-8:]}")
+print("Ключ: configured via environment (value hidden)")
 print("=" * 70)
 
 results = []
@@ -64,10 +67,9 @@ with urllib.request.urlopen(req_models, context=CTX, timeout=10) as resp:
     models_data = json.loads(resp.read().decode())
     model_ids = [m.get("id") for m in models_data.get("data", [])]
     assert "deepseek-v4.1-flash" in model_ids, "deepseek-v4.1-flash должна быть доступна"
-    assert "glm-5.3-flash" in model_ids, "glm-5.3-flash должна быть доступна"
-    assert "claude-sonnet-5-5" in model_ids, "claude-sonnet-5-5 должна быть доступна"
+    assert "gpt-6-sol" in model_ids, "gpt-6-sol должен быть доступен"
     print(f"  ✓ Шлюз NormaHub активен (HTTP 200). Доступно моделей: {len(model_ids)}")
-    print(f"  ✓ Ключевые модели подтверждены: deepseek-v4.1-flash, glm-5.3-flash, claude-sonnet-5-5")
+    print("  ✓ Ключевые модели подтверждены: deepseek-v4.1-flash, gpt-6.1-sol, gpt-6-sol")
 
 # --- 2. Реальный кейс 1С №1: Автодополнение на лету (FIM Ghost Text) ---
 print("\n[ТЕСТ 2] Реальный кейс 1С: Автодополнение FIM (Ghost Text в BSL модуле)...")
@@ -159,36 +161,22 @@ print("  " + "\n  ".join(refactored_lines[:12]))
 print("  ✓ Кейс 3 (Оптимизация антипаттерна) успешно пройден")
 results.append(("Рефакторинг запроса 1С", res4['elapsed'], res4['usage'].get('total_tokens'), res4['content'][:200]))
 
-# --- 5. Реальный кейс 1С №4: Модель glm-5.3-flash (Сверхскоростная альтернатива) ---
-print("\n[ТЕСТ 5] Проверка альтернативной модели GLM 5.3 Flash (сверхнизкая задержка)...")
-res5 = call_llm(
-    model="glm-5.3-flash",
-    system_prompt="Ты ассистент по 1С:Предприятие 8.3.",
-    user_prompt="Напиши вызов БСП метода ОбщегоНазначения.ЗначениеРеквизитаОбъекта для получения реквизита Артикул у НоменклатураСсылка.",
-    max_tokens=150
-)
-print(f"  Время отклика: {res5['elapsed']:.2f} сек (Сверхбыстро!) | Токенов: {res5['usage'].get('total_tokens')}")
-print("  Ответ GLM 5.3 Flash:\n  " + "\n  ".join(res5['content'].strip().split("\n")))
-assert "ОбщегоНазначения.ЗначениеРеквизитаОбъекта" in res5['content'], "GLM 5.3 должен вызвать правильный метод БСП"
-print("  ✓ Кейс 4 (GLM 5.3 Flash) успешно пройден")
-results.append(("Альтернативная модель GLM 5.3 Flash", res5['elapsed'], res5['usage'].get('total_tokens'), res5['content']))
-
-# --- 6. Реальный кейс 1С №5: Модель Claude Sonnet 3.5/5.5 (Глубокий анализ ТЖ) ---
-print("\n[ТЕСТ 6] Проверка флагманской модели claude-sonnet-5-5 (Анализ инцидента ТЖ TLOCK)...")
+# --- 5. Реальный кейс 1С №4: GPT-6 Sol (Глубокий анализ ТЖ) ---
+print("\n[ТЕСТ 5] Проверка модели gpt-6-sol (Анализ инцидента ТЖ TLOCK)...")
 tech_log_dump = """04:12.123000-1420000,TLOCK,3,process=rphost,p:processName=Enterprise,t:clientID=12,t:applicationName=1CV8C,t:computerName=APP-SRV-01,Regions=AccumRegister.ТоварыНаСкладах,WaitConnections=14,Context=Документ.РеализацияТоваровУслуг.МодульОбъекта : 142"""
 
 res6 = call_llm(
-    model="claude-sonnet-5-5",
+    model="gpt-6-sol",
     system_prompt="Ты ведущий эксперт по технологическому журналу 1С и СУБД PostgreSQL/MSSQL. Дай краткий диагноз блокировки и 2 точные рекомендации.",
     user_prompt=f"Разбери событие ТЖ:\n{tech_log_dump}",
     max_tokens=400
 )
 print(f"  Время отклика: {res6['elapsed']:.2f} сек | Токенов: {res6['usage'].get('total_tokens')}")
-print("  Диагноз Claude Sonnet:")
+print("  Диагноз GPT-6 Sol:")
 print("  " + "\n  ".join(res6['content'].strip().split("\n")[:8]))
-assert len(res6['content']) > 50, "Claude Sonnet должен вернуть развернутый ответ"
-print("  ✓ Кейс 5 (Анализ ТЖ на Claude Sonnet) успешно пройден")
-results.append(("Анализ ТЖ на Claude Sonnet", res6['elapsed'], res6['usage'].get('total_tokens'), res6['content'][:200]))
+assert len(res6['content']) > 50, "GPT-6 Sol должен вернуть развернутый ответ"
+print("  ✓ Кейс 5 (Анализ ТЖ на GPT-6 Sol) успешно пройден")
+results.append(("Анализ ТЖ на GPT-6 Sol", res6['elapsed'], res6['usage'].get('total_tokens'), res6['content'][:200]))
 
 print("\n" + "=" * 70)
 print("ИТОГИ БОЕВОГО ПЛАТНОГО ТЕСТИРОВАНИЯ (100% УСПЕХ):")

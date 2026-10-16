@@ -10,9 +10,14 @@ import { ExtensionGenerator, ExtensionDirective } from './extensionGenerator';
 import { BDDGenerator } from './bddGenerator';
 import { MultiTabScanner } from './multiTabScanner';
 import { TechLogAnalyzer } from './techLogAnalyzer';
+import { ConfigurationMetadata } from './types';
+import { workspaceStyles } from './workspaceStyles';
+import { workspaceTools } from './workspaceTools';
 
 export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
+    private _queryPending = false;
+    private _auditDocument?: { uri: vscode.Uri; version: number };
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -32,19 +37,70 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
 
         const updateHtml = async () => {
             const apiKey = await NormaHubClient.getApiKey(this._context);
-            const balanceInfo = await NormaHubClient.checkBalance(apiKey);
             const config = vscode.workspace.getConfiguration('normahub1c');
-            const selectedModel = config.get<string>('autocompleteModel', 'deepseek-v4.1-flash');
-            webviewView.webview.html = this._getHtmlForWebview(apiKey, balanceInfo, selectedModel);
+            const selectedModel = config.get<string>('reasoningModel', 'gpt-6.1-sol');
+            webviewView.webview.html = this._getHtmlForWebview(apiKey, undefined, selectedModel);
+            return apiKey;
         };
 
-        await updateHtml();
+        let apiKey = await NormaHubClient.getApiKey(this._context);
+        let statusRefreshId = 0;
+
+        const refreshSidebarStatus = async () => {
+            const refreshId = ++statusRefreshId;
+            const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            const [balanceInfo, metadata] = await Promise.all([
+                apiKey ? NormaHubClient.checkBalance(apiKey) : Promise.resolve(undefined),
+                MetadataScanner.scanWorkspace(rootPath)
+            ]);
+            if (refreshId !== statusRefreshId) return;
+
+            const gatewayActive = balanceInfo?.status === 'active';
+            const insufficient = balanceInfo?.status === 'insufficient_funds';
+            const gatewayStatusLabel = gatewayActive
+                ? 'Шлюз подключён'
+                : (insufficient ? 'Баланс исчерпан' : (apiKey ? (balanceInfo?.error || 'Ошибка ключа') : 'Ключ не настроен'));
+            const gatewayStatusBadge = gatewayActive ? 'badge-ok' : (insufficient ? 'badge-warn' : (apiKey ? 'badge-crit' : 'badge-warn'));
+            const balanceDisplay = gatewayActive
+                ? 'Оплата по факту использования · шлюз активен'
+                : (insufficient ? 'Баланс исчерпан на normahub.cc' : (apiKey ? (balanceInfo?.error || 'Ошибка ключа') : 'Ключ не настроен'));
+
+            webviewView.webview.postMessage({
+                type: 'sidebarStatus',
+                gatewayStatusLabel,
+                gatewayStatusBadge,
+                balanceDisplay,
+                gatewayActive,
+                maskedKey: apiKey ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : 'Не задан',
+                metadataLabel: metadata.isDemoFallback
+                    ? 'Примерные метаданные'
+                    : (metadata.objects.length ? 'Метаданные доступны' : 'Метаданные не найдены'),
+                metadataAvailable: metadata.objects.length > 0 && !metadata.isDemoFallback
+            });
+        };
+
+        const refreshSidebarStatusSafely = async () => {
+            try {
+                await refreshSidebarStatus();
+            } catch (err) {
+                webviewView.webview.postMessage({
+                    type: 'sidebarStatus',
+                    gatewayStatusLabel: apiKey ? 'Не удалось проверить подключение' : 'Ключ не настроен',
+                    gatewayStatusBadge: 'badge-warn',
+                    balanceDisplay: 'Статус шлюза недоступен',
+                    gatewayActive: false,
+                    metadataLabel: 'Не удалось прочитать структуру',
+                    metadataAvailable: false
+                });
+                console.error('[NormaHub] Sidebar status refresh failed:', err);
+            }
+        };
 
         const sendEditorContext = () => {
             const editor = vscode.window.activeTextEditor;
             if (editor && editor.document) {
-                const docName = editor.document.fileName.split(/[/\\]/).pop() || 'Модуль.bsl';
-                const isBsl = docName.endsWith('.bsl') || docName.endsWith('.os');
+                const docName = editor.document.fileName.split(/[/\\]/).pop() || '';
+                const isBsl = ['bsl', '1c', 'oscript'].includes(editor.document.languageId) || /\.(bsl|os)$/i.test(docName);
                 const sel = editor.selection;
                 const lineCount = (!sel.isEmpty && sel.end.line >= sel.start.line) ? (sel.end.line - sel.start.line + 1) : 0;
                 const selText = !sel.isEmpty ? editor.document.getText(sel) : '';
@@ -81,10 +137,17 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
                     sendEditorContext();
                     break;
 
+                case 'webviewReady':
+                    sendEditorContext();
+                    await refreshSidebarStatusSafely();
+                    break;
+
                 case 'saveKey':
                     await NormaHubClient.setApiKey(this._context, data.value);
+                    apiKey = await NormaHubClient.getApiKey(this._context);
                     vscode.window.showInformationMessage('API-ключ сохранен в защищенном SecretStorage.');
-                    await updateHtml();
+                    webviewView.webview.postMessage({ type: 'toast', message: 'API-ключ сохранен в защищенном хранилище' });
+                    await refreshSidebarStatusSafely();
                     break;
 
                 case 'changeModel':
@@ -160,6 +223,7 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
                     break;
             }
         });
+        await updateHtml();
     }
 
     private async _handleChangeModel(model: string) {
@@ -171,9 +235,16 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
 
     private async _handleGenerateQuery(intent: string) {
         if (!this._view) return;
+        if (this._queryPending) return;
+        if (typeof intent !== 'string' || !intent.trim()) {
+            this._view.webview.postMessage({ type: 'queryResult', error: 'Опишите задачу для запроса 1С.' });
+            return;
+        }
+        this._queryPending = true;
+        try {
         const apiKey = await NormaHubClient.getApiKey(this._context);
         if (!apiKey) {
-            this._view.webview.postMessage({ type: 'queryResult', error: 'API-ключ не задан. Укажите ключ во вкладке «Баланс».' });
+            this._view.webview.postMessage({ type: 'queryResult', error: 'API-ключ не задан. Укажите его в настройках подключения.' });
             return;
         }
 
@@ -184,7 +255,7 @@ export class NormaHub1CSidebarProvider implements vscode.WebviewViewProvider {
         const metadata = await MetadataScanner.scanWorkspace(rootPath);
         const metaSummary = MetadataScanner.formatForPrompt(metadata);
         const bspSummary = BSPHelper.getBSPPromptInjection();
-        const multiTabContext = MultiTabScanner.getOpenModulesContext();
+        const multiTabContext = MultiTabScanner.getOpenModulesContext(vscode.window.activeTextEditor?.document);
 
         const systemPrompt = `Ты — ведущий эксперт по языку запросов 1С:Предприятие 8.3 (Стандарты фирмы «1С» и БСП).
 Пользователь описывает бизнес-задачу на русском языке. Сформируй чистый, оптимизированный код 1С с созданием объекта Запрос.
@@ -200,12 +271,15 @@ ${multiTabContext ? '\n' + multiTabContext : ''}
 
 ${bspSummary}`;
 
-        try {
             this._view.webview.postMessage({ type: 'queryStatus', text: 'Генерация пакета запросов через NormaHub...' });
             const result = await NormaHubClient.complete(apiKey, model, systemPrompt, intent, 0.1, 1500);
-            this._view.webview.postMessage({ type: 'queryResult', code: result });
+            this._view.webview.postMessage(result.trim()
+                ? { type: 'queryResult', code: result }
+                : { type: 'queryResult', error: 'Модель вернула пустой ответ. Уточните задачу и повторите запрос.' });
         } catch (err: any) {
             this._view.webview.postMessage({ type: 'queryResult', error: err.message });
+        } finally {
+            this._queryPending = false;
         }
     }
 
@@ -233,15 +307,7 @@ ${bspSummary}`;
             includeScaffolding: true
         });
 
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            editor.edit(editBuilder => {
-                editBuilder.insert(editor.selection.active, code);
-            });
-            vscode.window.showInformationMessage('Шаблон пакетного запроса вставлен в редактор.');
-        } else {
-            this._view?.webview.postMessage({ type: 'batchResult', code });
-        }
+        this._view?.webview.postMessage({ type: 'batchResult', code });
     }
 
     private async _handleGenerateExtension(method: string, directive: ExtensionDirective, paramsStr: string) {
@@ -254,15 +320,7 @@ ${bspSummary}`;
             parameters: params
         });
 
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            editor.edit(editBuilder => {
-                editBuilder.insert(editor.selection.active, code);
-            });
-            vscode.window.showInformationMessage(`Перехват &${directive} вставлен в редактор.`);
-        } else {
-            this._view?.webview.postMessage({ type: 'extensionResult', code });
-        }
+        this._view?.webview.postMessage({ type: 'extensionResult', code });
     }
 
     private async _handleGenerateFormButton(buttonName: string, title: string, commandName: string) {
@@ -271,21 +329,14 @@ ${bspSummary}`;
             title || 'Печать акта',
             commandName || 'КомандаПечатиАкта'
         );
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            editor.edit(editBuilder => {
-                editBuilder.insert(editor.selection.active, code);
-            });
-            vscode.window.showInformationMessage('Код формы расширения вставлен в редактор.');
-        } else {
-            this._view?.webview.postMessage({ type: 'formBtnResult', code });
-        }
+        this._view?.webview.postMessage({ type: 'formBtnResult', code });
     }
 
     private async _handleAuditSelection() {
         if (!this._view) return;
+        this._auditDocument = undefined;
         const editor = vscode.window.activeTextEditor;
-        if (!editor) {
+        if (!editor || !(['bsl', '1c', 'oscript'].includes(editor.document.languageId) || /\.(bsl|os)$/i.test(editor.document.fileName))) {
             this._view.webview.postMessage({ type: 'auditResult', report: 'Откройте модуль BSL для анализа.' });
             return;
         }
@@ -294,26 +345,35 @@ ${bspSummary}`;
             ? editor.document.getText()
             : editor.document.getText(editor.selection);
 
-        const issues = StandardsChecker.auditCode(code);
+        const lineOffset = editor.selection.isEmpty ? 0 : editor.selection.start.line;
+        const issues = StandardsChecker.auditCode(code).map(issue => ({ ...issue, line: issue.line + lineOffset }));
+        this._auditDocument = { uri: editor.document.uri, version: editor.document.version };
         const report = StandardsChecker.formatAuditReport(issues);
-        this._view.webview.postMessage({ type: 'auditResult', issues, report });
+        this._view.webview.postMessage({ type: 'auditResult', issues, report, canJump: true });
     }
 
     private async _handleAuditCodeSnippet(code: string) {
         if (!this._view) return;
+        this._auditDocument = undefined;
         if (!code || !code.trim()) {
             this._view.webview.postMessage({ type: 'auditResult', report: 'Вставьте код для проверки.' });
             return;
         }
         const issues = StandardsChecker.auditCode(code);
         const report = StandardsChecker.formatAuditReport(issues);
-        this._view.webview.postMessage({ type: 'auditResult', issues, report });
+        this._view.webview.postMessage({ type: 'auditResult', issues, report, canJump: false });
     }
 
     private async _handleJumpToLine(lineNumber: number) {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && lineNumber > 0) {
-            const line = Math.max(0, lineNumber - 1);
+        if (!this._auditDocument || !Number.isInteger(lineNumber) || lineNumber <= 0) return;
+        const document = await vscode.workspace.openTextDocument(this._auditDocument.uri);
+        if (document.version !== this._auditDocument.version) {
+            this._view?.webview.postMessage({ type: 'toast', message: 'Модуль изменён после проверки. Запустите аудит повторно.' });
+            return;
+        }
+        const editor = await vscode.window.showTextDocument(document);
+        if (editor) {
+            const line = Math.min(editor.document.lineCount - 1, Math.max(0, lineNumber - 1));
             const pos = new vscode.Position(line, 0);
             editor.selection = new vscode.Selection(pos, pos);
             editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
@@ -322,18 +382,30 @@ ${bspSummary}`;
 
     private async _handleInsertCode(code: string) {
         const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            await editor.edit(editBuilder => {
+        if (!code || !code.trim()) {
+            vscode.window.showWarningMessage('Нет кода для вставки.');
+            this._view?.webview.postMessage({ type: 'toast', message: 'Нет кода для вставки' });
+            return;
+        }
+        const isBslDocument = Boolean(editor && (
+            ['bsl', '1c', 'oscript'].includes(editor.document.languageId) ||
+            /\.(bsl|os)$/i.test(editor.document.fileName)
+        ));
+        if (editor && isBslDocument) {
+            const inserted = await editor.edit(editBuilder => {
                 editBuilder.insert(editor.selection.active, code);
             });
-            vscode.window.showInformationMessage('Код успешно вставлен в модуль 1С.');
-            if (this._view) {
-                this._view.webview.postMessage({ type: 'toast', message: '✓ Код успешно вставлен в активный BSL-модуль' });
+            if (inserted) {
+                vscode.window.showInformationMessage('Код успешно вставлен в модуль 1С.');
+                this._view?.webview.postMessage({ type: 'toast', message: 'Код вставлен в активный BSL-модуль' });
+            } else {
+                vscode.window.showWarningMessage('Не удалось вставить код. Файл может быть только для чтения.');
+                this._view?.webview.postMessage({ type: 'toast', message: 'Не удалось вставить: файл может быть только для чтения' });
             }
         } else {
-            vscode.window.showWarningMessage('Откройте файл модуля 1С (.bsl) для вставки кода.');
+            vscode.window.showWarningMessage('Откройте модуль 1С (.bsl или .os) для вставки кода.');
             if (this._view) {
-                this._view.webview.postMessage({ type: 'toast', message: '⚠️ Откройте файл .bsl в редакторе для вставки' });
+                this._view.webview.postMessage({ type: 'toast', message: 'Откройте модуль .bsl или .os для вставки кода' });
             }
         }
     }
@@ -417,7 +489,16 @@ ${bspSummary}`;
 
     private async _handleOpenWorkspaceFile(relativePath: string) {
         const rootPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        if (!rootPath || typeof relativePath !== 'string' || !relativePath.trim()) {
+            vscode.window.showWarningMessage('Откройте рабочую область перед открытием файла.');
+            return;
+        }
         const fullPath = path.isAbsolute(relativePath) ? relativePath : path.join(rootPath, relativePath);
+        const relativeToRoot = path.relative(rootPath, fullPath);
+        if (relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+            vscode.window.showErrorMessage('Нельзя открыть файл за пределами рабочей области.');
+            return;
+        }
         try {
             const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fullPath));
             await vscode.window.showTextDocument(doc);
@@ -426,21 +507,29 @@ ${bspSummary}`;
         }
     }
 
-    private _getHtmlForWebview(apiKey: string, balance: any, selectedModel: string): string {
-        const maskedKey = apiKey ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : 'Не задан';
+    private _getHtmlForWebview(apiKey: string, balance: any, selectedModel: string, metadata?: ConfigurationMetadata): string {
+        const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[char]!));
+        const maskedKey = escapeHtml(apiKey ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : 'Не задан');
         const isGatewayActive = balance && balance.status === 'active';
         const isInsufficient = balance && balance.status === 'insufficient_funds';
-        const balanceDisplay = isGatewayActive
-            ? 'Pay-As-You-Go (Шлюз активен)'
-            : (isInsufficient ? 'Баланс исчерпан на normahub.cc' : (apiKey ? (balance?.error || 'Ошибка ключа') : 'Ключ не настроен'));
-        const gatewayStatusLabel = isGatewayActive
-            ? '● Шлюз подключен'
-            : (isInsufficient ? '⚠️ Баланс исчерпан' : (apiKey ? '❌ Ошибка' : '○ Не настроен'));
-        const gatewayStatusBadge = isGatewayActive ? 'badge-ok' : (isInsufficient ? 'badge-warn' : (apiKey ? 'badge-crit' : 'badge-warn'));
+        const balanceDisplay = escapeHtml(isGatewayActive
+            ? 'Оплата по факту использования (шлюз активен)'
+            : (isInsufficient ? 'Баланс исчерпан на normahub.cc' : (apiKey ? (balance?.error || 'Проверяем подключение…') : 'Ключ не настроен')));
+        const gatewayStatusLabel = escapeHtml(isGatewayActive
+            ? 'Шлюз подключён'
+            : (isInsufficient ? 'Баланс исчерпан' : (apiKey ? (balance ? 'Ошибка' : 'Проверяем…') : 'Не настроен')));
+        const gatewayStatusBadge = isGatewayActive ? 'badge-ok' : (isInsufficient || !balance ? 'badge-warn' : (apiKey ? 'badge-crit' : 'badge-warn'));
 
         // Serialize all 40+ BSP standard modules for instant, zero-latency client-side search
         const bspModulesJson = JSON.stringify(BSPHelper.STANDARD_MODULES);
+        const workspaceToolsJson = JSON.stringify(workspaceTools);
         const openTabsCount = MultiTabScanner.getOpenModulesCount();
+        const metadataLabel = metadata?.isDemoFallback
+            ? 'Примерные метаданные'
+            : (metadata?.objects?.length ? 'Метаданные доступны' : 'Метаданные не найдены');
+        const metadataStatus = metadata && !metadata.isDemoFallback && metadata.objects.length ? 'online' : 'idle';
 
         return `<!DOCTYPE html>
 <html lang="ru">
@@ -448,7 +537,7 @@ ${bspSummary}`;
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>1C BSL AI Copilot</title>
+    <title>NormaHub · Помощник 1С</title>
     <style>
         :root {
             /* Palette 1: Warm Sand (Песочно-бежевая) */
@@ -554,6 +643,50 @@ ${bspSummary}`;
 
         * {
             box-sizing: border-box;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        :focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+        button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+        .studio-target, .pilot-prompt-status { font-size: 11px; line-height: 1.5; color: var(--text-secondary); margin: 8px 0; overflow-wrap: anywhere; }
+        .pilot-prompt-status:empty { display: none; }
+        .pilot-prompt-status[data-state="error"] { color: var(--badge-crit-text); }
+        .pilot-context-bar.context-empty { border-style: dashed; }
+        .pilot-context-bar.context-warning { border-color: var(--badge-warn-text); }
+        .pilot-context-dot.online { color: var(--badge-ok-text); }
+        .pilot-context-dot.warning { color: var(--badge-warn-text); }
+        .top-navbar { flex-wrap: wrap; }
+        .header-badges { flex-wrap: wrap; min-width: 0; }
+        .killer-card-header, .studio-header, .pilot-prompt-footer { flex-wrap: wrap; gap: 8px; }
+        .killer-card-title, .studio-badge, .studio-meta { min-width: 0; overflow-wrap: anywhere; }
+        .pilot-model-wrapper { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+        .pilot-model-select { max-width: 100%; }
+        .studio-actions-bar { flex-wrap: wrap; }
+        .studio-btn-primary { min-width: 100px; }
+        .toast { max-width: calc(100% - 24px); width: max-content; white-space: normal; overflow-wrap: anywhere; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); }
+        .modal-card { max-height: calc(100dvh - 24px); }
+        .modal-body { overflow-y: auto; min-height: 0; }
+        .modal-header, .modal-footer { flex-shrink: 0; }
+        .issue-link { width: auto; display: inline-flex; margin: 0 0 0 6px; padding: 2px 5px; background: transparent; color: var(--text-main); }
+        .bsp-empty { padding: 16px 8px; color: var(--text-secondary); line-height: 1.5; }
+        body.theme-warm-sand { color-scheme: light; --btn-primary: #995A24; --btn-primary-hover: #7F4618; --text-muted: #685D53; }
+        body.theme-espresso { color-scheme: dark; --text-muted: #A4988B; }
+        .studio-badge { color: var(--badge-ok-text); }
+        .studio-btn-primary { background: #047857; }
+        .studio-btn-primary:hover { background: #065F46; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
         }
 
         body {
@@ -1856,45 +1989,6 @@ ${bspSummary}`;
             margin: 0;
         }
 
-        /* Metadata Accordion Drawer */
-        .metadata-drawer {
-            background: var(--bg-card-subtle);
-            border: 1px solid var(--border-light);
-            border-radius: 6px;
-            padding: 5px 8px;
-            margin-bottom: 9px;
-            font-size: 10px;
-        }
-
-        .metadata-drawer summary {
-            cursor: pointer;
-            font-weight: 600;
-            color: var(--text-secondary);
-            user-select: none;
-            outline: none;
-        }
-
-        .metadata-drawer summary:hover {
-            color: var(--text-main);
-        }
-
-        .metadata-drawer-body {
-            margin-top: 7px;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .metadata-drawer-body .form-group {
-            margin-bottom: 0;
-        }
-
-        .metadata-drawer-body input {
-            padding: 4px 6px;
-            font-size: 10.5px;
-            margin-bottom: 2px;
-        }
-
         /* Unified Live Output Studio */
         .output-studio {
             background: var(--bg-card);
@@ -1917,7 +2011,7 @@ ${bspSummary}`;
         .studio-badge {
             font-size: 10px;
             font-weight: 700;
-            color: #10B981;
+            color: var(--badge-ok-text);
             display: flex;
             align-items: center;
             gap: 4px;
@@ -1937,7 +2031,7 @@ ${bspSummary}`;
 
         .studio-btn-primary {
             flex: 2;
-            background: #10B981;
+            background: #047857;
             color: #FFFFFF;
             border: none;
             border-radius: 5px;
@@ -1954,7 +2048,7 @@ ${bspSummary}`;
         }
 
         .studio-btn-primary:hover {
-            background: #059669;
+            background: #065F46;
         }
 
         .studio-btn-secondary {
@@ -2024,14 +2118,26 @@ ${bspSummary}`;
 
         /* Responsive Breakpoints for narrow sidebars */
         @media (max-width: 250px) {
-            .meta-pill .pill-text {
+            .header-badges .meta-pill {
                 display: none;
             }
             .theme-label-text {
                 display: none;
             }
+            .header-badges {
+                flex-shrink: 1;
+            }
+            .top-navbar {
+                min-width: 0;
+            }
+            .brand-block {
+                min-width: 0;
+                flex-shrink: 1;
+            }
             .brand-title {
                 font-size: 11px;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
             .seg-label {
                 font-size: 10px;
@@ -2040,17 +2146,30 @@ ${bspSummary}`;
                 padding: 4px 3px;
                 gap: 3px;
             }
+            .hotkeys-footer {
+                align-items: flex-start;
+            }
+            .hotkey-item {
+                white-space: normal;
+                flex-wrap: wrap;
+                min-width: 0;
+            }
+            .hotkey-item kbd {
+                white-space: normal;
+                overflow-wrap: anywhere;
+            }
         }
+${workspaceStyles}
     </style>
 </head>
 <body class="theme-espresso">
     <!-- Модальное окно первого запуска (Welcome Modal) -->
-    <div id="welcomeModal" class="modal-backdrop" style="display:none;">
+    <div id="welcomeModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" style="display:none;">
         <div class="modal-card">
             <div class="modal-header">
                 <div class="modal-brand">
                     <div class="brand-badge">1C</div>
-                    <div class="modal-title">Добро пожаловать в BSL Studio</div>
+            <div class="modal-title" id="welcomeTitle">Добро пожаловать в помощник NormaHub для 1С</div>
                 </div>
                 <button class="modal-close-btn" onclick="closeWelcomeModal()" type="button" title="Закрыть">✕</button>
             </div>
@@ -2069,15 +2188,15 @@ ${bspSummary}`;
                     <div class="modal-feature-item">
                         <div class="modal-feature-icon">⚡</div>
                         <div class="modal-feature-content">
-                            <div class="modal-feature-title">2. Разделение на AI и Инструменты 1С</div>
-                            <div class="modal-feature-desc">Переключайтесь между генеративным ИИ (запросы, рефакторинг, тесты BDD) и 100% офлайн-инструментами (база БСП 3.1, &cfe перехваты, аудит ИТС, Техжурнал).</div>
+                            <div class="modal-feature-title">2. ИИ и инструменты 1С</div>
+                            <div class="modal-feature-desc">ИИ формирует запросы по описанию. Оптимизация запросов, шаблоны расширений, BDD, аудит ИТС, БСП и разбор Техжурнала работают локально.</div>
                         </div>
                     </div>
                     <div class="modal-feature-item">
                         <div class="modal-feature-icon">🎁</div>
                         <div class="modal-feature-content">
                             <div class="modal-feature-title">3. Быстрый шлюз NormaHub без VPN</div>
-                            <div class="modal-feature-desc">Для AI-функций используется единый API-шлюз. Новым пользователям доступен промокод <code>1CPROMO</code> на $0.10 при регистрации на normahub.cc.</div>
+                            <div class="modal-feature-desc">Для функций ИИ используется единый шлюз. Новым пользователям доступен промокод <code>1CPROMO</code> на $0.10 при регистрации на normahub.cc.</div>
                         </div>
                     </div>
                 </div>
@@ -2092,28 +2211,38 @@ ${bspSummary}`;
     <div class="top-navbar">
         <div class="brand-block">
             <div class="brand-badge">1C</div>
-            <div class="brand-title">BSL Studio</div>
+            <div class="brand-lockup">
+                <div class="brand-title">NormaHub · Помощник 1С</div>
+                <div class="brand-subtitle">Инструменты разработчика</div>
+            </div>
         </div>
         <div class="header-badges">
-            <div class="meta-pill" title="Загруженная структура метаданных конфигурации 1С">
-                <span class="status-dot online"></span>
-                <span class="pill-num">50</span>
-                <span class="pill-text">мета</span>
+            <div class="meta-pill" title="Контекст метаданных используется при генерации, если найден в рабочей области">
+                <span id="metadataStatusDot" class="status-dot ${metadataStatus}"></span>
+                <span id="metadataHeaderLabel" class="pill-text">${metadataLabel}</span>
             </div>
             <div class="meta-pill" title="Смежные открытые BSL-модули в рабочей области">
                 <span class="status-dot ${openTabsCount > 0 ? 'online' : 'idle'}"></span>
                 <span class="pill-num">${openTabsCount}</span>
                 <span class="pill-text">вкл.</span>
             </div>
-            <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeBtn" title="Переключить тему (Эспрессо / Песочная)">
-                <span class="theme-icon">🎨</span>
-                <span id="themeLabel" class="theme-label-text">Песочная</span>
+            <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeBtn" title="Переключить цветовую тему" aria-label="Включить светлую тему">
+                <span class="theme-icon">◐</span>
+                <span id="themeLabel" class="theme-label-text">Светлая</span>
             </button>
         </div>
     </div>
 
+    <section class="workspace-hero" id="workspaceHero" aria-labelledby="workspaceTitle">
+        <div class="workspace-hero-topline">
+            <span class="workspace-eyebrow">РАБОЧАЯ ОБЛАСТЬ</span>
+        </div>
+        <h1 id="workspaceTitle" tabindex="-1">От задачи к коду.</h1>
+        <p>Опишите запрос или выберите инструмент для вашего модуля.</p>
+    </section>
+
     <!-- Блок быстрого старта (сворачиваемый и скрываемый навсегда) -->
-    <div id="quickStartBox" class="quick-start-box">
+    <div id="quickStartBox" class="quick-start-box collapsed">
         <div class="quick-start-header">
             <div class="quick-start-title" onclick="toggleQuickStart()">
                 <span class="quick-start-icon">💡</span>
@@ -2121,7 +2250,7 @@ ${bspSummary}`;
             </div>
             <div class="quick-start-actions">
                 <button class="quick-start-toggle" id="quickStartToggleBtn" type="button" onclick="toggleQuickStart()" title="Свернуть или развернуть памятку">
-                    <span id="quickStartToggleArrow">▲</span>
+                    <span id="quickStartToggleArrow">▼</span>
                 </button>
                 <button class="quick-start-dismiss" type="button" onclick="dismissQuickStartForever(event)" title="Скрыть навсегда">
                     ✕ Скрыть
@@ -2132,7 +2261,7 @@ ${bspSummary}`;
             <div class="qs-step">
                 <div class="qs-num">1</div>
                 <div class="qs-text">
-                    <strong>Ключ и статус:</strong> В категории AI откройте <span class="qs-link" onclick="selectSubTool('settings')">⚙️ Шлюз NormaHub</span>. Новым разработчикам доступен промокод <code>1CPROMO</code> на $0.10 при регистрации на normahub.cc.
+                    <strong>Подключение:</strong> Откройте <span class="qs-link" onclick="selectSubTool('settings')">настройки</span> и сохраните API-ключ NormaHub для генерации запросов.
                 </div>
             </div>
             <div class="qs-step">
@@ -2144,28 +2273,32 @@ ${bspSummary}`;
             <div class="qs-step">
                 <div class="qs-num">3</div>
                 <div class="qs-text">
-                    <strong>Инструменты:</strong> Переключитесь на <strong>🛠️ Инструменты 1С</strong> для доступа к базе БСП 3.1, перехватам &cfe, аудиту ИТС и разбору Техжурнала без интернета.
+                    <strong>Инструменты:</strong> Выберите задачу в каталоге. БСП, шаблоны, аудит ИТС и разбор Техжурнала доступны без подключения ИИ.
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Высокоуровневая сегментированная навигация: AI vs Инструменты 1С -->
-    <div class="category-segmented">
+    <nav class="category-segmented" aria-label="Основные разделы">
         <button id="cat-btn-ai" class="seg-btn active" type="button" onclick="selectCategory('ai')">
             <span class="seg-icon">⚡</span>
-            <span class="seg-label">AI Ассистент</span>
+            <span class="seg-label">ИИ-помощник</span>
         </button>
-        <button id="cat-btn-tools" class="seg-btn" type="button" onclick="selectCategory('tools')">
+        <button id="cat-btn-tools" class="seg-btn" type="button" onclick="selectSubTool('tools')">
             <span class="seg-icon">🛠️</span>
             <span class="seg-label">Инструменты 1С</span>
         </button>
-    </div>
+        <button id="cat-btn-settings" class="seg-btn" type="button" onclick="selectSubTool('settings')"><span class="seg-label">Подключение</span></button>
+    </nav>
+
+    <div class="section-label" id="toolBreadcrumb"><span id="sectionLabel">Инструмент</span><span class="section-label-line"></span><button class="breadcrumb-back" type="button" onclick="selectSubTool('tools')">Каталог задач</button></div>
 
     <!-- Выпадающий селектор конкретного инструмента -->
-    <div class="tool-dropdown-wrapper">
-        <select id="toolSelector" class="tool-select" onchange="selectSubTool(this.value)">
-            <option value="ai-overview">⚡ Action Pilot (Главный пульт AI)</option>
+    <div class="tool-dropdown-wrapper" hidden>
+        <label class="sr-only" for="toolSelector">Раздел помощника</label>
+        <select id="toolSelector" class="tool-select" aria-hidden="true" tabindex="-1" onchange="selectSubTool(this.value)">
+            <option value="ai-overview">Action Pilot · рабочая область</option>
             <option value="queries-gen">✨ Генерация пакета запроса</option>
             <option value="queries-refactor">⚡ Оптимизация запроса (ИТС)</option>
             <option value="queries-batch">📋 Шаблонизатор движений регистров</option>
@@ -2191,13 +2324,13 @@ ${bspSummary}`;
     <!-- AI ACTION PILOT: Главный командный пульт 1C Copilot Studio -->
     <div id="tab-ai-overview" class="tab-panel active">
         <!-- 1. Контекст редактора -->
-        <div class="pilot-context-bar" id="editorContextBanner">
-            <span class="pilot-context-dot" id="pilotContextDot">🟢</span>
+        <div class="pilot-context-bar context-empty" id="editorContextBanner" data-context-state="empty">
+            <span class="pilot-context-dot" id="pilotContextDot">●</span>
             <div class="pilot-context-info">
-                <span class="pilot-context-file" id="pilotContextFile">Документ.РеализацияТоваровУслуг (МодульОбъекта)</span>
-                <span class="pilot-context-sel" id="pilotContextSel">Выделен фрагмент кода • 14 строк BSL</span>
+                <span class="pilot-context-file" id="pilotContextFile">BSL-модуль не выбран</span>
+                <span class="pilot-context-sel" id="pilotContextSel">Откройте .bsl или .os, чтобы использовать контекст редактора</span>
             </div>
-            <button class="action-btn-sm" type="button" onclick="refreshEditorContext()" title="Обновить контекст" style="background:transparent; border:none; cursor:pointer;">🔄</button>
+            <button class="action-btn-sm" type="button" onclick="refreshEditorContext()" title="Обновить контекст редактора" aria-label="Обновить контекст редактора" style="background:transparent; border:none; cursor:pointer;">Обновить</button>
         </div>
 
         <!-- 2. Студия вывода результата (появляется при любом действии) -->
@@ -2206,12 +2339,13 @@ ${bspSummary}`;
                 <div class="studio-badge" id="cockpitBadge">✓ Код оптимизирован по стандартам ИТС</div>
                 <div class="studio-meta" id="cockpitMeta">18 строк BSL</div>
             </div>
+            <div class="studio-target" id="cockpitTarget">Выберите, куда применить результат.</div>
             <div class="studio-actions-bar">
-                <button class="studio-btn-primary" type="button" onclick="insertCockpitCode()">
+                <button class="studio-btn-primary context-required-action" type="button" onclick="insertCockpitCode()" disabled>
                     <span>↵ Вставить в активный файл</span>
                 </button>
                 <button class="studio-btn-secondary" type="button" onclick="copyCockpitCode()">
-                    <span>📋 Скопировать</span>
+                <span>Копировать</span>
                 </button>
                 <button class="studio-btn-ghost" type="button" onclick="clearCockpitOutput()" title="Закрыть">✕</button>
             </div>
@@ -2224,83 +2358,73 @@ ${bspSummary}`;
         <!-- 3. Три Главных действия (Killer Actions) -->
         <div class="killer-actions-grid">
             <!-- Действие 1: Оптимизировать запрос -->
-            <div class="killer-card" onclick="runCockpitAction('optimize-query')">
+            <div class="killer-card">
                 <div class="killer-card-header">
-                    <div class="killer-card-title"><span>⚡</span> <span>Оптимизировать запрос (ИТС)</span></div>
+                    <div class="killer-card-title"><span aria-hidden="true">SQL</span> <span>Оптимизировать запрос (ИТС)</span></div>
                     <span class="killer-card-badge">Высокая нагрузка</span>
                 </div>
-                <div class="killer-card-desc">Выносит вирт. таблицы во временные таблицы (ВТ_) с индексацией и ЕСТЬNULL</div>
+                <div class="killer-card-desc">Проверьте структуру запроса и получите оптимизированный вариант.</div>
                 <div class="killer-card-action">
-                    <button class="killer-card-btn" type="button">⚡ Применить к запросу</button>
+                    <button class="killer-card-btn" type="button" onclick="runCockpitAction('optimize-query')">Оптимизировать запрос</button>
                 </div>
             </div>
 
             <!-- Действие 2: Обернуть в расширение (&cfe) -->
-            <div class="killer-card" onclick="runCockpitAction('create-extension')">
+            <div class="killer-card">
                 <div class="killer-card-header">
-                    <div class="killer-card-title"><span>🛡️</span> <span>Обернуть метод в расширение</span></div>
+                    <div class="killer-card-title"><span aria-hidden="true">&amp;</span> <span>Обернуть метод в расширение</span></div>
                     <span class="killer-card-badge">&cfe перехват</span>
                 </div>
-                <div class="killer-card-desc">Генерирует &Вместо с вызовом ПродолжитьВызов() и канонической сигнатурой 1С</div>
+                <div class="killer-card-desc">Настройте директиву, метод и параметры перехвата.</div>
                 <div class="killer-card-action">
-                    <button class="killer-card-btn" type="button">🛡️ Сформировать &cfe</button>
+                    <button class="killer-card-btn" type="button" onclick="runCockpitAction('create-extension')">Сформировать перехват</button>
                 </div>
             </div>
 
             <!-- Действие 3: Модуль проведения с контролем остатков -->
-            <div class="killer-card" onclick="runCockpitAction('generate-posting')">
+            <div class="killer-card">
                 <div class="killer-card-header">
-                    <div class="killer-card-title"><span>📦</span> <span>Сформировать проведение с остатками</span></div>
+                    <div class="killer-card-title"><span aria-hidden="true">BSL</span> <span>Сформировать проведение с остатками</span></div>
                     <span class="killer-card-badge">Стандарт ИТС</span>
                 </div>
-                <div class="killer-card-desc">БлокировкаДанных + выборка табчасти + остатки + проверка на минус</div>
+                <div class="killer-card-desc">Шаблон обработки проведения с проверкой остатков и блокировками.</div>
                 <div class="killer-card-action">
-                    <button class="killer-card-btn" type="button">📦 Создать проведение</button>
+                    <button class="killer-card-btn" type="button" onclick="runCockpitAction('generate-posting')">Создать проведение</button>
                 </div>
             </div>
         </div>
 
         <!-- 4. Свободный AI Промпт-бар -->
         <div class="pilot-prompt-card">
-            <div class="pilot-prompt-title"><span>💬</span> <span>Свободный запрос к AI Copilot:</span></div>
-            <div class="pilot-prompt-row">
-                <textarea id="cockpitPromptInput" placeholder="Опишите задачу или вставьте код... (например: Напиши парсер JSON в структуру или проверь алгоритм)"></textarea>
+        <div class="pilot-prompt-title"><span aria-hidden="true">AI</span> <span>Сформировать пакет запроса 1С</span></div>
+        <div class="pilot-prompt-row">
+            <textarea id="cockpitPromptInput" aria-label="Описание задачи для генерации запроса 1С" placeholder="Например: остатки товаров на дату документа по складам и организации"></textarea>
                 <button id="btnSendCockpitPrompt" class="pilot-send-btn" type="button" onclick="runCockpitPrompt()" title="Сгенерировать (Ctrl+Enter)">
-                    <span>🚀</span>
+                    <span>Сформировать запрос</span><span aria-hidden="true">↗</span>
                 </button>
             </div>
             <div class="pilot-prompt-footer">
                 <div class="pilot-model-wrapper">
-                    <span>🧠 Модель:</span>
-                    <select id="cockpitModelSelect" class="pilot-model-select" onchange="syncModelSelection(this.value)">
-                        <option value="deepseek-v4.1-flash">DeepSeek v4.1 Flash (★ 1С)</option>
-                        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (Архитектура)</option>
-                        <option value="gpt-6.1-sol">GPT-6.1 Sol (Флагман)</option>
+                    <span>Модель:</span>
+        <select id="cockpitModelSelect" class="pilot-model-select" onchange="syncModelSelection(this.value)">
+            <option value="deepseek-v4.1-flash" ${selectedModel === 'deepseek-v4.1-flash' ? 'selected' : ''}>DeepSeek v4.1 Flash (быстро)</option>
+            <option value="gpt-6.1-sol" ${selectedModel === 'gpt-6.1-sol' ? 'selected' : ''}>GPT-6.1 Sol</option>
+            <option value="gpt-6-sol" ${selectedModel === 'gpt-6-sol' ? 'selected' : ''}>GPT-6 Sol</option>
                     </select>
                 </div>
                 <span><kbd>Ctrl+Enter</kbd></span>
             </div>
+        <div id="cockpitPromptStatus" class="pilot-prompt-status" role="status" aria-live="polite"></div>
         </div>
 
-        <!-- 5. Опциональный спойлер параметров метаданных -->
-        <details class="metadata-drawer">
-            <summary>⚙️ Уточнить имена метаданных (документ, регистр)...</summary>
-            <div class="metadata-drawer-body">
-                <div class="form-group">
-                    <label class="form-label" for="drawerEntity">Документ конфигурации:</label>
-                    <input type="text" id="drawerEntity" value="РеализацияТоваровУслуг" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="drawerTabular">Табличная часть:</label>
-                    <input type="text" id="drawerTabular" value="Товары" />
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="drawerRegister">Регистр накопления:</label>
-                    <input type="text" id="drawerRegister" value="ТоварыНаСкладах" />
-                </div>
-            </div>
-        </details>
     </div>
+
+    <section id="tab-tools" class="tab-panel" aria-labelledby="toolsTitle">
+        <div class="catalog-heading"><span class="workspace-eyebrow">ИНСТРУМЕНТЫ 1С</span><h1 id="toolsTitle">Что нужно сделать?</h1><p>Генерация, проверка и диагностика — в одном месте.</p></div>
+        <label class="sr-only" for="toolSearch">Найти инструмент по задаче</label>
+        <input id="toolSearch" type="search" placeholder="Найти инструмент…" oninput="renderToolCatalog()" />
+        <div id="toolCatalog"></div>
+    </section>
 
     <!-- ТАБ: ОПТИМИЗАЦИЯ ЗАПРОСА (ИТС) -->
     <div id="tab-queries-refactor" class="tab-panel">
@@ -2335,11 +2459,11 @@ ${bspSummary}`;
                 <div class="card-title">Генерация пакета запроса</div>
                 <span class="badge badge-context">Нейросеть</span>
             </div>
-            <div class="chips-row">
-                <div class="chip" onclick="setQueryIntent('Остатки товаров на складах на дату документа с ценами')">Остатки на дату</div>
-                <div class="chip" onclick="setQueryIntent('Обороты продаж номенклатуры за период по клиентам')">Обороты продаж</div>
-                <div class="chip" onclick="setQueryIntent('Срез последних цен номенклатуры на дату')">Срез цен</div>
-                <div class="chip" onclick="setQueryIntent('Контроль отрицательных остатков при проведении')">Контроль остатков</div>
+        <div class="chips-row">
+            <div class="chip" onclick="setQueryIntent('Остатки товаров на складах на дату документа с ценами', true)">Остатки на дату</div>
+            <div class="chip" onclick="setQueryIntent('Обороты продаж номенклатуры за период по клиентам', true)">Обороты продаж</div>
+            <div class="chip" onclick="setQueryIntent('Срез последних цен номенклатуры на дату', true)">Срез цен</div>
+            <div class="chip" onclick="setQueryIntent('Контроль отрицательных остатков при проведении', true)">Контроль остатков</div>
             </div>
             <div class="form-group">
                 <label class="form-label" for="queryIntent">Описание задачи на русском языке:</label>
@@ -2498,7 +2622,7 @@ ${bspSummary}`;
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Аудит стандартов ИТС и БСП</div>
-                <span class="badge badge-ok">Linter</span>
+                <span class="badge badge-ok">Локальная проверка</span>
             </div>
             <div class="card-desc">Автоматическая проверка кода на критические антипаттерны: запросы в циклах, управляемые блокировки, устаревшие модальные вызовы и мутабельные типы.</div>
             <button onclick="auditActiveFile()">Проверить открытый файл модуля</button>
@@ -2547,7 +2671,7 @@ ${bspSummary}`;
 
             <div class="btn-group">
                 <button onclick="generateBdd(true)">Сгенерировать .feature</button>
-                <button class="secondary" onclick="generateBdd(false)">В буфер обмена</button>
+            <button class="secondary" onclick="generateBdd(false)">Предпросмотр .feature</button>
             </div>
             <div id="bddOutput" class="code-box" style="display:none;"></div>
             <div class="btn-group" id="bddActions" style="display:none;">
@@ -2561,7 +2685,7 @@ ${bspSummary}`;
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Диагностика Технологического Журнала</div>
-                <span class="badge badge-warn">High-Load</span>
+                <span class="badge badge-warn">Высокая нагрузка</span>
             </div>
             <div class="card-desc">Экспертный анализ инцидентов TLOCK (блокировки), TDEADLOCK (дедлоки), EXCP (исключения) и DBPOSTGR (медленные запросы PostgreSQL).</div>
             <div class="chips-row">
@@ -2599,7 +2723,7 @@ ${bspSummary}`;
     <div id="tab-sidecar" class="tab-panel">
         <div class="card">
             <div class="card-header">
-                <div class="card-title">Статус 1C Global Sidecar</div>
+                <div class="card-title">Статус локального помощника</div>
                 <button class="sm secondary" onclick="checkSidecar()">Проверить</button>
             </div>
             <div id="sidecarStatusIndicator" style="font-size:11px; margin-bottom:8px;">
@@ -2628,11 +2752,11 @@ ${bspSummary}`;
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Шлюз NormaHub</div>
-                <span class="badge ${gatewayStatusBadge}">${gatewayStatusLabel}</span>
+                <span id="gatewayStatusBadge" class="badge ${gatewayStatusBadge}">${gatewayStatusLabel}</span>
             </div>
-            <div style="font-size:15px; font-weight:700; color:${isGatewayActive ? '#10B981' : 'var(--text-muted)'}; margin: 4px 0 8px 0; font-family:'JetBrains Mono', monospace;">${balanceDisplay}</div>
+            <div id="gatewayBalanceDisplay" style="font-size:15px; font-weight:700; color:${isGatewayActive ? '#10B981' : 'var(--text-muted)'}; margin: 4px 0 8px 0; font-family:'JetBrains Mono', monospace;">${balanceDisplay || 'Проверяем подключение…'}</div>
             <div class="card-desc" style="margin-bottom:8px;">
-                Официальный AI-шлюз без VPN. Тарификация Pay-As-You-Go с посекундным списанием токенов.
+                AI-шлюз NormaHub. Оплата за фактически использованные токены. Баланс и расходы доступны в личном кабинете.
             </div>
             <div class="btn-group">
                 <button onclick="openBilling()">Управление балансом на normahub.cc</button>
@@ -2653,18 +2777,14 @@ ${bspSummary}`;
         <div class="card">
             <div class="card-header">
                 <div class="card-title">Выбор рабочей модели ИИ</div>
-                <span class="badge badge-context">LLM Gateway</span>
+                <span class="badge badge-context">Шлюз ИИ</span>
             </div>
             <div class="card-desc">Выберите нейросеть для автодополнения и генерации кода в зависимости от сложности задачи.</div>
             <div class="form-group">
                 <select id="modelSelector" onchange="changeModel()">
                     <option value="deepseek-v4.1-flash" ${selectedModel === 'deepseek-v4.1-flash' ? 'selected' : ''}>DeepSeek v4.1 Flash (★ Рекомендуется для 1С, ~0.04 ₽)</option>
-                    <option value="claude-sonnet-5-5" ${selectedModel === 'claude-sonnet-5-5' ? 'selected' : ''}>Claude Sonnet 5.5 (Архитектура, расширения и рефакторинг)</option>
                     <option value="gpt-6.1-sol" ${selectedModel === 'gpt-6.1-sol' ? 'selected' : ''}>GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика)</option>
                     <option value="gpt-6-sol" ${selectedModel === 'gpt-6-sol' ? 'selected' : ''}>GPT-6 Sol (Высокая точность и рассуждения)</option>
-                    <option value="gpt-6-astra" ${selectedModel === 'gpt-6-astra' ? 'selected' : ''}>GPT-6 Astra (Баланс скорости и интеллекта)</option>
-                    <option value="glm-5.3-flash" ${selectedModel === 'glm-5.3-flash' ? 'selected' : ''}>GLM 5.3 Flash (Сверхскоростная Z.ai)</option>
-                    <option value="muse-spark-1.3" ${selectedModel === 'muse-spark-1.3' ? 'selected' : ''}>Muse Spark 1.3 (Креативность и документация)</option>
                 </select>
             </div>
         </div>
@@ -2674,12 +2794,12 @@ ${bspSummary}`;
                 <div class="card-title">API-ключ NormaHub</div>
                 <span class="badge badge-context">Шифрование</span>
             </div>
-            <div class="card-desc">Ключ сохраняется строго локально в зашифрованном системном хранилище VS Code SecretStorage.</div>
+            <div class="card-desc">Ключ сохраняется строго локально в защищённом системном хранилище VS Code.</div>
             <div class="form-group">
-                <div class="form-label">Текущий ключ: <code>${maskedKey}</code></div>
+            <div class="form-label">Текущий ключ: <code id="maskedApiKey">${maskedKey}</code></div>
                 <input type="password" id="apiKeyInput" placeholder="Вставьте ключ вида nr_hub_..." />
             </div>
-            <button class="secondary" onclick="saveKey()">Сохранить ключ в SecretStorage</button>
+            <button class="secondary" onclick="saveKey()">Сохранить ключ локально</button>
         </div>
 
         <div class="card">
@@ -2702,7 +2822,7 @@ ${bspSummary}`;
         <div class="hotkey-item" title="Интеграция с TurboConf и Конфигуратором 1С"><kbd>Ctrl+Alt+Space</kbd><span>TurboConf</span></div>
     </div>
     </div>
-<div id="toast" class="toast">✓ Скопировано в буфер обмена!</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script>
         const NL = String.fromCharCode(10);
@@ -3036,6 +3156,7 @@ ${bspSummary}`;
             }
         }
         const bspModules = ${bspModulesJson};
+        const workspaceTools = ${workspaceToolsJson};
         let activeBspSubsystem = '';
 
         // Theme management
@@ -3065,99 +3186,94 @@ ${bspSummary}`;
                 if (label) { label.innerText = 'Тёмная'; }
             } else {
                 document.body.classList.add('theme-espresso');
-                if (label) { label.innerText = 'Песочная'; }
+                if (label) { label.innerText = 'Светлая'; }
             }
+            document.getElementById('themeBtn').setAttribute('aria-label', theme === 'warm-sand' ? 'Включить тёмную тему' : 'Включить светлую тему');
+        }
+
+        function applySidebarStatus(message) {
+            const gatewayBadge = document.getElementById('gatewayStatusBadge');
+            const gatewayBalance = document.getElementById('gatewayBalanceDisplay');
+            const metadataDot = document.getElementById('metadataRailDot');
+            const metadataLabel = document.getElementById('metadataHeaderLabel');
+            const maskedKey = document.getElementById('maskedApiKey');
+            const gatewayDot = document.getElementById('gatewayStatusDot');
+            const gatewayRail = document.getElementById('gatewayRailStatus');
+
+            if (gatewayBadge) {
+                gatewayBadge.className = 'badge ' + (message.gatewayStatusBadge || 'badge-warn');
+                gatewayBadge.innerText = message.gatewayStatusLabel || 'Статус неизвестен';
+            }
+            if (gatewayBalance) {
+                gatewayBalance.innerText = message.balanceDisplay || 'Статус неизвестен';
+                gatewayBalance.style.color = message.gatewayActive ? '#10B981' : 'var(--text-muted)';
+            }
+            if (metadataDot) metadataDot.className = 'status-dot ' + (message.metadataAvailable ? 'online' : 'idle');
+            if (metadataLabel) metadataLabel.innerText = message.metadataLabel || 'Метаданные не загружены';
+            if (maskedKey && message.maskedKey) maskedKey.innerText = message.maskedKey;
+            if (gatewayDot) gatewayDot.className = 'rail-dot ' + (message.gatewayActive ? 'online' : (message.gatewayStatusBadge === 'badge-crit' ? 'warning' : ''));
+            if (gatewayRail) gatewayRail.innerText = message.gatewayActive ? 'ИИ подключён' : (message.gatewayStatusLabel || 'Статус ИИ неизвестен');
         }
 
         // Data structures for tools by category
-        const categoryTools = {
-            'ai': [
-                { id: 'ai-overview', name: '⚡ Action Pilot (Главный пульт AI)' },
-                { id: 'queries-gen', name: '✨ Генерация пакета запроса' },
-                { id: 'queries-refactor', name: '⚡ Оптимизация запроса (ИТС)' },
-                { id: 'queries-batch', name: '📋 Шаблонизатор движений регистров' },
-                { id: 'bdd', name: '🧪 Сценарии тестов Vanessa BDD' },
-                { id: 'settings', name: '⚙️ Шлюз NormaHub и статус' }
-            ],
-            'tools': [
-                { id: 'bsp', name: '📦 База знаний БСП 3.1 (40+ методов, офлайн)' },
-                { id: 'extensions', name: '🧩 Перехватчики расширений (&cfe)' },
-                { id: 'audit', name: '🛡️ Стандарты разработки фирмы 1С (ИТС)' },
-                { id: 'techlog', name: '📊 Анализ Техжурнала 1С (ТЖ)' },
-                { id: 'metadata', name: '🗂️ Граф метаданных конфигурации' },
-                { id: 'sidecar', name: '🔌 1C Sidecar Daemon (:18833)' }
-            ]
-        };
-
-        let currentCategory = 'ai';
         let currentTool = 'ai-overview';
 
-        function selectCategory(cat, targetTool) {
-            currentCategory = cat;
-            document.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('active'));
-            const activeBtn = document.getElementById('cat-btn-' + cat);
-            if (activeBtn) activeBtn.classList.add('active');
-
-            // Populate toolSelector
-            const selector = document.getElementById('toolSelector');
-            if (selector) {
-                selector.innerHTML = '';
-                const list = categoryTools[cat] || [];
-                list.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.id;
-                    opt.textContent = t.name;
-                    selector.appendChild(opt);
+        function renderToolCatalog() {
+            const container = document.getElementById('toolCatalog');
+            if (!container) return;
+            const query = (document.getElementById('toolSearch')?.value || '').toLowerCase().trim();
+            container.innerHTML = '';
+            const groups = {};
+            workspaceTools.filter(tool => !query || (tool.name + ' ' + tool.description + ' ' + tool.group).toLowerCase().includes(query))
+                .forEach(tool => (groups[tool.group] ||= []).push(tool));
+            Object.entries(groups).forEach(([group, tools]) => {
+                const section = document.createElement('section');
+                section.className = 'catalog-group';
+                section.innerHTML = '<h2>' + group + '</h2>';
+                const grid = document.createElement('div');
+                grid.className = 'catalog-grid';
+                tools.forEach(tool => {
+                    const card = document.createElement('button');
+                    card.type = 'button';
+                    card.className = 'catalog-card';
+                    card.innerHTML = '<span class="catalog-symbol">' + tool.symbol + '</span><span class="catalog-card-copy"><strong>' + tool.name + '</strong><small>' + tool.description + '</small></span><span class="catalog-mode">' + tool.mode + '</span>';
+                    card.onclick = () => selectSubTool(tool.id);
+                    grid.appendChild(card);
                 });
-            }
-
-            const defaultTool = targetTool || (cat === 'ai' ? 'ai-overview' : 'bsp');
-            selectSubTool(defaultTool);
+                section.appendChild(grid);
+                container.appendChild(section);
+            });
+            if (!container.children.length) container.innerHTML = '<div class="catalog-empty">Задачи не найдены. Измените запрос.</div>';
         }
 
-        function selectSubTool(toolId) {
-            currentTool = toolId;
-            let foundCat = 'ai';
-            if (categoryTools['tools'].some(t => t.id === toolId)) {
-                foundCat = 'tools';
-            }
+        function selectCategory(cat, targetTool) {
+            selectSubTool(targetTool || (cat === 'ai' ? 'ai-overview' : 'tools'));
+        }
 
-            if (foundCat !== currentCategory) {
-                currentCategory = foundCat;
-                document.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('active'));
-                const activeBtn = document.getElementById('cat-btn-' + foundCat);
-                if (activeBtn) activeBtn.classList.add('active');
-
-                const selector = document.getElementById('toolSelector');
-                if (selector) {
-                    selector.innerHTML = '';
-                    categoryTools[foundCat].forEach(t => {
-                        const opt = document.createElement('option');
-                        opt.value = t.id;
-                        opt.textContent = t.name;
-                        selector.appendChild(opt);
-                    });
-                }
-            }
-
-            const selector = document.getElementById('toolSelector');
-            if (selector && selector.value !== toolId) {
-                selector.value = toolId;
-            }
-
-            const legacyNav = document.getElementById('tabNavSelector');
-            if (legacyNav) {
-                legacyNav.value = toolId;
-            }
-
-            // Hide all tab-panels and show target
-            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        function selectSubTool(toolId, options = {}) {
             const panel = document.getElementById('tab-' + toolId);
-            if (panel) {
-                panel.classList.add('active');
+            if (!panel) return;
+            const previousPanel = document.activeElement?.closest('.tab-panel');
+            currentTool = toolId;
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            panel.classList.add('active');
+            const navId = toolId === 'ai-overview' ? 'cat-btn-ai' : (toolId === 'settings' ? 'cat-btn-settings' : 'cat-btn-tools');
+            document.querySelectorAll('.seg-btn').forEach(btn => {
+                const active = btn.id === navId;
+                btn.classList.toggle('active', active);
+                if (active) btn.setAttribute('aria-current', 'page');
+                else btn.removeAttribute('aria-current');
+            });
+            const selector = document.getElementById('toolSelector');
+            if (selector && Array.from(selector.options).some(option => option.value === toolId)) selector.value = toolId;
+            document.getElementById('workspaceHero').style.display = toolId === 'ai-overview' ? '' : 'none';
+            document.getElementById('toolBreadcrumb').style.display = ['ai-overview', 'tools', 'settings'].includes(toolId) ? 'none' : 'flex';
+            const toolInfo = workspaceTools.find(tool => tool.id === toolId);
+            document.getElementById('sectionLabel').innerText = toolInfo?.name || 'Инструмент';
+            if (toolId === 'tools') {
+                if (options.returnTo) panel.dataset.returnTo = options.returnTo;
+                renderToolCatalog();
             }
-
-            // Trigger lazy-load actions
             if (toolId === 'bsp') {
                 const bspContainer = document.getElementById('bspListContainer');
                 if (bspContainer && bspContainer.children.length === 0) {
@@ -3167,27 +3283,18 @@ ${bspSummary}`;
             if (toolId === 'sidecar') {
                 checkSidecar();
             }
+            if (previousPanel && previousPanel !== panel) {
+                const heading = panel.querySelector('h1, .card-title, textarea, input');
+                if (heading) {
+                    if (!heading.matches('input,textarea')) heading.setAttribute('tabindex', '-1');
+                    heading.focus({ preventScroll: true });
+                }
+            }
         }
 
         // Backwards-compatible adapter for tests and legacy links
         function switchTab(name) {
-            if (name === 'queries') {
-                selectCategory('ai', 'queries-refactor');
-            } else if (name === 'queries-gen') {
-                selectCategory('ai', 'queries-gen');
-            } else if (name === 'queries-refactor') {
-                selectCategory('ai', 'queries-refactor');
-            } else if (name === 'queries-batch') {
-                selectCategory('ai', 'queries-batch');
-            } else if (name === 'bdd') {
-                selectCategory('ai', 'bdd');
-            } else if (name === 'settings') {
-                selectCategory('ai', 'settings');
-            } else if (categoryTools['tools'].some(t => t.id === name)) {
-                selectCategory('tools', name);
-            } else {
-                selectCategory('ai', name);
-            }
+            selectSubTool(name === 'queries' ? 'queries-refactor' : name);
         }
 
         // Quick Start Guide controls
@@ -3258,12 +3365,15 @@ ${bspSummary}`;
             try {
                 localStorage.setItem('1c_copilot_welcomed', '1');
             } catch (_) {}
-            showToast('✓ Приятной работы с 1C BSL Studio!');
+            document.getElementById('workspaceHero').querySelector('h1').focus();
         }
 
         function openWelcomeModal() {
             const modal = document.getElementById('welcomeModal');
-            if (modal) modal.style.display = 'flex';
+            if (modal) {
+                modal.style.display = 'flex';
+                modal.querySelector('.modal-btn-primary').focus();
+            }
         }
 
         // AI Overview Helpers
@@ -3282,18 +3392,28 @@ ${bspSummary}`;
         }
 
         // Toast feedback
+        let toastTimer = null;
         function showToast(msg) {
             const t = document.getElementById('toast');
             if (!t) return;
             t.innerText = msg || '✓ Скопировано в буфер обмена!';
             t.classList.add('show');
-            setTimeout(() => t.classList.remove('show'), 1500);
+            if (toastTimer) { clearTimeout(toastTimer); }
+            toastTimer = setTimeout(() => {
+                t.classList.remove('show');
+                toastTimer = null;
+            }, 1500);
         }
 
         initTheme();
+        const homePanel = document.getElementById('tab-ai-overview');
+        homePanel.insertBefore(document.querySelector('.pilot-prompt-card'), document.getElementById('cockpitOutputStudio'));
+        document.querySelector('.category-segmented').after(document.getElementById('workspaceHero'));
+        document.getElementById('tab-settings').appendChild(document.getElementById('quickStartBox'));
         initQuickStart();
         initWelcomeModal();
         selectCategory('ai', 'ai-overview');
+        renderToolCatalog();
 
         // Code Box helpers
         function insertCodeFrom(id) {
@@ -3301,7 +3421,6 @@ ${bspSummary}`;
             const code = elem ? elem.innerText : '';
             if (code && code.trim()) {
                 vscode.postMessage({ type: 'insertCode', code });
-                showToast('✓ Вставка в позицию курсора активного модуля');
             } else {
                 showToast('⚠️ Нет кода для вставки');
             }
@@ -3316,13 +3435,19 @@ ${bspSummary}`;
         }
 
         // Queries Tab
-        function setQueryIntent(text) {
+        function setQueryIntent(text, focusInput = false) {
             document.getElementById('queryIntent').value = text;
+            if (focusInput) document.getElementById('queryIntent').focus();
+            document.getElementById('queryIntent').dispatchEvent(new Event('input', { bubbles: true }));
         }
 
         function generateQuery() {
             const intent = document.getElementById('queryIntent').value;
+            if (document.getElementById('btnSendCockpitPrompt').disabled) return;
             if (!intent.trim()) return;
+            clearCockpitOutput();
+            document.getElementById('queryActions').style.display = 'none';
+            setQueryBusy(true);
             document.getElementById('queryStatus').innerText = 'Генерация через NormaHub...';
             vscode.postMessage({ type: 'generateQuery', intent });
         }
@@ -3330,6 +3455,9 @@ ${bspSummary}`;
         function refactorQuery() {
             const rawQuery = document.getElementById('refactorInput').value;
             if (!rawQuery.trim()) return;
+            document.getElementById('refactorOutput').style.display = 'none';
+            document.getElementById('refactorActions').style.display = 'none';
+            clearCockpitOutput();
             document.getElementById('refactorStatus').innerText = 'Рефакторинг по стандартам ИТС...';
             vscode.postMessage({ type: 'refactorQuery', rawQuery });
         }
@@ -3432,6 +3560,12 @@ ${bspSummary}`;
             });
 
             document.getElementById('bspCountBadge').innerText = filtered.length + ' методов';
+            if (!filtered.length) {
+                const empty = document.createElement('div');
+                empty.className = 'bsp-empty';
+                empty.textContent = 'Методы не найдены. Измените запрос или выберите другую подсистему.';
+                container.appendChild(empty);
+            }
 
             filtered.forEach(m => {
                 const item = document.createElement('div');
@@ -3454,6 +3588,7 @@ ${bspSummary}`;
                 \`;
                 container.appendChild(item);
             });
+            updateContextActions(Boolean(currentEditorContext.isBsl));
         }
 
         function filterBsp() { renderBspList(); }
@@ -3554,6 +3689,7 @@ ${bspSummary}`;
         }
         function changeModel() {
             const model = document.getElementById('modelSelector').value;
+            document.getElementById('cockpitModelSelect').value = model;
             vscode.postMessage({ type: 'changeModel', model });
         }
         function openBilling() { vscode.postMessage({ type: 'openBilling' }); }
@@ -3570,21 +3706,53 @@ ${bspSummary}`;
             const dot = document.getElementById('pilotContextDot');
             const fileEl = document.getElementById('pilotContextFile');
             const selEl = document.getElementById('pilotContextSel');
-            if (!fileEl || !selEl) return;
+            const banner = document.getElementById('editorContextBanner');
+            const hasBslContext = Boolean(ctx && ctx.fileName && ctx.isBsl);
+            if (!fileEl || !selEl || !banner) return;
 
-            if (ctx && ctx.fileName) {
-                if (dot) dot.innerText = '🟢';
-                fileEl.innerText = ctx.fileName + (ctx.isBsl ? ' (BSL модуль)' : '');
+            banner.classList.toggle('context-empty', !ctx || !ctx.fileName);
+            banner.classList.toggle('context-warning', Boolean(ctx && ctx.fileName && !ctx.isBsl));
+            banner.dataset.contextState = hasBslContext ? 'ready' : (ctx && ctx.fileName ? 'unsupported' : 'empty');
+
+            if (hasBslContext) {
+                if (dot) {
+                    dot.innerText = '●';
+                    dot.className = 'pilot-context-dot online';
+                }
+                fileEl.innerText = ctx.fileName + ' · BSL';
                 if (ctx.hasSelection) {
                     selEl.innerText = 'Выделен фрагмент • ' + ctx.lineCount + ' строк кода';
                 } else {
-                    selEl.innerText = 'Модуль открыт в редакторе • позиция курсора';
+                    selEl.innerText = 'Модуль открыт • используется позиция курсора';
                 }
+            } else if (ctx && ctx.fileName) {
+                if (dot) {
+                    dot.innerText = '●';
+                    dot.className = 'pilot-context-dot warning';
+                }
+                fileEl.innerText = ctx.fileName;
+                selEl.innerText = 'Файл не поддерживает BSL-контекст для этих действий';
             } else {
-                if (dot) dot.innerText = '⚪';
-                fileEl.innerText = 'Нет активного редактора BSL';
-                selEl.innerText = 'Откройте файл .bsl или выделите фрагмент запроса';
+                if (dot) {
+                    dot.innerText = '●';
+                    dot.className = 'pilot-context-dot';
+                }
+                fileEl.innerText = 'BSL-модуль не выбран';
+                selEl.innerText = 'Откройте .bsl или .os, чтобы использовать контекст редактора';
             }
+
+            updateContextActions(hasBslContext);
+        }
+
+        function updateContextActions(hasBslContext) {
+            document.querySelectorAll('.context-required-action, button[onclick^="insertCodeFrom"], button[onclick^="insertBspSnippet"]').forEach(btn => {
+                btn.disabled = !hasBslContext;
+                btn.title = hasBslContext ? '' : 'Сначала откройте BSL-модуль в редакторе';
+            });
+            const target = document.getElementById('cockpitTarget');
+            if (target) target.innerText = hasBslContext
+                ? 'Вставить в ' + currentEditorContext.fileName + ' в позиции курсора. Выделение не заменяется.'
+                : 'Откройте BSL-модуль для вставки. Копирование доступно без редактора.';
         }
 
         function refreshEditorContext() {
@@ -3598,12 +3766,18 @@ ${bspSummary}`;
             const badge = document.getElementById('cockpitBadge');
             const meta = document.getElementById('cockpitMeta');
             const pre = document.getElementById('cockpitCodePre');
+            const target = document.getElementById('cockpitTarget');
             if (!studio) return;
 
             if (badge) badge.innerText = badgeText || '✓ Код сформирован по стандартам ИТС';
             const linesCount = currentCockpitCode.split(NL).length;
             if (meta) meta.innerText = linesCount + ' строк BSL' + (metaText ? ' • ' + metaText : '');
             if (pre) pre.innerText = currentCockpitCode;
+            if (target) {
+                target.innerText = currentEditorContext && currentEditorContext.isBsl
+                    ? 'Результат можно вставить в активный BSL-модуль в позиции курсора или скопировать вручную.'
+                    : 'BSL-модуль не выбран: скопируйте результат или откройте .bsl/.os перед вставкой.';
+            }
 
             studio.style.display = 'block';
             studio.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -3611,8 +3785,11 @@ ${bspSummary}`;
 
         function insertCockpitCode() {
             if (!currentCockpitCode) return;
+            if (!currentEditorContext || !currentEditorContext.isBsl) {
+                showToast('Откройте BSL-модуль перед вставкой кода');
+                return;
+            }
             vscode.postMessage({ type: 'insertCode', code: currentCockpitCode });
-            showToast('✓ Код вставлен в активный модуль редактора!');
         }
 
         function copyCockpitCode() {
@@ -3640,81 +3817,106 @@ ${bspSummary}`;
         }
 
         function runCockpitAction(action) {
-            const entity = (document.getElementById('drawerEntity') ? document.getElementById('drawerEntity').value : 'РеализацияТоваровУслуг') || 'РеализацияТоваровУслуг';
-            const tabular = (document.getElementById('drawerTabular') ? document.getElementById('drawerTabular').value : 'Товары') || 'Товары';
-            const register = (document.getElementById('drawerRegister') ? document.getElementById('drawerRegister').value : 'ТоварыНаСкладах') || 'ТоварыНаСкладах';
-
             if (action === 'optimize-query') {
-                const queryText = (currentEditorContext.hasSelection && currentEditorContext.selectedText)
-                    ? currentEditorContext.selectedText
-                    : (document.getElementById('refactorInput') && document.getElementById('refactorInput').value
-                        ? document.getElementById('refactorInput').value
-                        : [
-                            'ВЫБРАТЬ',
-                            '    ДокументТаблица.Номенклатура КАК Номенклатура,',
-                            '    ДокументТаблица.Количество КАК Количество,',
-                            '    Остатки.КоличествоОстаток КАК Остаток',
-                            'ИЗ',
-                            '    Документ.' + entity + '.' + tabular + ' КАК ДокументТаблица',
-                            '    ЛЕВОЕ СОЕДИНЕНИЕ РегистрНакопления.' + register + '.Остатки(&МоментВремени) КАК Остатки',
-                            '    ПО ДокументТаблица.Номенклатура = Остатки.Номенклатура'
-                          ].join(NL));
-                
-                vscode.postMessage({ type: 'refactorQuery', rawQuery: queryText });
-                showToast('⚡ Оптимизация запроса по стандартам ИТС...');
+                selectSubTool('queries-refactor');
+                const refactorInput = document.getElementById('refactorInput');
+                if (refactorInput && currentEditorContext.hasSelection && currentEditorContext.selectedText) {
+                    refactorInput.value = currentEditorContext.selectedText;
+                }
+                showToast(currentEditorContext.hasSelection ? '✓ Выделенный запрос открыт для оптимизации' : 'Откройте или вставьте запрос для оптимизации');
+                return;
             } else if (action === 'create-extension') {
-                vscode.postMessage({
-                    type: 'generateExtension',
-                    method: 'ОбработкаПроведения',
-                    directive: 'Вместо',
-                    params: 'Отказ, РежимПроведения'
-                });
-                showToast('🛡️ Генерация безопасного перехвата &Вместо...');
+                selectSubTool('extensions');
+                showToast('✓ Конструктор перехвата открыт');
+                return;
             } else if (action === 'generate-posting') {
-                vscode.postMessage({
-                    type: 'generateBatchTemplate',
-                    entity: entity,
-                    tabular: tabular,
-                    register: register,
-                    registerType: 'Остатки'
-                });
-                showToast('📦 Формирование проведения с блокировкой и остатками...');
+                selectSubTool('queries-batch');
+                showToast('✓ Конструктор проведения открыт');
+                return;
             }
+        }
+
+        function setQueryBusy(busy) {
+            document.getElementById('btnSendCockpitPrompt').disabled = busy;
+            document.querySelector('button[onclick="generateQuery()"]').disabled = busy;
+            document.getElementById('cockpitPromptInput').setAttribute('aria-busy', String(busy));
         }
 
         function runCockpitPrompt() {
             const input = document.getElementById('cockpitPromptInput');
+            const send = document.getElementById('btnSendCockpitPrompt');
+            const status = document.getElementById('cockpitPromptStatus');
+            if (send && send.disabled) return;
             if (!input || !input.value.trim()) {
                 showToast('Введите описание задачи');
                 return;
             }
             const promptText = input.value.trim();
             vscode.postMessage({ type: 'generateQuery', intent: promptText });
-            showToast('🚀 Генерация решения...');
+            if (status) status.innerText = 'Формируем пакет запроса по стандартам ИТС…';
+            if (status) status.dataset.state = 'loading';
+            setQueryBusy(true);
+            showToast('Формируем пакет запроса…');
         }
+
+        document.addEventListener('keydown', event => {
+            const modal = document.getElementById('welcomeModal');
+            if (modal.style.display === 'flex') {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeWelcomeModal();
+                } else if (event.key === 'Tab') {
+                    const controls = Array.from(modal.querySelectorAll('button, a[href]'));
+                    const first = controls[0], last = controls[controls.length - 1];
+                    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+                    else if (!modal.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+                }
+                return;
+            }
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && document.activeElement === document.getElementById('cockpitPromptInput')) {
+                event.preventDefault();
+                runCockpitPrompt();
+            } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && document.activeElement === document.getElementById('refactorInput')) {
+                event.preventDefault();
+                refactorQuery();
+            } else if ((event.key === 'Enter' || event.key === ' ') && document.activeElement.matches('.chip, .qs-link, .quick-start-title')) {
+                event.preventDefault();
+                document.activeElement.click();
+            }
+        });
 
         // Host Message Listener
         window.addEventListener('message', event => {
             const message = event.data;
-            if (message.type === 'editorContext') {
+            if (message.type === 'sidebarStatus') {
+                applySidebarStatus(message);
+            } else if (message.type === 'editorContext') {
                 updateEditorContextUI(message);
             } else if (message.type === 'toast' && message.message) {
                 showToast(message.message);
             } else if (message.type === 'queryResult') {
+                setQueryBusy(false);
                 document.getElementById('queryStatus').innerText = '';
+                const cockpitStatus = document.getElementById('cockpitPromptStatus');
+                if (cockpitStatus) {
+                    cockpitStatus.innerText = message.error ? message.error : 'Готово. Проверьте результат перед вставкой.';
+                    cockpitStatus.dataset.state = message.error ? 'error' : 'success';
+                }
                 const box = document.getElementById('queryOutput');
-                box.style.display = 'block';
+                box.style.display = message.code || message.error ? 'block' : 'none';
                 box.innerText = message.code || message.error || '';
                 document.getElementById('queryActions').style.display = message.code ? 'flex' : 'none';
-                if (message.code) {
-                    showInCockpitStudio(message.code, '✓ Пакет запроса сформирован', 'Сгенерировано AI');
-                }
+                if (message.code) showInCockpitStudio(message.code, 'Пакет запроса сформирован', 'Сформировано ИИ');
+                else clearCockpitOutput();
             } else if (message.type === 'refactorResult') {
                 document.getElementById('refactorStatus').innerText = '';
                 const box = document.getElementById('refactorOutput');
                 box.style.display = 'block';
                 if (message.error) {
                     box.innerText = message.error;
+                    document.getElementById('refactorActions').style.display = 'none';
+                    clearCockpitOutput();
                 } else {
                     let out = message.code;
                     if (message.optimizations && message.optimizations.length) {
@@ -3759,14 +3961,18 @@ ${bspSummary}`;
                     message.issues.forEach(iss => {
                         const card = document.createElement('div');
                         card.className = 'issue-card ' + (iss.severity || 'info');
-                        card.innerHTML = \`
-                            <div>
-                                <span class="badge \${iss.severity === 'error' ? 'badge-crit' : iss.severity === 'warning' ? 'badge-warn' : 'badge-ok'}">\${iss.rule}</span>
-                                <span class="issue-link" onclick="jumpTo(\${iss.line})">Строка \${iss.line}</span>
-                            </div>
-                            <div style="margin-top:3px; font-weight:500;">\${iss.message}</div>
-                            <div style="margin-top:2px; color:var(--text-muted); font-size:10px;">Рекомендация: \${iss.suggestion}</div>
-                        \`;
+                        const rule = document.createElement('span');
+                        rule.className = 'badge ' + (iss.severity === 'error' ? 'badge-crit' : iss.severity === 'warning' ? 'badge-warn' : 'badge-ok');
+                        rule.textContent = iss.rule;
+                        const line = document.createElement(message.canJump === false ? 'span' : 'button');
+                        line.className = 'issue-link';
+                        line.textContent = 'Строка ' + iss.line;
+                        if (message.canJump !== false) line.addEventListener('click', () => jumpTo(iss.line));
+                        const description = document.createElement('div');
+                        description.textContent = iss.message;
+                        const suggestion = document.createElement('div');
+                        suggestion.textContent = 'Рекомендация: ' + iss.suggestion;
+                        card.append(rule, line, description, suggestion);
                         container.appendChild(card);
                     });
                 } else {
@@ -3790,15 +3996,37 @@ ${bspSummary}`;
                 box.innerText = message.summary || \`Обнаружено объектов: \${message.objectsCount}\`;
             } else if (message.type === 'sidecarStatus') {
                 const ind = document.getElementById('sidecarStatusIndicator');
-                if (message.online) {
-                    ind.innerHTML = '<span class="badge badge-ok">● Онлайн (:18833)</span> ' +
-                                    '<span style="color:var(--text-muted); font-size:10px;">Версия: ' + (message.info.version || '1.0.0') + '</span>';
-                } else {
-                    ind.innerHTML = '<span class="badge badge-crit">● Офлайн</span> ' +
-                                    '<span style="color:var(--text-muted); font-size:10px;">' + (message.error || 'Запустите: python3 -m sidecar.main') + '</span>';
-                }
+                ind.textContent = message.online
+                    ? 'Sidecar подключен · версия ' + (message.info?.version || 'неизвестна')
+                    : 'Sidecar недоступен. ' + (message.error || 'Запустите: python3 -m sidecar.main');
             }
         });
+        // Register listeners before the handshake: the host may answer immediately.
+        updateContextActions(false);
+        document.querySelectorAll('.chip, .qs-link, .quick-start-title').forEach(el => {
+            el.setAttribute('role', 'button');
+            el.setAttribute('tabindex', '0');
+        });
+        document.getElementById('cockpitModelSelect').setAttribute('aria-label', 'Модель генерации запроса');
+        document.getElementById('modelSelector').setAttribute('aria-label', 'Рабочая модель AI');
+        document.getElementById('apiKeyInput').setAttribute('aria-label', 'API-ключ NormaHub');
+        const mainModel = document.getElementById('modelSelector');
+        const cockpitModel = document.getElementById('cockpitModelSelect');
+        cockpitModel.innerHTML = mainModel.innerHTML;
+        cockpitModel.value = mainModel.value;
+        const toolSelector = document.getElementById('toolSelector');
+        toolSelector.innerHTML = '';
+        [{ id: 'ai-overview', name: 'Рабочая область' }, { id: 'tools', name: 'Инструменты' }, ...workspaceTools, { id: 'settings', name: 'Настройки' }].forEach(tool => {
+            const option = document.createElement('option');
+            option.value = tool.id;
+            option.textContent = tool.name;
+            toolSelector.appendChild(option);
+        });
+        toolSelector.value = currentTool;
+        if (document.getElementById('welcomeModal').style.display === 'flex') {
+            document.querySelector('.modal-btn-primary').focus();
+        }
+        vscode.postMessage({ type: 'webviewReady' });
     </script>
 </body>
 </html>`;

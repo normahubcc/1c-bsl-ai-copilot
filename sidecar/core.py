@@ -294,15 +294,9 @@ class SidecarCore:
             raise ValueError("NORMAHUB_API_KEY не задан")
 
         parsed = urllib.parse.urlparse(base_url)
-        hostname = (parsed.hostname or "").lower()
-        trusted_hosts = ("api.normahub.cc", "normahub.cc", "localhost", "127.0.0.1", "::1")
-        is_trusted = (
-            hostname in trusted_hosts
-            or hostname.endswith(".normahub.cc")
-        )
-        if not is_trusted:
+        if parsed.scheme != "https" or parsed.netloc.lower() != "api.normahub.cc" or parsed.path.rstrip("/") != "/v1":
             raise ValueError(
-                f"Untrusted baseUrl host: '{hostname}'. NormaHub API key will not be sent to untrusted domains."
+                "baseUrl must be the fixed NormaHub endpoint: 'https://api.normahub.cc/v1'"
             )
 
         url = f"{base_url.rstrip('/')}/chat/completions"

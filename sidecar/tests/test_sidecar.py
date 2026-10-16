@@ -6,6 +6,7 @@ import threading
 import time
 import urllib.request
 import unittest
+from unittest import mock
 
 from sidecar.config import SidecarConfig
 from sidecar.core import SidecarCore
@@ -14,6 +15,12 @@ from sidecar.clipboard_watcher import ClipboardWatcher
 
 
 class TestSidecarCore(unittest.TestCase):
+    def test_non_loopback_config_requires_auth_token(self):
+        config = SidecarConfig(host="0.0.0.0")
+        with mock.patch.dict("os.environ", {"SIDECAR_AUTH_TOKEN": ""}, clear=False):
+            with self.assertRaises(ValueError):
+                config.validate()
+
     def test_audit_bsl_code_flags_violations(self):
         code = """
         Для Каждого Стр Из ТЧ Цикл
@@ -56,7 +63,17 @@ class TestSidecarCore(unittest.TestCase):
                 system_prompt="test",
                 user_prompt="test"
             )
-        self.assertIn("Untrusted baseUrl host", str(ctx.exception))
+        self.assertIn("fixed NormaHub endpoint", str(ctx.exception))
+
+    def test_call_normahub_llm_rejects_local_endpoint(self):
+        with self.assertRaises(ValueError):
+            SidecarCore.call_normahub_llm(
+                api_key="secret",
+                base_url="http://127.0.0.1:8080/v1",
+                model="deepseek-v4.1-flash",
+                system_prompt="test",
+                user_prompt="test",
+            )
 
     def test_refactor_query(self):
         query = """
@@ -241,6 +258,22 @@ class TestSidecarHTTPServer(unittest.TestCase):
 
         # Reset
         SidecarHandler._auth_token = ""
+
+    def test_oversized_request_is_rejected(self):
+        url = f"http://127.0.0.1:{self.port}/v1/audit"
+        payload = b"{}"
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(SidecarHandler.max_body_bytes + 1),
+            },
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req)
+        self.assertEqual(ctx.exception.code, 413)
 
 
 if __name__ == "__main__":

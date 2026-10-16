@@ -14,6 +14,7 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
 
 class SidecarHandler(BaseHTTPRequestHandler):
     config: SidecarConfig = SidecarConfig()
+    max_body_bytes: int = 2 * 1024 * 1024
 
     # Sidecar auth token: if set via SIDECAR_AUTH_TOKEN, requests must include
     # Authorization: Bearer <token>. Prevents other local processes from
@@ -69,7 +70,16 @@ class SidecarHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._check_auth():
             return
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self._set_headers(400)
+            self.wfile.write(json.dumps({"error": "Invalid Content-Length"}).encode("utf-8"))
+            return
+        if content_length < 0 or content_length > self.max_body_bytes:
+            self._set_headers(413)
+            self.wfile.write(json.dumps({"error": "Request body is too large"}).encode("utf-8"))
+            return
         body_bytes = self.rfile.read(content_length)
 
         try:
@@ -157,6 +167,7 @@ class SidecarHandler(BaseHTTPRequestHandler):
 
 def run_server(config: SidecarConfig):
     import os
+    config.validate()
     SidecarHandler.config = config
     SidecarHandler._auth_token = os.getenv("SIDECAR_AUTH_TOKEN", "")
     server = ThreadingHTTPServer((config.host, config.port), SidecarHandler)

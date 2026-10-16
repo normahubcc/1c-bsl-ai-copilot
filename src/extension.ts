@@ -4,6 +4,7 @@ import { NormaHub1CSidebarProvider } from './sidebarProvider';
 import { NormaHubClient } from './normahubClient';
 import { StandardsChecker } from './standardsChecker';
 import { MetadataScanner } from './metadataScanner';
+import { clearInlineCompletionContextCache } from './inlineCompletionContext';
 import { BSPHelper } from './bspHelper';
 import { QueryBuilder } from './queryBuilder';
 import { ExtensionGenerator, ExtensionDirective } from './extensionGenerator';
@@ -11,8 +12,19 @@ import { BDDGenerator } from './bddGenerator';
 import { TechLogAnalyzer } from './techLogAnalyzer';
 
 let statusBarItem: vscode.StatusBarItem;
+let diagnostics: vscode.DiagnosticCollection;
+
+const BSL_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
+    { scheme: 'file', language: 'bsl' },
+    { scheme: 'file', language: '1c' },
+    { scheme: 'file', language: 'oscript' },
+    { scheme: 'untitled', language: 'bsl' }
+];
 
 export function activate(context: vscode.ExtensionContext) {
+    diagnostics = vscode.languages.createDiagnosticCollection('normahub1c');
+    context.subscriptions.push(diagnostics);
+
     // 1. Status Bar Item showing live balance in rubles
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'normahub1c.statusMenu';
@@ -22,17 +34,20 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(statusBarItem);
 
     // 2. Inline Completion Provider (Ghost text for BSL/1C/OneScript)
-    const bslSelector: vscode.DocumentSelector = [
-        { scheme: 'file', language: 'bsl' },
-        { scheme: 'file', language: '1c' },
-        { scheme: 'file', language: 'oscript' },
-        { scheme: 'untitled', language: 'bsl' }
-    ];
-
     const inlineProvider = new BSLInlineCompletionProvider(context);
     context.subscriptions.push(
-        vscode.languages.registerInlineCompletionItemProvider(bslSelector, inlineProvider)
+        vscode.languages.registerInlineCompletionItemProvider(BSL_DOCUMENT_SELECTOR, inlineProvider),
+        vscode.languages.registerCodeActionsProvider(BSL_DOCUMENT_SELECTOR, new BSLCodeActionProvider(), {
+            providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
+        }),
+        vscode.workspace.onDidOpenTextDocument(updateDiagnostics),
+        vscode.workspace.onDidChangeTextDocument(event => updateDiagnostics(event.document)),
+        vscode.workspace.onDidCloseTextDocument(document => diagnostics.delete(document.uri))
     );
+
+    for (const document of vscode.workspace.textDocuments) {
+        updateDiagnostics(document);
+    }
 
     // 3. Webview Sidebar
     const sidebarProvider = new NormaHub1CSidebarProvider(context.extensionUri, context);
@@ -53,9 +68,13 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('normahub1c.generateVanessaFeature', () => handleGenerateVanessaFeatureCommand()),
         vscode.commands.registerCommand('normahub1c.analyzeTechLog', () => handleAnalyzeTechLogCommand()),
         vscode.commands.registerCommand('normahub1c.explainCode', () => handleExplainCodeCommand(context)),
+        vscode.commands.registerCommand('normahub1c.showAuditRecommendation', (issue: { rule: string; suggestion: string }) => {
+            vscode.window.showInformationMessage(`${issue.rule}: ${issue.suggestion}`);
+        }),
         vscode.commands.registerCommand('normahub1c.scanMetadata', async () => {
             const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
             MetadataScanner.clearCache();
+            clearInlineCompletionContextCache();
             const meta = await MetadataScanner.scanWorkspace(root);
             vscode.window.showInformationMessage(`Метаданные 1С просканированы: найдено ${meta.objects.length} объектов.`);
         }),
@@ -75,6 +94,72 @@ export function activate(context: vscode.ExtensionContext) {
             }
         })
     );
+}
+
+function isBSLDocument(document: vscode.TextDocument): boolean {
+    return ['bsl', '1c', 'oscript'].includes(document.languageId)
+        || /\.(bsl|os)$/i.test(document.fileName);
+}
+
+function updateDiagnostics(document: vscode.TextDocument): void {
+    if (!diagnostics || !isBSLDocument(document)) {
+        return;
+    }
+
+    const issues = StandardsChecker.auditCode(document.getText());
+    const items = issues.map(issue => {
+        const line = Math.max(0, Math.min(document.lineCount - 1, issue.line - 1));
+        const end = document.lineAt(line).range.end;
+        const severity = issue.severity === 'error'
+            ? vscode.DiagnosticSeverity.Error
+            : issue.severity === 'warning'
+                ? vscode.DiagnosticSeverity.Warning
+                : vscode.DiagnosticSeverity.Information;
+        const diagnostic = new vscode.Diagnostic(
+            new vscode.Range(new vscode.Position(line, 0), end),
+            `[${issue.rule}] ${issue.message}`,
+            severity
+        );
+        diagnostic.code = issue.rule;
+        diagnostic.source = '1C ITS';
+        diagnostic.relatedInformation = [new vscode.DiagnosticRelatedInformation(
+            new vscode.Location(document.uri, new vscode.Range(line, 0, line, 0)),
+            issue.suggestion
+        )];
+        return diagnostic;
+    });
+    diagnostics.set(document.uri, items);
+}
+
+class BSLCodeActionProvider implements vscode.CodeActionProvider {
+    public provideCodeActions(
+        document: vscode.TextDocument,
+        range: vscode.Range,
+        context: vscode.CodeActionContext
+    ): vscode.CodeAction[] {
+        const actions: vscode.CodeAction[] = [];
+        for (const diagnostic of context.diagnostics) {
+            if (diagnostic.source !== '1C ITS' || !diagnostic.code) {
+                continue;
+            }
+            const issue = StandardsChecker.auditCode(document.getText()).find(item => item.rule === diagnostic.code);
+            if (!issue) {
+                continue;
+            }
+            const action = new vscode.CodeAction(
+                `1C ITS: показать рекомендацию для ${issue.rule}`,
+                vscode.CodeActionKind.QuickFix
+            );
+            action.diagnostics = [diagnostic];
+            action.command = {
+                command: 'normahub1c.showAuditRecommendation',
+                title: 'Показать рекомендацию',
+                arguments: [issue]
+            };
+            actions.push(action);
+        }
+        return actions;
+    }
 }
 
 async function updateStatusBar(context: vscode.ExtensionContext) {

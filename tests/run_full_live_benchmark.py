@@ -1,6 +1,12 @@
-import urllib.request, json, ssl, time
+import json
+import os
+import ssl
+import time
+import urllib.request
 
-api_key = 'nr_hub_30vs04igqh-54rYgAL3D8Vfseoh7QBcn0T_GrK5rcqI'
+api_key = os.environ.get('NORMAHUB_API_KEY', '')
+if not api_key:
+    raise SystemExit('NORMAHUB_API_KEY is required; no API key is stored in source code')
 base_url = 'https://api.normahub.cc/v1'
 ctx = ssl.create_default_context()
 
@@ -27,7 +33,7 @@ def call_api(model, messages, max_tokens=1000):
 test_cases = [
     {
         "name": "Тест 1: Быстрый FIM-автокомплит BSL",
-        "model": "glm-5.3-flash",
+        "model": "deepseek-v4.1-flash",
         "sys": "Ты 1C BSL автокомплит. Заверши логику цикла движения без лишних слов.",
         "prompt": "Для Каждого Стр Из ТаблицаТоваров Цикл\n    Движение = Движения.ТоварыНаСкладах.ДобавитьРасход();\n    Движение.Период = Дата;\n    Движение.Номенклатура = Стр.Номенклатура;\n    // допиши реквизиты и заверши цикл",
         "max_tokens": 400

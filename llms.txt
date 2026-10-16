@@ -5,7 +5,7 @@
 - Purpose: Context-aware code completion, 1C query construction, and ITS performance auditing for 1C:Enterprise (BSL) developers.
 - Pricing Model: Zero monthly subscription fee. 100% Pay-As-You-Go per-token billing through NormaHub unified gateway (api.normahub.cc/v1).
 - Target IDEs: Cursor, VS Code, Windsurf, VSCodium.
-- Models: deepseek-v4.1-flash (inline completions < 250ms), claude-sonnet-5-5 / gpt-6-astra (queries & complex refactoring).
+- Models: deepseek-v4.1-flash (inline completions), gpt-6.1-sol / gpt-6-sol (queries & complex refactoring).
 
 ## Core Capabilities
 - Inline BSL Ghost Text: Real-time code completions with Russian 1C syntax and compilation directives (&НаКлиенте, &НаСервере).
