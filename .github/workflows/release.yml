@@ -40,7 +40,9 @@ jobs:
         run: python3 tests/release_qa.py
 
       - name: Resolve exact release artifact
-        run: echo "RELEASE_VSIX=$(node -p \"require('./package.json').name + '-' + require('./package.json').version + '.vsix'\")" >> "$GITHUB_ENV"
+        run: |
+          VSIX="$(node -p "require('./package.json').name + '-' + require('./package.json').version + '.vsix'")"
+          echo "RELEASE_VSIX=$VSIX" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
