@@ -38,6 +38,6 @@ Inline: реальный provider получает реальный ответ g
 
 Изолированный IDE launcher использует явное `--no-sandbox`; Docker policy runner сохраняется отдельно. При отказе сначала сохранить evidence, определить продукт/шлюз/harness layer и только затем менять условия новым прогоном. Ключ/кастомные данные не нужны в bug report — достаточно public model ID, controls, request ID и собственного воспроизводимого prompt.
 
-Для ограниченной серии передайте третьим аргументом `query`, `explain`, `inline` либо список через запятую. Corpus остаётся тем же frozen JSON; selected/unrun cases записываются отдельно. Primary VSIX 1.0.9 устанавливается до ввода ключа только для регистрации language/configuration. Live вызовы source modules с последующими fixes не выдаются за packaged live qualification.
+Для ограниченной серии передайте третьим аргументом `query`, `explain`, `inline` либо список через запятую. Corpus остаётся тем же frozen JSON; selected/unrun cases записываются отдельно. Перед вводом ключа launcher устанавливает VSIX версии из текущего `package.json` и записывает его SHA-256; установленный пакет даёт регистрацию языка и настроек. Live вызовы source modules не выдаются за packaged live qualification.
 
 `acceptance.py` — offline replay saved suggestions с отдельным profile, CDP и Tab/commit. Запускать только на выделенном display: tool меняет focus собственного IDE window. Unexpected edits/no-change не являются положительным acceptance evidence.
