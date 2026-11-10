@@ -12,7 +12,7 @@
 
 ## Продвижение draft в каталоги
 
-После прохождения gates вручную запустите workflow `Release & Publish` на **том же теге** с `promote=true`. Он скачивает VSIX из GitHub draft, повторяет QA, публикует в Open VSX и VS Code Marketplace, затем открывает GitHub prerelease. Не запускать с `main`: workflow отклонит ref, который не является тегом нужной версии.
+После прохождения gates запустите workflow `Release & Publish` на **том же теге** с `promote=true`: `gh workflow run release.yml --ref v1.0.12 -f promote=true` (после входа в GitHub CLI под владельцем репозитория). GitHub UI в меню Run workflow выбирает ветку, поэтому для tag ref используйте [GitHub CLI или REST API](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch). Workflow скачивает VSIX из GitHub draft, повторяет QA, публикует в Open VSX и VS Code Marketplace, затем открывает GitHub prerelease. Запуск на `main` будет отклонён проверкой тега.
 
 Для CI нужен ротированный секрет `OVSX_PAT`. Для Marketplace создайте Trusted Publishing policy у издателя: owner `normahubcc`, repository `1c-bsl-ai-copilot`, workflow `release.yml`, environment пустой. Workflow получает короткоживущий токен через GitHub OIDC (`id-token: write`) и публикует тот же VSIX без `VSCE_PAT`. Если policy не настроена, продвижение завершится ошибкой на Marketplace; до её настройки не запускайте `promote=true`. Значение Open VSX токена не вставляйте в команду, README или чат.
 
