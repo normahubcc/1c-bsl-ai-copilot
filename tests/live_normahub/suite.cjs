@@ -7,11 +7,13 @@ exports.run=async function(){
  const cases=allCases.filter(c=>(!selectedFamilies.length||selectedFamilies.includes(c.kind))&&(!selectedCaseIds.length||selectedCaseIds.includes(c.id)));
  const maxHttpRequests=Number(process.env.LIVE_MAX_HTTP_REQUESTS??cases.length);
  if(!Number.isInteger(maxHttpRequests)||maxHttpRequests<1||maxHttpRequests>cases.length)throw Error('Invalid live HTTP request cap');
+ const packagedInline=process.env.LIVE_EXECUTION_MODE==='packaged-inline';
+ if(packagedInline&&(cases.length!==1||cases[0].kind!=='inline'))throw Error('Packaged live canary requires one inline case');
  let key=await new Promise((resolve,reject)=>{let data='';const c=net.connect(process.env.LIVE_CREDENTIAL_SOCKET);c.on('data',b=>data+=b);c.on('end',()=>{try{resolve(JSON.parse(data).key)}catch(e){reject(e)}});c.on('error',reject);});
  const safe=s=>(key?String(s).split(key).join('[REDACTED]'):String(s)).replace(/nr_hub_[A-Za-z0-9_-]+/g,'[REDACTED]');
  const save=(name,value)=>{fs.writeFileSync(path.join(out,name),safe(JSON.stringify(value,null,2)),{mode:0o600});};
  const results=[],network=[];let activeCase='setup';
- const write=completed=>save('results.json',{completed,app:vscode.env.appName,version:vscode.version,source:root,packagedVsix:false,plannedCases:cases.length,maxHttpRequests,entireCorpusCases:allCases.length,selectedFamilies,selectedCaseIds:cases.map(c=>c.id),unrunCaseIds:cases.filter(c=>!results.some(r=>r.id===c.id)).map(c=>c.id),transport:'real NormaHub HTTPS; requested 1017; no response replacement',credential:'in-memory secret port via single-use private Unix socket; not saved',primaryModelAttestation:'gateway reports base model ID; provider version not independently attested',results,network});
+ const write=completed=>save('results.json',{completed,app:vscode.env.appName,version:vscode.version,source:root,packagedVsix:packagedInline,plannedCases:cases.length,maxHttpRequests,entireCorpusCases:allCases.length,selectedFamilies,selectedCaseIds:cases.map(c=>c.id),unrunCaseIds:cases.filter(c=>!results.some(r=>r.id===c.id)).map(c=>c.id),transport:'real NormaHub HTTPS; requested 1017; no response replacement',credential:'in-memory secret port via single-use private Unix socket; packaged canary temporarily exposes it to the installed provider in the same isolated extension host',primaryModelAttestation:'gateway reports base model ID; provider version not independently attested',results,network});
  const originalRequest=https.request;
  https.request=function(url,options,callback){
   let host;try{host=new URL(url).hostname;}catch{return originalRequest.call(this,url,options,callback);}
@@ -43,7 +45,31 @@ exports.run=async function(){
  try{
   for(const tc of cases){if(stoppedFamilies.has(tc.kind))continue;if(lastKind!==tc.kind){consecutiveFailures=0;lastKind=tc.kind;}activeCase=tc.id;const started=Date.now(),n=network.length;let record={id:tc.id,kind:tc.kind,status:'started',engine:'not_run',approvalVerified:false,fullBslExecution:'not_run'};write(false);
    try{
-    if(tc.kind==='inline'){
+    if(tc.kind==='inline'&&packagedInline){
+     const extension=vscode.extensions.getExtension('normahub.1c-bsl-ai-copilot');
+     if(!extension||extension.packageJSON.version!==process.env.LIVE_PACKAGE_VERSION||path.resolve(extension.extensionPath)===path.resolve(root))throw Error('Exact installed VSIX is unavailable');
+     await extension.activate();
+     const config=vscode.workspace.getConfiguration('normahub1c');await config.update('enableInlineCompletion',true,vscode.ConfigurationTarget.Workspace);
+     try{
+      const editor=await setBuffer(tc.prefix+tc.suffix),doc=editor.document,pos=doc.positionAt(tc.prefix.length);
+      editor.selection=new vscode.Selection(pos,pos);
+      const original=doc.getText();record.before=original;record.installedExtensionPath=extension.extensionPath;
+      process.env.NORMAHUB_API_KEY=key;
+      await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
+      const deadline=Date.now()+35000;
+      while((network.length===n||network[n].elapsedMs===undefined)&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));
+      if(network.length===n){record.status='packaged_provider_no_request';record.acceptance='not_run';}
+      else if(network[n].elapsedMs===undefined){record.status='packaged_provider_request_unfinished';record.acceptance='not_run';}
+      else{
+       await new Promise(r=>setTimeout(r,700));
+       await vscode.commands.executeCommand('editor.action.inlineSuggest.commit');
+       await new Promise(r=>setTimeout(r,150));
+       record.after=doc.getText();record.acceptance=record.after===original?'native_commit_no_change':'native_commit_applied';
+       record.status=record.acceptance==='native_commit_applied'?'packaged_live_accepted_needs_semantic_review':'packaged_live_no_change';
+      }
+      record.physicalTab='not_run';record.presentation='installed VSIX provider; real HTTPS; native commit command';
+     }finally{delete process.env.NORMAHUB_API_KEY;await config.update('enableInlineCompletion',false,vscode.ConfigurationTarget.Workspace);}
+    }else if(tc.kind==='inline'){
      const config=vscode.workspace.getConfiguration('normahub1c');await config.update('enableInlineCompletion',true,vscode.ConfigurationTarget.Workspace);
      const editor=await setBuffer(tc.prefix+tc.suffix),doc=editor.document,pos=doc.positionAt(tc.prefix.length);editor.selection=new vscode.Selection(pos,pos);
      const provider=new BSLInlineCompletionProvider(context),cancel=new vscode.CancellationTokenSource();
