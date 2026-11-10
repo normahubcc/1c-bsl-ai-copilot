@@ -6,7 +6,7 @@ const Module = require('node:module');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const settings = { enableInlineCompletion: true, debounceMs: 0, autocompleteModel: 'deepseek-v4.1-flash' };
+const settings = { enableInlineCompletion: true, debounceMs: 0, autocompleteModel: 'deepseek-v4.1-flash-1017' };
 
 class Position {
   constructor(line, character) { this.line = line; this.character = character; }

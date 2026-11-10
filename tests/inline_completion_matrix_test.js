@@ -13,7 +13,7 @@ const path = require('node:path');
 const settings = {
   enableInlineCompletion: true,
   debounceMs: 0,
-  autocompleteModel: 'deepseek-v4.1-flash',
+  autocompleteModel: 'deepseek-v4.1-flash-1017',
   completionDebug: false,
 };
 const registered = { inlineProviders: [], commands: {}, views: [] };
@@ -24,6 +24,7 @@ const api = {
     getConfiguration: () => ({ get: (name, fallback) => (settings[name] !== undefined ? settings[name] : fallback) }),
     onDidOpenTextDocument: () => ({ dispose() {} }),
     onDidChangeTextDocument: () => ({ dispose() {} }),
+    onDidChangeConfiguration: () => ({ dispose() {} }),
     onDidCloseTextDocument: () => ({ dispose() {} }),
   },
   languages: {
@@ -155,13 +156,22 @@ async function run() {
       { scheme: 'file', language: '1c' },
       { scheme: 'file', language: 'oscript' },
       { scheme: 'untitled', language: 'bsl' },
+      { scheme: 'untitled', language: '1c' },
+      { scheme: 'untitled', language: 'oscript' },
     ]);
     for (const lang of ['json', 'typescript', 'markdown']) {
       assert.ok(!selector.some((s) => s.language === lang), `${lang} must stay outside the selector`);
     }
-    assert.ok(!selector.some((s) => s.scheme === 'untitled' && s.language !== 'bsl'),
-      'untitled:1c/untitled:oscript gap documented (Prompt 7 candidate)');
+    for (const language of ['1c','oscript']) assert.ok(selector.some(s => s.scheme === 'untitled' && s.language === language), 'Untitled language must be registered');
     assert.ok(provider instanceof BSLInlineCompletionProvider, 'registered instance is the BSL provider');
+    const focused = [];
+    api.commands.executeCommand = async id => { focused.push(id); };
+    for (const name of ['generateQuery','generateBatchQuery','generateExtensionMethod','bspAssistant','auditStandards','inspectQuery','refactorQuery','generateVanessaFeature','analyzeTechLog','explainCode']) {
+      await registered.commands['normahub1c.'+name]();
+    }
+    assert.equal(focused.length,10,'Every command routes to the shared sidebar workflow');
+    assert.ok(focused.every(id => id === 'normahub1c.mainView.focus'));
+
     // End-to-end through the REGISTERED instance (not a fresh one).
     const doc = makeDoc(['Процедура Т()', '    Итог = 1;']);
     const r = await provider.provideInlineCompletionItems(doc, new api.Position(1, 14), {}, liveToken());
@@ -235,7 +245,7 @@ async function run() {
   {
     const longCyr = `Переменная${'Я'.repeat(5900)} = 1;`;
     const doc = makeDoc(['Процедура Т()', longCyr]);
-    const snap = await buildInlineCompletionContext(doc, new api.Position(1, longCyr.length), { workspaceRoot: '' });
+    const snap = await buildInlineCompletionContext(doc, new api.Position(1, longCyr.length), { workspaceRoot: '', budgets: { prefixChars: 4000 } });
     assert.ok(Array.from(snap.prefix).length <= 4000, 'long line obeys prefix budget');
     assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(snap.prefix), 'no split surrogates');
     assert.ok(snap.prefix.endsWith('= 1;'), 'tail (cursor context) preserved');
@@ -383,7 +393,7 @@ async function run() {
         return req;
       };
       let pending = RealClient.checkBalance('k');
-      reqs[reqs.length - 1]._status = 200; reqs[reqs.length - 1]._body = '{}';
+      reqs[reqs.length - 1]._status = 200; reqs[reqs.length - 1]._body = '{"data":[]}';
       assert.equal((await pending).status, 'active');
       pending = RealClient.checkBalance('k');
       reqs[reqs.length - 1]._status = 401; reqs[reqs.length - 1]._body = 'no';

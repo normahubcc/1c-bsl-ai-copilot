@@ -12,7 +12,7 @@ const path = require('node:path');
 const settings = {
   enableInlineCompletion: true,
   debounceMs: 0,
-  autocompleteModel: 'deepseek-v4.1-flash',
+  autocompleteModel: 'deepseek-v4.1-flash-1017',
   completionDebug: false,
 };
 const api = {

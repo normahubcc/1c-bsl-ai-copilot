@@ -1,0 +1,30 @@
+# Project-only configuration. Inherits user model, sandbox and approvals.
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
+
+[mcp_servers.openai_docs]
+url = "https://developers.openai.com/mcp"
+startup_timeout_sec = 45
+tool_timeout_sec = 60
+enabled = true
+required = false
+
+[mcp_servers.copilot_local]
+command = "python3"
+args = [".codex/scripts/start_mcp.py", "copilot"]
+cwd = "/home/user/Desktop/normahub/normahub-github/repos/1c-bsl-ai-copilot"
+startup_timeout_sec = 20
+tool_timeout_sec = 30
+enabled = true
+required = false
+
+[mcp_servers.playwright_local]
+command = "python3"
+args = [".codex/scripts/start_mcp.py", "playwright"]
+cwd = "/home/user/Desktop/normahub/normahub-github/repos/1c-bsl-ai-copilot"
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+enabled = true
+required = false
+enabled_tools = ["browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_fill_form", "browser_press_key", "browser_select_option", "browser_resize", "browser_take_screenshot", "browser_console_messages", "browser_network_requests", "browser_tabs", "browser_wait_for", "browser_close"]

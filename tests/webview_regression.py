@@ -1,8 +1,10 @@
 """Verify production Webview UI using a controlled host bridge, without preview demos."""
 from pathlib import Path
+import os
+import tempfile
 from playwright.sync_api import sync_playwright, expect
 
-HTML = Path(__file__).with_name("webview_test.html")
+HTML = Path(os.getenv("WEBVIEW_TEST_HTML", str(Path(tempfile.gettempdir()) / "1c-copilot-webview-test.html")))
 TOOLS = ["ai-overview", "tools", "queries-gen", "queries-refactor", "queries-batch", "bsp",
          "extensions", "audit", "bdd", "techlog", "metadata", "sidecar", "settings"]
 
@@ -46,6 +48,10 @@ def run_regression():
               "gatewayActive": False, "balanceDisplay": "Проверьте подключение", "metadataAvailable": False,
               "metadataLabel": "Метаданные: примеры", "maskedKey": "nr_hub_t...1234"})
         expect(page.locator("#metadataHeaderLabel")).to_have_text("Метаданные: примеры")
+        send({"type":"metadataResult", "objectsCount":2, "summary":"Схема проекта"})
+        expect(page.locator("#metadataHeaderLabel")).to_have_text("Метаданные: 2 объектов")
+        expect(page.locator("#gatewayStatusBadge")).to_have_text("Сеть недоступна")
+
         send({"type": "editorContext", "fileName": "Untitled-1", "isBsl": True,
               "hasSelection": True, "lineCount": 2, "selectedText": "ВЫБРАТЬ Ссылка ИЗ Документ.ЗаказКлиента"})
         page.locator(".killer-card button").first.focus()
@@ -54,7 +60,7 @@ def run_regression():
         assert not messages("refactorQuery"), "Navigation must not silently execute a demo query"
         page.locator("#refactorInput").press("Control+Enter")
         assert len(messages("refactorQuery")) == 1
-        send({"type": "refactorResult", "code": "Результат оптимизации", "optimizations": []})
+        send({"type": "refactorResult", "code": "Результат оптимизации", "optimizations": ["Извлечение"], "changed": True, "previewId": "r1"})
         expect(page.locator("#refactorOutput")).to_be_visible()
         page.locator("#refactorInput").fill("ВЫБРАТЬ ДругаяСсылка")
         page.locator("#refactorInput").press("Control+Enter")
@@ -67,25 +73,88 @@ def run_regression():
         expect(page.locator("#btnSendCockpitPrompt")).to_be_disabled()
         page.locator("#cockpitPromptInput").press("Control+Enter")
         assert len(messages("generateQuery")) == 1, "Duplicate keyboard submit must not create paid requests"
-        send({"type": "queryResult", "code": "Запрос = Новый Запрос;"})
+        send({"type": "queryResult", "code": "Запрос = Новый Запрос;", "previewId": "q1", "targetName": "Untitled-1"})
         expect(page.locator("#btnSendCockpitPrompt")).to_be_enabled()
         expect(page.locator("#cockpitOutputStudio")).to_be_visible()
+        expect(page.locator("#queryValidation")).to_be_hidden()
+        send({"type": "queryResult", "code": "Запрос = Новый Запрос;", "previewId": "query-bound",
+              "targetName": "Untitled-1", "comparisonAvailable": True, "reviewAvailable": True, "sourceCurrent": True})
+        page.locator("#reviewPreview").click()
+        assert messages("reviewPreview")[-1] == {"type": "reviewPreview", "previewId": "query-bound"}
+        page.locator("#queryValidation").click()
+        assert messages("openValidationMenu")[-1] == {"type": "openValidationMenu", "previewId": "query-bound"}
+
         send({"type": "editorContext", "fileName": "settings.json", "isBsl": False, "hasSelection": False})
-        expect(page.locator("button[onclick='insertCockpitCode()']")).to_be_disabled()
-        assert "Откройте BSL" in page.locator("#cockpitTarget").inner_text()
+        expect(page.locator("button[onclick='insertCockpitCode()']")).to_be_enabled()
+        assert "Untitled-1" in page.locator("#cockpitTarget").inner_text(), "Target stays bound to the original file"
         page.locator("button[onclick='copyCockpitCode()']").click()
         assert messages("copyToClipboard")[-1]["text"] == "Запрос = Новый Запрос;"
+
+        stale_warning = "Исходный контекст изменился. Черновик можно открыть или скопировать; для вставки повторите генерацию."
+        send({"type": "queryResult", "code": "Запрос = Новый Запрос; // stale", "previewId": "stale-q",
+              "targetName": "Untitled-1", "sourceCurrent": False, "comparisonAvailable": True, "reviewAvailable": True, "message": stale_warning})
+        expect(page.locator("button[onclick='insertCockpitCode()']")).to_be_disabled()
+        expect(page.locator("#cockpitPromptStatus")).to_have_text(stale_warning)
+        expect(page.locator("#cockpitPromptStatus")).to_have_attribute("data-state", "error")
+        expect(page.locator("#cockpitTarget")).to_have_text(stale_warning)
+        expect(page.locator("#reviewPreview")).to_be_disabled()
+        before_review = len(messages("reviewPreview"))
+        page.evaluate("reviewCockpitCode()")
+        assert len(messages("reviewPreview")) == before_review
+        expect(page.locator("#queryValidation")).to_be_disabled()
+        before_compare = len(messages("openValidationMenu"))
+        page.evaluate("openQueryValidation()")
+        assert len(messages("openValidationMenu")) == before_compare
+        before_insert = len(messages("insertCode"))
+        page.evaluate("insertCockpitCode()")
+        assert len(messages("insertCode")) == before_insert, "Stale draft must not request native insertion"
+        page.locator("button[onclick='copyCockpitCode()']").click()
+        assert messages("copyToClipboard")[-1]["text"] == "Запрос = Новый Запрос; // stale"
+        page.locator("#cockpitOutputStudio button").filter(has_text="Открыть отдельно").click()
+        assert messages("openResult")[-1]["previewId"] == "stale-q"
+        send({"type": "editorContext", "fileName": "New.bsl", "isBsl": True, "hasSelection": False})
+        expect(page.locator("button[onclick='insertCockpitCode()']")).to_be_disabled()
+        send({"type": "editorContext", "fileName": "settings.json", "isBsl": False, "hasSelection": False})
 
         page.locator("#cockpitPromptInput").press("Control+Enter")
         send({"type": "queryResult", "error": "HTTP 401: ключ недействителен"})
         expect(page.locator("#cockpitPromptStatus")).to_have_text("HTTP 401: ключ недействителен")
         expect(page.locator("#cockpitOutputStudio")).to_be_hidden()
-        expect(page.locator("#queryActions")).to_be_hidden()
+        assert not page.locator("#cockpitOutputStudio").is_visible()
         expect(page.locator("#btnSendCockpitPrompt")).to_be_enabled()
 
+        send({"type":"navigateTool", "tool":"extensions", "selectedText":"Функция Рассчитать(Знач Значение) Экспорт"})
+        expect(page.locator("#extMethod")).to_have_value("Рассчитать")
+        expect(page.locator("#extParams")).to_have_value("Знач Значение")
+        expect(page.locator("#extKind")).to_have_value("function")
+        page.select_option("#extDirective", "Вместо")
+        page.locator("button[onclick='generateExt()']").click()
+        assert messages("generateExtension")[-1]["isFunction"] is True
+        page.evaluate("selectSubTool('bdd')")
+        page.fill("#bddEntity", "ЗаказКлиента")
+        page.fill("#bddPrompt", "Скидка 17%")
+        page.select_option("#bddMode", "ai")
+        page.locator("button[onclick='generateBdd(false)']").click()
+        assert messages("generateBdd")[-1]["useAI"] is True
+        assert messages("generateBdd")[-1]["prompt"] == "Скидка 17%"
+        send({"type":"bddResult", "error":"API недоступен"})
+        expect(page.locator("#bddOutput")).to_have_text("API недоступен")
+        expect(page.locator("#bddActions")).to_be_hidden()
+
         page.evaluate("selectSubTool('settings')")
-        page.select_option("#modelSelector", "deepseek-v4.1-flash")
-        assert page.locator("#cockpitModelSelect").input_value() == "deepseek-v4.1-flash"
+        page.locator("button[onclick=\"vscode.postMessage({type:'manageRunnerProfile'})\"]").click()
+        assert messages("manageRunnerProfile")[-1] == {"type": "manageRunnerProfile"}
+        page.select_option("#modelSelector", "deepseek-v4.1-flash-1017")
+        assert page.locator("#cockpitModelSelect").input_value() == "deepseek-v4.1-flash-1017"
+        before_models = len(messages("changeModel"))
+        page.select_option("#autocompleteModelSelector", "gpt-6-sol")
+        assert len(messages("changeModel")) == before_models + 1
+        assert messages("changeModel")[-1]["purpose"] == "autocompleteModel"
+        assert page.locator("#modelSelector").input_value() == "deepseek-v4.1-flash-1017"
+        send({"type":"modelsChanged", "reasoningModel":"gpt-6.1-sol", "autocompleteModel":"deepseek-v4.1-flash-1017"})
+        assert page.locator("#modelSelector").input_value() == "gpt-6.1-sol"
+        assert page.locator("#cockpitModelSelect").input_value() == "gpt-6.1-sol"
+        assert page.locator("#autocompleteModelSelector").input_value() == "deepseek-v4.1-flash-1017"
         page.fill("#apiKeyInput", "nr_hub_test")
         page.locator("button[onclick='saveKey()']").click()
         assert messages("saveKey")[-1]["value"] == "nr_hub_test"
@@ -115,7 +184,7 @@ def run_regression():
 
         page.evaluate("selectSubTool('tools')")
         expect(page.locator("#tab-tools")).to_be_visible()
-        expect(page.locator(".catalog-card")).to_have_count(10)
+        expect(page.locator(".catalog-card")).to_have_count(9)
         page.fill("#toolSearch", "Технологический журнал")
         expect(page.locator(".catalog-card")).to_have_count(1)
         expect(page.locator(".catalog-card").first).to_contain_text("Технологический журнал")
@@ -127,7 +196,7 @@ def run_regression():
         page.fill("#toolSearch", "нет_такого_инструмента")
         expect(page.locator(".catalog-empty")).to_be_visible()
         page.fill("#toolSearch", "")
-        expect(page.locator(".catalog-card")).to_have_count(10)
+        expect(page.locator(".catalog-card")).to_have_count(9)
 
         # Measure real element geometry, not merely scrollWidth hidden by overflow-x.
         checks = 0

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ConfigurationMetadata, MetadataObject } from './types';
+import { ConfigurationMetadata, MetadataObject, MetadataField } from './types';
 
 /**
  * Scans workspace for 1C:Enterprise configuration files (XML dump or EDT format)
@@ -10,26 +10,42 @@ import { ConfigurationMetadata, MetadataObject } from './types';
  * between real inspected schemas and synthetic fallback demos.
  */
 export class MetadataScanner {
-    private static cache = new Map<string, ConfigurationMetadata>();
+    private static cache = new Map<string, { revision: string; metadata: ConfigurationMetadata }>();
+
+    public static sourceRevision(rootPath: string): string {
+        if (!rootPath) return '';
+        const candidates = ['metadata.json', 'Configuration.xml', 'src/cf/Configuration.xml', 'src/Configuration.mdo', 'cf/Configuration.xml'];
+        return candidates.map(relative => {
+            try {
+                const stat = fs.statSync(path.join(rootPath, relative));
+                return `${relative}:${stat.mtimeMs}:${stat.size}`;
+            } catch { return `${relative}:missing`; }
+        }).join('|');
+    }
 
     public static async scanWorkspace(rootPath: string): Promise<ConfigurationMetadata> {
         const normalizedRoot = rootPath ? path.resolve(rootPath) : '';
 
-        if (this.cache.has(normalizedRoot)) {
-            return this.cache.get(normalizedRoot)!;
-        }
+        const revision = this.sourceRevision(normalizedRoot);
+        const cached = this.cache.get(normalizedRoot);
+        if (cached?.revision === revision) return cached.metadata;
+        this.cache.delete(normalizedRoot);
 
         const objects: MetadataObject[] = [];
         let configName = 'Конфигурация 1С';
-        let configVersion = '8.3';
-        let foundRealMetadata = false;
+        const configVersion = '';
 
         if (normalizedRoot && fs.existsSync(normalizedRoot)) {
+            const jsonFile = path.join(normalizedRoot, 'metadata.json');
+            if (fs.existsSync(jsonFile)) {
+                const imported = this.readJsonMetadata(jsonFile, normalizedRoot);
+                this.cache.set(normalizedRoot, { revision, metadata: imported });
+                return imported;
+            }
             // Check for Configuration.xml / Configuration.mdo
             const configNameDetected = this.detectConfigurationName(normalizedRoot);
             if (configNameDetected) {
                 configName = configNameDetected;
-                foundRealMetadata = true;
             }
 
             // 1. Check for standard 1C XML dump folder or EDT structure
@@ -46,78 +62,53 @@ export class MetadataScanner {
                 }
             }
 
-            if (objects.length > 0) {
-                foundRealMetadata = true;
-            }
         }
 
-        const isDemoFallback = !foundRealMetadata || objects.length === 0;
-
-        // If no 1C metadata files found on disk, provide common standard enterprise entities as fallback
-        if (isDemoFallback) {
-            objects.push(
-                {
-                    kind: 'Справочник',
-                    name: 'Номенклатура',
-                    synonym: 'Номенклатура',
-                    fields: [{ name: 'Артикул' }, { name: 'ЕдиницаИзмерения' }, { name: 'СтавкаНДС' }]
-                },
-                {
-                    kind: 'Справочник',
-                    name: 'Контрагенты',
-                    synonym: 'Контрагенты',
-                    fields: [{ name: 'ИНН' }, { name: 'КПП' }, { name: 'ЮридическийАдрес' }]
-                },
-                {
-                    kind: 'Справочник',
-                    name: 'Склады',
-                    synonym: 'Склады (Места хранения)'
-                },
-                {
-                    kind: 'Документ',
-                    name: 'ЗаказКлиента',
-                    synonym: 'Заказ клиента',
-                    fields: [{ name: 'Контрагент' }, { name: 'Договор' }, { name: 'СуммаДокумента' }],
-                    tabularSections: [{
-                        name: 'Товары',
-                        fields: [{ name: 'Номенклатура' }, { name: 'Количество' }, { name: 'Цена' }, { name: 'Сумма' }]
-                    }]
-                },
-                {
-                    kind: 'Документ',
-                    name: 'РеализацияТоваровУслуг',
-                    synonym: 'Реализация товаров и услуг',
-                    fields: [{ name: 'Контрагент' }, { name: 'Склад' }, { name: 'СуммаДокумента' }],
-                    tabularSections: [{
-                        name: 'Товары',
-                        fields: [{ name: 'Номенклатура' }, { name: 'Количество' }, { name: 'Цена' }, { name: 'Сумма' }]
-                    }]
-                },
-                {
-                    kind: 'РегистрНакопления',
-                    name: 'ТоварыНаСкладах',
-                    synonym: 'Товары на складах (Остатки)',
-                    fields: [{ name: 'Склад' }, { name: 'Номенклатура' }, { name: 'Количество' }]
-                },
-                {
-                    kind: 'РегистрСведений',
-                    name: 'ЦеныНоменклатуры',
-                    synonym: 'Цены номенклатуры (Периодический)',
-                    fields: [{ name: 'Номенклатура' }, { name: 'ВидЦены' }, { name: 'Цена' }]
-                }
-            );
-        }
-
+        // Empty means unavailable. Never invent business entities for runtime context.
         const result: ConfigurationMetadata = {
             name: configName,
             version: configVersion,
-            objects: objects.slice(0, 100), // Keep context compact
-            isDemoFallback,
+            objects,
+            isDemoFallback: false,
             sourcePath: normalizedRoot
         };
 
-        this.cache.set(normalizedRoot, result);
+        this.cache.set(normalizedRoot, { revision, metadata: result });
         return result;
+    }
+
+    private static readJsonMetadata(file: string, root: string): ConfigurationMetadata {
+        if (fs.statSync(file).size > 8 * 1024 * 1024) throw new Error('metadata.json превышает 8 МБ. Разделите выгрузку.');
+        let input: any;
+        try { input = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); }
+        catch { throw new Error('metadata.json: неверный JSON. Исправьте файл и повторите сканирование.'); }
+        if (!input || !Array.isArray(input.objects)) throw new Error('metadata.json должен содержать массив objects.');
+        const kinds = ['Справочник', 'Документ', 'РегистрНакопления', 'РегистрСведений', 'ПланВидовХарактеристик', 'Перечисление'];
+        const validName = (v: unknown): v is string => typeof v === 'string' && /^[А-Яа-яЁёA-Za-z_][А-Яа-яЁёA-Za-z_0-9]*$/.test(v);
+        const fields = (list: unknown) => {
+            if (list === undefined) return undefined;
+            if (!Array.isArray(list) || list.some(f => !f || !validName(f.name))) throw new Error('metadata.json: некорректное имя поля.');
+            return list.map(f => ({ name: f.name, type: typeof f.type === 'string' ? f.type.slice(0, 200) : undefined, role: ['attribute','dimension','resource'].includes(f.role) ? f.role as MetadataField['role'] : undefined }));
+        };
+        const seen = new Set<string>();
+        const objects: MetadataObject[] = input.objects.map((o: any) => {
+            if (!o || !kinds.includes(o.kind) || !validName(o.name)) throw new Error('metadata.json: неизвестный вид объекта или некорректное имя.');
+            const key = `${o.kind}.${o.name}`.toLowerCase();
+            if (seen.has(key)) throw new Error(`metadata.json: повтор объекта ${o.name}.`);
+            seen.add(key);
+            if (o.tabularSections !== undefined && !Array.isArray(o.tabularSections)) throw new Error('metadata.json: tabularSections должен быть массивом.');
+            return {
+                kind: o.kind, name: o.name,
+                registerType: ['Остатки','Обороты'].includes(o.registerType) ? o.registerType : undefined,
+                synonym: typeof o.synonym === 'string' ? o.synonym.slice(0, 200) : undefined,
+                fields: fields(o.fields),
+                tabularSections: o.tabularSections?.map((t: any) => {
+                    if (!t || !validName(t.name)) throw new Error('metadata.json: некорректная табличная часть.');
+                    return { name: t.name, fields: fields(t.fields) || [] };
+                })
+            };
+        });
+        return { name: typeof input.name === 'string' ? input.name.slice(0, 200) : 'Конфигурация 1С', version: typeof input.version === 'string' ? input.version : undefined, objects, sourcePath: root, isDemoFallback: false };
     }
 
     private static detectConfigurationName(rootPath: string): string | null {
@@ -158,6 +149,10 @@ export class MetadataScanner {
                         this.extractObjectsFromFolder(fullPath, 'РегистрНакопления', result);
                     } else if (file === 'InformationRegisters' || file === 'РегистрыСведений') {
                         this.extractObjectsFromFolder(fullPath, 'РегистрСведений', result);
+                    } else if (file === 'ChartsOfCharacteristicTypes') {
+                        this.extractObjectsFromFolder(fullPath, 'ПланВидовХарактеристик', result);
+                    } else if (file === 'Enums') {
+                        this.extractObjectsFromFolder(fullPath, 'Перечисление', result);
                     }
                 }
             }
@@ -210,44 +205,32 @@ export class MetadataScanner {
     }
 
     private static enrichMetadataObjectFromXml(obj: MetadataObject, content: string) {
-        // Tabular sections: <TabularSection ...><Properties><Name>Товары</Name>
-        const tsMatches = content.matchAll(/<(?:TabularSection|tabularSections)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
-        const tabularSections: { name: string; fields: { name: string }[] }[] = [];
-        for (const match of tsMatches) {
-            const tsName = match[1].trim();
-            if (tsName && !tabularSections.some(t => t.name === tsName)) {
-                tabularSections.push({ name: tsName, fields: [] });
-            }
-        }
-        if (tabularSections.length > 0) {
-            obj.tabularSections = tabularSections;
-        }
-
-        // Attributes: <Attribute ...><Properties><Name>Контрагент</Name>
-        const attrMatches = content.matchAll(/<(?:Attribute|attributes)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
-        const fields: { name: string }[] = [];
-        for (const match of attrMatches) {
-            const attrName = match[1].trim();
-            if (attrName && !fields.some(f => f.name === attrName)) {
-                fields.push({ name: attrName });
-            }
-        }
-        if (fields.length > 0) {
-            obj.fields = fields.slice(0, 30);
-        }
-
-        // Synonym: <Synonym><v8:item><v8:content>Номенклатура</v8:content>
-        const synMatch = content.match(/<Synonym[\s\S]*?<v8:content>([^<]+)<\/v8:content>/i);
-        if (synMatch && synMatch[1]) {
-            obj.synonym = synMatch[1].trim();
-        }
+        const parseFields = (xml: string) => [...xml.matchAll(/<(Attribute|Dimension|Resource|attributes|dimensions|resources)\b[^>]*>([\s\S]*?)<\/\1>/gi)]
+            .map(match => {
+                const name = match[2].match(/<(?:Name|name)>([^<]+)<\/(?:Name|name)>/i)?.[1]?.trim();
+                const tag = match[1].toLowerCase();
+                const role: MetadataField['role'] = tag.startsWith('dimension') ? 'dimension' : tag.startsWith('resource') ? 'resource' : 'attribute';
+                const type = match[2].match(/<(?:v8:Type|type)>([^<]+)<\/(?:v8:Type|type)>/i)?.[1]?.trim();
+                return name ? { name, role, type } : undefined;
+            }).filter((field): field is { name: string; role: NonNullable<MetadataField['role']>; type: string | undefined } => !!field);
+        const sections = [...content.matchAll(/<(TabularSection|tabularSections)\b[^>]*>([\s\S]*?)<\/\1>/gi)];
+        if (sections.length) obj.tabularSections = sections.map(match => {
+            const name = match[2].match(/<(?:Name|name)>([^<]+)<\/(?:Name|name)>/i)?.[1]?.trim() || '';
+            return { name, fields: parseFields(match[2]) };
+        }).filter(section => !!section.name);
+        const withoutSections = content.replace(/<(TabularSection|tabularSections)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+        obj.fields = parseFields(withoutSections);
+        const registerType = content.match(/<(?:RegisterType|registerType)>([^<]+)<\/(?:RegisterType|registerType)>/i)?.[1];
+        if (registerType) obj.registerType = /Turnovers|Обороты/i.test(registerType) ? 'Обороты' : /Balance|Остатки/i.test(registerType) ? 'Остатки' : undefined;
+        const synonym = content.match(/<Synonym[\s\S]*?<v8:content>([^<]+)<\/v8:content>/i)?.[1];
+        if (synonym) obj.synonym = synonym.trim();
     }
 
     public static formatForPrompt(metadata: ConfigurationMetadata): string {
-        const header = metadata.isDemoFallback
-            ? `// Метаданные (Демо-схема, файлы конфигурации не найдены в рабочей области):`
-            : `// Метаданные конфигурации 1С "${metadata.name}":`;
-
+        if (metadata.isDemoFallback || metadata.objects.length === 0) {
+            return '// Метаданные конфигурации недоступны. Имена объектов и полей требуется уточнить у пользователя.';
+        }
+        const header = `// Метаданные конфигурации 1С "${metadata.name.replace(/[\r\n]/g, ' ')}" (${metadata.objects.length} объектов):`;
         const lines: string[] = [header];
         const grouped: Record<string, string[]> = {};
 
@@ -257,14 +240,16 @@ export class MetadataScanner {
             }
             let desc = obj.name;
             if (obj.tabularSections && obj.tabularSections.length > 0) {
-                const ts = obj.tabularSections.map(t => t.name).join(', ');
+                const ts = obj.tabularSections.map(t => `${t.name}[${t.fields.map(f => f.name).join(', ')}]`).join(', ');
                 desc += ` (Табличные части: ${ts})`;
             }
+            if (obj.fields?.length) desc += ` (Поля: ${obj.fields.slice(0, 30).map(f => f.name).join(', ')})`;
             grouped[obj.kind].push(desc);
         }
 
         for (const [kind, list] of Object.entries(grouped)) {
-            lines.push(`// ${kind}: ${list.slice(0, 15).join(', ')}`);
+            lines.push(`// ${kind}: ${list.slice(0, 30).join(', ')}`);
+            if (list.length > 30) lines.push(`// Ещё ${list.length - 30} объектов этого вида не включены в контекст.`);
         }
 
         return lines.join('\n');

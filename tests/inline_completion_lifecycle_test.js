@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 const https = require('node:https');
 
-const settings = { enableInlineCompletion: true, debounceMs: 25, autocompleteModel: 'deepseek-v4.1-flash' };
+const settings = { enableInlineCompletion: true, debounceMs: 25, autocompleteModel: 'deepseek-v4.1-flash-1017' };
 const uiNoise = { info: 0, warn: 0, error: 0 };
 
 class Position {
@@ -34,6 +34,7 @@ const api = {
   Position,
   Range,
   InlineCompletionItem,
+  InlineCompletionTriggerKind: { Automatic: 0, Invoke: 1 },
 };
 
 const load = Module._load;
@@ -344,7 +345,34 @@ async function run() {
   }
   console.log('  ✓ late stale response is discarded after a newer request');
 
-  console.log('Inline completion lifecycle: 11/11 passed (fake transport, deterministic).');
+  // 11. Native acceptance suppresses idle automatic refresh, while explicit invoke and new typing still work.
+  reset();
+  {
+    const p = provider(), doc = makeDoc(doc2lines);
+    api.workspace.textDocuments.push(doc);
+    try {
+      const automatic = { triggerKind: api.InlineCompletionTriggerKind.Automatic };
+      const explicit = { triggerKind: api.InlineCompletionTriggerKind.Invoke };
+      const first = await p.provideInlineCompletionItems(doc, new Position(1, 13), automatic, liveToken());
+      assert.equal(first[0].command.command, 'normahub1c.inlineAccepted');
+      assert.deepEqual(first[0].command.arguments, [doc.uri.toString(), 1]);
+      doc.version = 2;
+      p.markAccepted(doc.uri.toString(), 1);
+      assert.equal(await p.provideInlineCompletionItems(doc, new Position(1, 13), automatic, liveToken()), null);
+      assert.equal(completeCalls, 1, 'acceptance must not incur an immediate second paid request');
+      assert.ok(await p.provideInlineCompletionItems(doc, new Position(1, 13), explicit, liveToken()));
+      assert.equal(completeCalls, 2, 'manual trigger remains available');
+      doc.version = 3;
+      p.markAccepted(doc.uri.toString(), 2);
+      assert.equal(await p.provideInlineCompletionItems(doc, new Position(1, 13), automatic, liveToken()), null);
+      doc.version = 4;
+      assert.ok(await p.provideInlineCompletionItems(doc, new Position(1, 13), automatic, liveToken()));
+      assert.equal(completeCalls, 3, 'typing after acceptance permits a new suggestion');
+    } finally { api.workspace.textDocuments.pop(); p.dispose(); }
+  }
+  console.log('  ✓ accepted completion waits for typing; explicit trigger remains available');
+
+  console.log('Inline completion lifecycle: 12/12 passed (fake transport, deterministic).');
 }
 
 run().catch((err) => { console.error(err); process.exitCode = 1; });

@@ -231,7 +231,17 @@ function run() {
   }
   console.log('  ✓ directives/preprocessor preserved');
 
-  console.log('Normalizer: 23/23 passed (pure, deterministic).');
+  {
+    const context = input({prefix:'Процедура П()\n    Сообщить(',suffix:');\nКонецПроцедуры',currentLineBeforeCursor:'    Сообщить('});
+    for (const text of ['"Привет!"','""','"Текст ""в кавычках"""']) assert.equal(normalizeInlineCompletion(text,context)?.text,text);
+    assert.equal(normalizeInlineCompletion('"Привет!"',input()),null);
+    assert.equal(normalizeInlineCompletion('"Привет!"',input({prefix:'// Сообщить(',currentLineBeforeCursor:'// Сообщить('})),null);
+    assert.equal(normalizeInlineCompletion('"Незакрытая',context),null);
+    assert.equal(normalizeInlineCompletion('Привет!',context),null);
+    assert.equal(normalizeInlineCompletion('"Текст"\nЭто объяснение',context),null);
+  }
+  console.log('  ✓ complete quoted arguments accepted; prose, comments and malformed literals remain rejected');
+  console.log('Normalizer: 24/24 passed (pure, deterministic).');
 }
 
 run();

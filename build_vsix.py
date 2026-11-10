@@ -22,8 +22,14 @@ def build_vsix():
     version = pkg.get("version", "1.0.0")
     publisher = pkg.get("publisher", "normahub")
     output_vsix = os.path.join(BASE_DIR, f"{name}-{version}.vsix")
-    display_name = pkg.get("displayName", "1C BSL AI Copilot (NormaHub)")
-    description = pkg.get("description", "")
+    with open(os.path.join(BASE_DIR, "package.nls.json"), "r", encoding="utf-8") as source:
+        default_messages = json.load(source)
+    def manifest_text(value):
+        if value.startswith("%") and value.endswith("%"):
+            return default_messages[value[1:-1]]
+        return value
+    display_name = manifest_text(pkg.get("displayName", "1C BSL AI Copilot (NormaHub)"))
+    description = manifest_text(pkg.get("description", ""))
     categories = ",".join(pkg.get("categories", ["AI"]))
     tags = ",".join(pkg.get("keywords", ["1c", "bsl", "normahub", "cursor"]))
 
@@ -74,13 +80,18 @@ def build_vsix():
 
     files_to_pack = [
         ("package.json", "extension/package.json"),
+        ("package.nls.json", "extension/package.nls.json"),
+        ("package.nls.ru.json", "extension/package.nls.ru.json"),
         ("dist/extension.js", "extension/dist/extension.js"),
         ("dist/mcp-server.js", "extension/dist/mcp-server.js"),
+        ("dist/toolbox-cli.js", "extension/dist/toolbox-cli.js"),
         ("bin/mcp-server-1c.js", "extension/bin/mcp-server-1c.js"),
         ("README.md", "extension/README.md"),
         ("LICENSE", "extension/LICENSE"),
         ("icon.png", "extension/icon.png"),
         ("media/1c-icon.svg", "extension/media/1c-icon.svg"),
+        ("language-configuration.json", "extension/language-configuration.json"),
+        ("syntaxes/bsl.tmLanguage.json", "extension/syntaxes/bsl.tmLanguage.json"),
         ("epf/NormaHubCopilot_Module.bsl", "extension/epf/NormaHubCopilot_Module.bsl"),
         ("epf/NormaHubCopilot_Form.bsl", "extension/epf/NormaHubCopilot_Form.bsl"),
         ("epf/README.md", "extension/epf/README.md"),
@@ -100,7 +111,7 @@ def build_vsix():
             print(f"Error: Required file missing: {p}", file=sys.stderr)
             sys.exit(1)
 
-    with zipfile.ZipFile(output_vsix, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(output_vsix, "x", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", content_types_xml)
         zf.writestr("extension.vsixmanifest", vsix_manifest_xml)
         for src, arcname in files_to_pack:

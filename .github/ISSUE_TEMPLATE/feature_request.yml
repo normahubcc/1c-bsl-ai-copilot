@@ -1,0 +1,34 @@
+name: Практическое улучшение / Product improvement
+description: Опишите рабочую задачу, которую расширение пока не решает.
+title: "[Improvement] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Нам важнее измеримый рабочий результат, чем количество новых кнопок. Не прикладывайте приватный код/метаданные или данные клиентов.
+  - type: textarea
+    id: job
+    attributes:
+      label: Какую задачу вы решаете в 1С?
+      description: Опишите контекст, желаемый результат и как вы проверяете его в своей работе.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Что делаете сейчас и где теряете время?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Какой результат в расширении был бы полезен?
+      description: Укажите критерий применимости; например, проверяемый запрос или точный preview.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: IDE, платформа 1С и тип проекта
+      placeholder: VS Code/Cursor; 8.3.x; XML/EDT/без выгрузки

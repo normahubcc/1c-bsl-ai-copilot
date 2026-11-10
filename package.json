@@ -1,8 +1,8 @@
 {
   "name": "1c-bsl-ai-copilot",
   "displayName": "1C BSL AI Copilot (NormaHub)",
-  "description": "Бесплатный AI-ассистент для разработчиков 1С:Предприятие (BSL) в VS Code и Cursor. Умный автокомплит на лету, конструктор запросов 1С и аудит стандартов ИТС без VPN.",
-  "version": "1.0.3",
+  "description": "%extension.description%",
+  "version": "1.0.12",
   "publisher": "normahub",
   "icon": "icon.png",
   "license": "MIT",
@@ -39,14 +39,75 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "compile": "tsc -p ./",
-    "build": "npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify && npx esbuild ./src/mcp/server.ts --bundle --outfile=dist/mcp-server.js --format=cjs --platform=node",
+    "build": "npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify && npx esbuild ./src/mcp/server.ts --bundle --outfile=dist/mcp-server.js --format=cjs --platform=node && npm run build:core && npm run build:verification && npm run build:runner",
     "package": "python3 build_vsix.py",
     "qa:release": "npm run compile && npm run build && npm run package && python3 tests/release_qa.py",
-    "test": "node ./tests/test_runner.js && npm run compile && node ./tests/sidebar_host_test.js && node ./tests/inline_completion_baseline_test.js && node ./tests/inline_completion_lifecycle_test.js && node ./tests/inline_completion_context_test.js && node ./tests/inline_completion_normalizer_test.js && node ./tests/inline_completion_metrics_test.js && node ./tests/inline_completion_matrix_test.js && node ./tests/inline_completion_benchmark.js && node ./tests/inline_completion_coverage.js && python3 -m unittest discover -s sidecar/tests/ -v",
+    "test": "node ./tests/test_runner.js && npm run compile && node ./tests/ui_language_host_test.js && node ./tests/production_defects_test.js && node ./tests/deep_recheck_test.js && node ./tests/ai_transport_test.js && node ./tests/sidecar_health_test.js && node ./tests/product_core_test.js && node ./tests/sidebar_host_test.js && node ./tests/editor_snapshot_test.js && node ./tests/query_comparison_job_test.js && node ./tests/inline_completion_baseline_test.js && node ./tests/inline_completion_lifecycle_test.js && node ./tests/inline_completion_context_test.js && node ./tests/inline_completion_normalizer_test.js && node ./tests/inline_completion_metrics_test.js && node ./tests/inline_completion_matrix_test.js && node ./tests/inline_completion_benchmark.js && node ./tests/inline_completion_coverage.js && npm run build:core && python3 -m unittest discover -s sidecar/tests/ -v && npm run test:verification && npm run build:runner && node tests/runner_job_test.js && node tests/query_parameters_test.js && node tests/signed_runner_import_test.js && node tests/signed_runner_host_test.js && node tests/extension_workflows_test.js",
     "sidecar": "python3 sidecar/main.py daemon",
-    "mcp": "node bin/mcp-server-1c.js"
+    "mcp": "node bin/mcp-server-1c.js",
+    "build:core": "esbuild ./src/toolboxCli.ts --bundle --outfile=dist/toolbox-cli.js --format=cjs --platform=node",
+    "lint": "tsc --noEmit -p ./ && python3 -m ruff check sidecar/",
+    "build:verification": "esbuild ./src/verificationCli.ts --bundle --outfile=dist/verification-cli.js --format=cjs --platform=node",
+    "verify:core": "node dist/verification-cli.js",
+    "test:verification": "npm run compile && npm run build:verification && node tests/verification_core_test.js",
+    "test:editor-snapshot": "npm run compile && node tests/editor_snapshot_test.js",
+    "test:comparison": "npm run compile && node tests/query_comparison_job_test.js",
+    "build:runner": "esbuild ./src/runnerCli.ts --bundle --outfile=dist/runner-cli.js --format=cjs --platform=node",
+    "test:runner": "npm run compile && npm run build:runner && node tests/runner_job_test.js && node tests/query_parameters_test.js",
+    "test:signed-import": "npm run compile && npm run build:runner && node tests/signed_runner_import_test.js && node tests/signed_runner_host_test.js",
+    "test:extension-workflows": "npm run compile && node tests/extension_workflows_test.js"
   },
   "contributes": {
+    "languages": [
+      {
+        "id": "bsl",
+        "aliases": [
+          "1C:Enterprise",
+          "BSL",
+          "1C"
+        ],
+        "extensions": [
+          ".bsl"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "1c",
+        "aliases": [
+          "1C:Enterprise (1C)"
+        ],
+        "extensions": [
+          ".1c"
+        ]
+      },
+      {
+        "id": "oscript",
+        "aliases": [
+          "OneScript",
+          "OScript"
+        ],
+        "extensions": [
+          ".os"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "bsl",
+        "scopeName": "source.bsl",
+        "path": "./syntaxes/bsl.tmLanguage.json"
+      },
+      {
+        "language": "1c",
+        "scopeName": "source.bsl",
+        "path": "./syntaxes/bsl.tmLanguage.json"
+      },
+      {
+        "language": "oscript",
+        "scopeName": "source.bsl",
+        "path": "./syntaxes/bsl.tmLanguage.json"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -61,113 +122,121 @@
         {
           "type": "webview",
           "id": "normahub1c.mainView",
-          "name": "1С:Ассистент"
+          "name": "%view.main%"
         }
       ]
     },
     "commands": [
       {
         "command": "normahub1c.generateQuery",
-        "title": "1С: Сгенерировать запрос по описанию"
+        "title": "%command.generateQuery%"
       },
       {
         "command": "normahub1c.generateBatchQuery",
-        "title": "1С: Создать пакетный запрос с временными таблицами (ИТС)"
+        "title": "%command.generateBatchQuery%"
       },
       {
         "command": "normahub1c.generateExtensionMethod",
-        "title": "1С: Сгенерировать метод для расширения (&Вместо / &ИзменениеИКонтроль)"
+        "title": "%command.generateExtensionMethod%"
       },
       {
         "command": "normahub1c.bspAssistant",
-        "title": "1С: Подобрать метод БСП (Библиотека Стандартных Подсистем)"
+        "title": "%command.bspAssistant%"
       },
       {
         "command": "normahub1c.auditStandards",
-        "title": "1С: Проверить код по стандартам ИТС"
+        "title": "%command.auditStandards%"
       },
       {
         "command": "normahub1c.inspectQuery",
-        "title": "1С: Проверить оптимизацию запроса по стандартам ИТС"
+        "title": "%command.inspectQuery%"
       },
       {
         "command": "normahub1c.refactorQuery",
-        "title": "1С: Оптимизировать запрос (Вынести в ВТ_ по стандартам ИТС)"
+        "title": "%command.refactorQuery%"
       },
       {
         "command": "normahub1c.generateVanessaFeature",
-        "title": "1С: Сгенерировать BDD-сценарий (Vanessa-Automation)"
+        "title": "%command.generateVanessaFeature%"
       },
       {
         "command": "normahub1c.analyzeTechLog",
-        "title": "1С: Диагностика Технологического Журнала (ТЖ)"
+        "title": "%command.analyzeTechLog%"
       },
       {
         "command": "normahub1c.explainCode",
-        "title": "1С: Объяснить фрагмент кода BSL"
+        "title": "%command.explainCode%"
       },
       {
         "command": "normahub1c.scanMetadata",
-        "title": "1С: Просканировать метаданные конфигурации"
+        "title": "%command.scanMetadata%"
       },
       {
         "command": "normahub1c.topupBalance",
-        "title": "1С: Пополнить баланс NormaHub (СБП/Диадок)"
+        "title": "%command.topupBalance%"
       },
       {
         "command": "normahub1c.setApiKey",
-        "title": "1С: Настроить API-ключ NormaHub"
+        "title": "%command.setApiKey%"
       },
       {
         "command": "normahub1c.statusMenu",
-        "title": "1С: Меню управления и баланса"
+        "title": "%command.statusMenu%"
+      },
+      {
+        "command": "normahub1c.manageQueryRunner",
+        "title": "%command.manageQueryRunner%"
+      },
+      {
+        "command": "normahub1c.reviewLastPreview",
+        "title": "%command.reviewLastPreview%"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "normahub1c.generateQuery",
-          "when": "editorTextFocus",
+          "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@1"
         },
         {
           "command": "normahub1c.generateBatchQuery",
-          "when": "editorTextFocus",
+          "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@2"
         },
         {
           "command": "normahub1c.generateExtensionMethod",
-          "when": "editorTextFocus",
+          "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@3"
         },
         {
           "command": "normahub1c.bspAssistant",
-          "when": "editorTextFocus",
+          "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@4"
         },
         {
           "command": "normahub1c.auditStandards",
-          "when": "editorHasSelection",
+          "when": "(editorHasSelection) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@5"
         },
         {
           "command": "normahub1c.inspectQuery",
-          "when": "editorHasSelection",
+          "when": "(editorHasSelection) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@6"
         },
         {
           "command": "normahub1c.generateVanessaFeature",
-          "when": "editorTextFocus",
+          "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@7"
         },
         {
           "command": "normahub1c.analyzeTechLog",
-          "when": "editorTextFocus",
+          "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@8"
         },
         {
           "command": "normahub1c.explainCode",
-          "when": "editorHasSelection",
+          "when": "(editorHasSelection) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)",
           "group": "normahub1c@9"
         }
       ]
@@ -177,37 +246,37 @@
         "command": "normahub1c.generateQuery",
         "key": "ctrl+alt+q",
         "mac": "cmd+alt+q",
-        "when": "editorTextFocus"
+        "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)"
       },
       {
         "command": "normahub1c.generateExtensionMethod",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
-        "when": "editorTextFocus"
+        "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)"
       },
       {
         "command": "normahub1c.bspAssistant",
         "key": "ctrl+alt+b",
         "mac": "cmd+alt+b",
-        "when": "editorTextFocus"
+        "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)"
       },
       {
         "command": "normahub1c.auditStandards",
         "key": "ctrl+alt+i",
         "mac": "cmd+alt+i",
-        "when": "editorHasSelection"
+        "when": "(editorHasSelection) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)"
       },
       {
         "command": "normahub1c.generateVanessaFeature",
         "key": "ctrl+alt+v",
         "mac": "cmd+alt+v",
-        "when": "editorTextFocus"
+        "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)"
       },
       {
         "command": "normahub1c.analyzeTechLog",
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t",
-        "when": "editorTextFocus"
+        "when": "(editorTextFocus) && (editorLangId == bsl || editorLangId == 1c || editorLangId == oscript)"
       }
     ],
     "configuration": {
@@ -215,68 +284,86 @@
       "properties": {
         "normahub1c.autocompleteModel": {
           "type": "string",
-          "default": "deepseek-v4.1-flash",
+          "default": "deepseek-v4.1-flash-1017",
           "enum": [
-            "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
             "gpt-6.1-sol",
             "gpt-6-sol"
           ],
           "enumDescriptions": [
-            "DeepSeek v4.1 Flash (★ Рекомендуется для 1С, сверхбыстрая и экономичная)",
-            "GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика и архитектура)",
-            "GPT-6 Sol (Высокая точность и сложные рассуждения)"
+            "DeepSeek v4.1 Flash 1017",
+            "GPT-6.1 Sol",
+            "GPT-6 Sol"
           ],
-          "description": "Модель для мгновенного автокомплита BSL и кодогенерации"
+          "description": "%setting.autocompleteModel%"
         },
         "normahub1c.reasoningModel": {
           "type": "string",
           "default": "gpt-6.1-sol",
           "enum": [
-            "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
             "gpt-6.1-sol",
             "gpt-6-sol"
           ],
           "enumDescriptions": [
-            "DeepSeek v4.1 Flash (★ Рекомендуется для 1С, сверхбыстрая и экономичная)",
-            "GPT-6.1 Sol (Флагман OpenAI, сложнейшая логика и архитектура)",
-            "GPT-6 Sol (Высокая точность и сложные рассуждения)"
+            "DeepSeek v4.1 Flash 1017",
+            "GPT-6.1 Sol",
+            "GPT-6 Sol"
           ],
-          "description": "Модель для генерации сложных запросов 1С и глубокого рефакторинга"
+          "description": "%setting.reasoningModel%"
         },
         "normahub1c.enableInlineCompletion": {
           "type": "boolean",
           "default": true,
-          "description": "Включить умное автодополнение Ghost Text на лету"
+          "description": "%setting.enableInlineCompletion%"
         },
         "normahub1c.debounceMs": {
           "type": "number",
           "default": 250,
-          "description": "Trailing debounce автокомплита в мс: серия нажатий схлопывается в один запрос к последней позиции (250 = баланс скорости и цены)"
+          "description": "%setting.debounceMs%",
+          "minimum": 0,
+          "maximum": 2000
         },
         "normahub1c.requestTimeoutMs": {
           "type": "number",
           "default": 25000,
-          "description": "Таймаут HTTPS-запроса автокомплита в мс; при истечении запрос уничтожается и ghost text молча отменяется (25000 = лимит шлюза)"
+          "description": "%setting.requestTimeoutMs%",
+          "minimum": 1000,
+          "maximum": 60000
         },
         "normahub1c.maxCompletionLines": {
           "type": "number",
           "default": 20,
-          "description": "Максимум строк в одном ghost-дополнении; более длинные ответы модели отбрасываются (20 = компактная подсказка)"
+          "description": "%setting.maxCompletionLines%",
+          "minimum": 1,
+          "maximum": 100
         },
         "normahub1c.maxCompletionChars": {
           "type": "number",
           "default": 1000,
-          "description": "Максимум символов (code points) в одном ghost-дополнении; обрезка юникод-безопасна (1000 ≈ средний метод)"
+          "description": "%setting.maxCompletionChars%",
+          "minimum": 20,
+          "maximum": 10000
         },
         "normahub1c.contextBudgetChars": {
           "type": "number",
-          "default": 12000,
-          "description": "Жёсткий лимит суммарного контекста промпта (prefix+suffix+metadata+BSP+multi-tab); приоритет: текущий метод и префикс курсора (12000 ≈ быстрый и дешёвый запрос)"
+          "default": 200000,
+          "description": "%setting.contextBudgetChars%",
+          "minimum": 1000,
+          "maximum": 200000
         },
         "normahub1c.completionDebug": {
           "type": "boolean",
           "default": false,
-          "description": "Диагностика inline completion в OutputChannel (только числа и классы ошибок, без кода и ключей; выключена по умолчанию)"
+          "description": "%setting.completionDebug%"
+        },
+        "normahub1c.auditDisabledRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%setting.auditDisabledRules%"
         }
       }
     }
@@ -284,7 +371,7 @@
   "devDependencies": {
     "@types/node": "^18.19.0",
     "@types/vscode": "^1.85.0",
-    "esbuild": "^0.20.0",
+    "esbuild": "0.28.2",
     "typescript": "^5.3.0"
   }
 }

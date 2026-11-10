@@ -14,8 +14,8 @@ Module._load = function (name, ...args) {
 const { NormaHub1CSidebarProvider } = require('../out/sidebarProvider');
 Module._load = load;
 const provider = new NormaHub1CSidebarProvider({}, {});
-const htmlOutput = provider._getHtmlForWebview('nr_hub_preview_key_1234', { status: 'active' }, 'gpt-6.1-sol');
+const htmlOutput = provider._getHtmlForWebview('FAKE_TEST_KEY_NEVER_USE', { status: 'active' }, 'gpt-6.1-sol');
 
-const outPath = path.join(__dirname, 'webview_test.html');
+const outPath = process.env.WEBVIEW_TEST_HTML || path.join(require('os').tmpdir(), '1c-copilot-webview-test.html');
 fs.writeFileSync(outPath, htmlOutput, 'utf8');
-console.log('Generated webview HTML at:', outPath, 'Length:', htmlOutput.length, 'Contains promo:', htmlOutput.includes('1CPROMO'));
+console.log('Generated webview HTML at:', outPath, 'Length:', htmlOutput.length);

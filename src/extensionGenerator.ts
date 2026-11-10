@@ -1,11 +1,14 @@
+import { bslString, identifier } from './shared/bsl/text';
+import { methodParameter } from './shared/bsl/parameters';
+
 /**
  * 1C:Enterprise Configuration Extension (cfe) Code Generator.
  * 
- * Generates standards-compliant extension interceptors:
+ * Generates editable BSL scaffolds. Original method signatures must be verified:
  * 1. &Вместо with ПродолжитьВызов(...)
  * 2. &Перед with precondition checks and Отказ flag handling
  * 3. &После with post-processing and event logging
- * 4. &ИзменениеИКонтроль with #Вставка / #КонецВставки and #Удаление / #КонецУдаления
+ * 4. &ИзменениеИКонтроль is refused without the original method
  * 5. Managed Form extension scaffolds (ПриСозданииНаСервере, dynamic UI injection)
  * 6. Automatic signature inference for well-known 1C event handlers
  */
@@ -28,7 +31,6 @@ const CANONICAL_SIGNATURES: Record<string, { params: string[]; isFunction?: bool
     'ОбработкаУдаленияПроведения': { params: ['Отказ'] },
     'ОбработкаЗаполнения': { params: ['ДанныеЗаполнения', 'СтандартнаяОбработка'] },
     'ОбработкаПроверкиЗаполнения': { params: ['Отказ', 'ПроверяемыеРеквизиты'] },
-    'ПередЗаписью': { params: ['Отказ'] },
     'ПриЗаписи': { params: ['Отказ'] },
     'ПриСозданииНаСервере': { params: ['Отказ', 'СтандартнаяОбработка'], defaultDirective: '&НаСервере' },
     'ПриОткрытии': { params: ['Отказ'], defaultDirective: '&НаКлиенте' },
@@ -39,24 +41,39 @@ const CANONICAL_SIGNATURES: Record<string, { params: string[]; isFunction?: bool
 
 export class ExtensionGenerator {
     /**
-     * Generates a fully compliant 1C Extension method interceptor with verified signature.
+     * Generates a scaffold; known-event inference is case insensitive and module scoped.
      */
     public static generateInterceptor(options: ExtensionMethodOptions): string {
-        const canonical = CANONICAL_SIGNATURES[options.targetMethod];
+        options = { ...options, targetMethod: identifier(options.targetMethod, 'Перехватываемый метод') };
+        if (!['МодульОбъекта', 'МодульФормы', 'ОбщийМодуль', 'МодульМенеджера'].includes(options.moduleType)) throw new Error('Укажите поддерживаемый тип модуля.');
+        if (!['Вместо', 'Перед', 'После'].includes(options.directive)) {
+            throw new Error('&ИзменениеИКонтроль требует исходного метода поставщика. Создайте такой перехват в Конфигураторе; генерация без исходника недоступна.');
+        }
+        if (options.isFunction && options.directive !== 'Вместо') {
+            throw new Error('Для функции поддерживается &Вместо с возвратом результата.');
+        }
+        const known = Object.entries(CANONICAL_SIGNATURES).find(([name]) => name.toLowerCase() === options.targetMethod.toLowerCase());
+        const signature = known?.[1];
+        const canonical = signature && (signature.defaultDirective ? options.moduleType === 'МодульФормы' : options.moduleType === 'МодульОбъекта') ? signature : undefined;
         let params = options.parameters;
         if ((!params || params.length === 0) && canonical) {
             params = canonical.params;
         }
 
-        const isFunc = canonical?.isFunction !== undefined ? canonical.isFunction : options.isFunction;
+        if (canonical && !!canonical.isFunction !== options.isFunction) throw new Error('Вид метода не соответствует сигнатуре события платформы.');
+        const isFunc = canonical ? !!canonical.isFunction : options.isFunction;
         const keyword = isFunc ? 'Функция' : 'Процедура';
         const endKeyword = isFunc ? 'КонецФункции' : 'КонецПроцедуры';
-        const paramsList = params.join(', ');
+        const parsed = (params || []).map(methodParameter);
+        if (new Set(parsed.map(p => p.name.toLowerCase())).size !== parsed.length) throw new Error('Параметры не должны повторяться.');
+        const paramsList = parsed.map(p => p.declaration).join(', ');
+        const callParams = parsed.map(p => p.name).join(', ');
         const directiveName = `&${options.directive}("${options.targetMethod}")`;
 
         let compilationHeader = '';
         if (options.moduleType === 'МодульФормы' || options.compilationDirective || canonical?.defaultDirective) {
             const comp = options.compilationDirective || canonical?.defaultDirective || '&НаСервере';
+            if (!['&НаКлиенте','&НаСервере','&НаКлиентеНаСервереБезКонтекста','&НаСервереБезКонтекста'].includes(comp)) throw new Error('Неизвестная директива компиляции.');
             compilationHeader = `${comp}\n`;
         }
 
@@ -69,7 +86,7 @@ export class ExtensionGenerator {
     ${options.customLogic || '// Дополнительная предобработка параметров'}
 
     // Вызов оригинальной типовой функции поставщика
-    Результат = ПродолжитьВызов(${paramsList});
+    Результат = ПродолжитьВызов(${callParams});
 
     // Постобработка результата
     Возврат Результат;`;
@@ -78,7 +95,7 @@ export class ExtensionGenerator {
     ${options.customLogic || '// Предварительные действия'}
 
     // Вызов оригинальной типовой процедуры поставщика
-    ПродолжитьВызов(${paramsList});
+    ПродолжитьВызов(${callParams});
 
     // Постобработка`;
                 }
@@ -96,20 +113,11 @@ export class ExtensionGenerator {
     ${options.customLogic || '// Регистрация события, отправка уведомления или запись дополнительных данных'}`;
                 break;
 
-            case 'ИзменениеИКонтроль':
-                body = `    // Типовой код поставщика остается без изменений
-    // ... оригинальные строки метода ...
 
-#Вставка
-    // [NormaHub Extension] Вставка нового функционала без снятия с поддержки
-    ${options.customLogic || 'Сообщить("Выполнен модифицированный участок логики расширения");'}
-#КонецВставки
-
-    // ... продолжение оригинального кода ...`;
-                break;
         }
 
-        return `// &${options.directive} перехват для метода "${options.targetMethod}"
+        return `// BSL-шаблон. Сверьте сигнатуру и контекст в Конфигураторе.
+// &${options.directive} перехват для метода "${options.targetMethod}"
 ${compilationHeader}${directiveName}
 ${keyword} Расш_${options.targetMethod}(${paramsList})
 ${body}
@@ -119,18 +127,29 @@ ${endKeyword}`;
     /**
      * Generates a complete Managed Form extension handler with dynamic button injection.
      */
-    public static generateFormButtonExtension(buttonName: string, buttonTitle: string, commandName: string): string {
-        return `&НаСервере
+    public static generateFormButtonExtension(buttonName: string, buttonTitle: string, commandName: string, parentName = 'КоманднаяПанель'): string {
+        buttonName = identifier(buttonName, 'Имя кнопки');
+        commandName = identifier(commandName, 'Имя команды');
+        parentName = identifier(parentName, 'Имя командной панели');
+        if (!buttonTitle?.trim()) throw new Error('Введите заголовок кнопки.');
+        const title = bslString(buttonTitle);
+        return `// Шаблон для модуля управляемой формы расширения.
+// Укажите реальную командную панель и реализуйте обработчик команды.
+&НаСервере
 &После("ПриСозданииНаСервере")
 Процедура Расш_ПриСозданииНаСервере(Отказ, СтандартнаяОбработка)
+    РодительКнопки = Элементы.Найти("${parentName}");
+    Если РодительКнопки = Неопределено Тогда
+        ВызватьИсключение "Не найдена командная панель ${parentName}. Укажите её имя в шаблоне.";
+    КонецЕсли;
     // 1. Создание команды формы в расширении
     КомандаФормы = Команды.Добавить("${commandName}");
     КомандаФормы.Действие = "Расш_${commandName}";
-    КомандаФормы.Заголовок = "${buttonTitle}";
-    КомандаФормы.Подсказка = "${buttonTitle} (добавлено расширением NormaHub)";
+    КомандаФормы.Заголовок = ${title};
+    КомандаФормы.Подсказка = ${title};
 
     // 2. Добавление кнопки в командную панель формы
-    КнопкаФормы = Элементы.Добавить("${buttonName}", Тип("КнопкаФормы"), Элементы.КоманднаяПанель);
+    КнопкаФормы = Элементы.Добавить("${buttonName}", Тип("КнопкаФормы"), РодительКнопки);
     КнопкаФормы.ИмяКоманды = "${commandName}";
     КнопкаФормы.Вид = ВидКнопкиФормы.КнопкаКоманднойПанели;
 КонецПроцедуры
@@ -138,7 +157,8 @@ ${endKeyword}`;
 &НаКлиенте
 Процедура Расш_${commandName}(Команда)
     // Обработчик нажатия добавленной кнопки на клиенте
-    ПоказатьОповещениеПользователя("${buttonTitle}", , "Команда успешно выполнена.");
+    // TODO: реализуйте действие команды.
+    // Заголовок: ${buttonTitle.replace(/[\r\n]/g, " ")}
 КонецПроцедуры`;
     }
 

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { NormaHubClient } from './normahubClient';
+import { DEFAULT_AUTOCOMPLETE_MODEL, resolveModel } from './shared/config/models';
+import { CompletionDiagnostics, NormaHubClient } from './normahubClient';
 import {
     buildInlineCompletionContext,
     renderInlineSystemPrompt,
@@ -52,9 +53,28 @@ interface ActiveCompletion {
  */
 export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemProvider {
     private lastRequestId = 0;
+    private disposed = false;
     private active: ActiveCompletion | null = null;
+    private suppressAutomatic: { uri: string; version: number } | null = null;
 
     constructor(private readonly context: vscode.ExtensionContext) {}
+
+    public dispose(): void {
+        this.disposed = true;
+        ++this.lastRequestId;
+        this.cancelActive();
+        this.active = null;
+        this.suppressAutomatic = null;
+    }
+
+    /** VS Code calls the item's command after inserting it. Wait for new typing before another paid automatic request. */
+    public markAccepted(uri: string, offeredVersion: number): void {
+        if (this.disposed || typeof uri !== 'string' || !Number.isSafeInteger(offeredVersion)) return;
+        const document = vscode.workspace.textDocuments.find(item => item.uri.toString() === uri);
+        if (document && !document.isClosed && document.version === offeredVersion + 1) {
+            this.suppressAutomatic = { uri, version: document.version };
+        }
+    }
 
     private cancelActive(): void {
         const prev = this.active;
@@ -89,18 +109,27 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
         _context: vscode.InlineCompletionContext,
         token: vscode.CancellationToken
     ): Promise<vscode.InlineCompletionList | vscode.InlineCompletionItem[] | null> {
+        // Invocation order is established before SecretStorage or any other await.
+        const requestId = ++this.lastRequestId;
+        this.cancelActive();
+        if (this.disposed || document.isClosed || token.isCancellationRequested) return null;
+        const documentVersion = document.version;
+        if (this.suppressAutomatic?.uri === document.uri.toString()) {
+            if (this.suppressAutomatic.version !== documentVersion || _context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke) {
+                this.suppressAutomatic = null;
+            } else {
+                return null;
+            }
+        }
         const config = vscode.workspace.getConfiguration('normahub1c');
         const isEnabled = config.get<boolean>('enableInlineCompletion', true);
         if (!isEnabled) {
             return null;
         }
 
-        const apiKey = await NormaHubClient.getApiKey(this.context);
-        if (!apiKey) {
-            return null;
-        }
-
-        const lineText = document.lineAt(position.line).text;
+        let lineText: string;
+        try { lineText = document.lineAt(position.line).text; }
+        catch { return null; }
         const textBeforeCursor = lineText.substring(0, position.character);
 
         // Don't trigger if line is completely empty or just whitespace at start of empty doc
@@ -114,13 +143,12 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
 
         // 1. Request identity + cancel the previous slot (same or other document).
         const identity: CompletionRequestIdentity = {
-            requestId: ++this.lastRequestId,
+            requestId,
             documentUri: document.uri.toString(),
-            documentVersion: document.version,
+            documentVersion,
             line: position.line,
             character: position.character,
         };
-        this.cancelActive();
         const slot: ActiveCompletion = {
             identity,
             abort: new AbortController(),
@@ -128,20 +156,25 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
             settled: false,
         };
         this.active = slot;
+        let apiKey: string;
+        try { apiKey = await NormaHubClient.getApiKey(this.context); }
+        catch { this.release(slot); return null; }
+        if (!apiKey) { this.release(slot); return null; }
 
         // 2. Trailing debounce, restarted on every keystroke.
         //    Every call waits exactly debounceMs (never longer): a burst of
         //    keystrokes collapses into a single network request for the last
-        //    position, so no stale request is ever sent or billed.
+        //    position, so superseded debounce slots do not reach the network.
         const debounceMs = config.get<number>('debounceMs', 250);
         const waitMs = debounceMs > 0 ? debounceMs : 0;
-        const model = config.get<string>('autocompleteModel', 'deepseek-v4.1-flash');
+        const model = resolveModel(config.get<string>('autocompleteModel'), DEFAULT_AUTOCOMPLETE_MODEL);
         const requestTimeoutMs = config.get<number>('requestTimeoutMs', 25000);
         const contextBudgetChars = config.get<number>('contextBudgetChars', DEFAULT_INLINE_CONTEXT_BUDGETS.totalChars);
         const debug = config.get<boolean>('completionDebug', false);
 
         // Diagnostics: numbers and enums only — never code, prompts or keys.
         const invokedAt = Date.now();
+        let responseDiagnostics: CompletionDiagnostics | undefined;
         const emit = (outcome: Partial<CompletionMetrics> & { errorClass?: string }) => {
             const m: CompletionMetrics = {
                 requestId: identity.requestId,
@@ -152,6 +185,9 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
                 cancelled: false,
                 empty: false,
                 normalized: false,
+                ...(responseDiagnostics ? { finishReason: responseDiagnostics.finishReason,
+                    promptTokens: responseDiagnostics.promptTokens, completionTokens: responseDiagnostics.completionTokens,
+                    reasoningTokens: responseDiagnostics.reasoningTokens } : {}),
                 ...outcome,
             };
             recordCompletionMetrics(m);
@@ -160,6 +196,11 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
             }
         };
 
+        if (this.disposed || slot.settled || this.active !== slot || document.isClosed || document.version !== identity.documentVersion || token.isCancellationRequested) {
+            this.release(slot);
+            emit({ cancelled: true });
+            return null;
+        }
         const waited = await this.waitDebounce(slot, token, waitMs);
         if (waited.cancelled || slot.settled || this.active !== slot) {
             this.release(slot);
@@ -249,7 +290,7 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
                 userPrompt,
                 0.1,
                 800,
-                { signal: slot.abort.signal, timeoutMs: requestTimeoutMs }
+                { signal: slot.abort.signal, timeoutMs: requestTimeoutMs, onDiagnostics: value => { responseDiagnostics = value; } }
             );
             networkMs = Date.now() - netStartedAt;
         } catch (err) {
@@ -271,6 +312,14 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
         }
 
         // 4. Post-flight identity check: only the newest request may complete.
+        const currentConfig = vscode.workspace.getConfiguration('normahub1c');
+        if (this.disposed || document.isClosed || document.version !== identity.documentVersion ||
+            !currentConfig.get<boolean>('enableInlineCompletion', true) ||
+            resolveModel(currentConfig.get<string>('autocompleteModel'), DEFAULT_AUTOCOMPLETE_MODEL) !== model) {
+            this.release(slot);
+            emit({ debounceWaitMs: waited.waitedMs, contextBuildMs, networkMs, cancelled: true });
+            return null;
+        }
         if (slot.settled || slot.abort.signal.aborted || token.isCancellationRequested) {
             this.release(slot);
             emit({ debounceWaitMs: waited.waitedMs, contextBuildMs, networkMs, cancelled: true });
@@ -317,6 +366,8 @@ export class BSLInlineCompletionProvider implements vscode.InlineCompletionItemP
             normalized.text,
             new vscode.Range(position, position)
         );
+        item.command = { title: 'Inline completion accepted', command: 'normahub1c.inlineAccepted',
+            arguments: [identity.documentUri, identity.documentVersion] };
 
         return [item];
     }

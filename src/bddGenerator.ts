@@ -1,7 +1,7 @@
 /**
  * 1C BSL Vanessa-Automation BDD Generator
  * Generates Russian Gherkin (.feature) files for 1C:Enterprise UI & Integration testing.
- * Compliant with Vanessa-Automation and TurboConf step libraries.
+ * Local scaffolds and formatting of explicitly supplied steps. No step-library inference.
  */
 
 export interface BDDTableColumn {
@@ -10,7 +10,7 @@ export interface BDDTableColumn {
 }
 
 export interface BDDScenarioStep {
-    keyword: 'Дано' | 'Когда' | 'Тогда' | 'И';
+    keyword: 'Дано' | 'Когда' | 'Тогда' | 'И' | 'Но';
     action: string;
     table?: BDDTableColumn[][];
 }
@@ -32,46 +32,51 @@ export interface BDDFeatureOptions {
 
 export class BDDGenerator {
     /**
-     * Generates a complete .feature file compliant with Vanessa-Automation.
+     * Formats a Gherkin draft; callers must verify steps against their Vanessa library.
      */
     public static generateFeature(options: BDDFeatureOptions): string {
         const lines: string[] = [];
+        const singleLine = (value: string) => {
+            if (typeof value !== 'string' || !value.trim() || /[\r\n]/.test(value)) throw new Error('Имя или действие Gherkin должно занимать одну непустую строку.');
+            return value.trim();
+        };
 
         lines.push('# language: ru');
         lines.push('');
-        lines.push(`Функционал: ${options.featureName}`);
+        lines.push(`Функционал: ${singleLine(options.featureName)}`);
         if (options.role) {
-            lines.push(`  Как ${options.role}`);
+            lines.push(`  Как ${singleLine(options.role)}`);
         }
         if (options.objective) {
-            lines.push(`  Я хочу ${options.objective}`);
+            lines.push(`  Я хочу ${singleLine(options.objective)}`);
         }
         if (options.businessValue) {
-            lines.push(`  Чтобы ${options.businessValue}`);
+            lines.push(`  Чтобы ${singleLine(options.businessValue)}`);
         }
         lines.push('');
 
-        // Контекст (предусловия)
-        lines.push('Контекст:');
-        const user = options.contextUser || 'Администратор';
-        lines.push(`  Дано Я открыл сеанс пользователя "${user}"`);
-        lines.push('  И Я открыл навигационную панель');
+        lines.push('# Черновик: свяжите требования с реальными шагами установленной библиотеки Vanessa.');
+        if (options.contextUser) lines.push(`# Пользователь: ${options.contextUser.replace(/[\r\n]/g, ' ')}`);
         lines.push('');
 
         // Сценарии
         for (const scenario of options.scenarios) {
-            lines.push(`  Сценарий: ${scenario.name}`);
+            lines.push(`  Сценарий: ${singleLine(scenario.name)}`);
             if (scenario.description) {
-                lines.push(`    # ${scenario.description}`);
+                for (const line of scenario.description.split(/\r?\n/)) lines.push(`    # ${line}`);
             }
 
+            if (!scenario.steps.length) lines.push('    # TODO: добавьте предусловия, действия и проверку ожидаемого результата.');
             for (const step of scenario.steps) {
-                lines.push(`    ${step.keyword} ${step.action}`);
+                if (!['Дано','Когда','Тогда','И','Но'].includes(step.keyword)) throw new Error('Неподдерживаемое ключевое слово шага Gherkin.');
+                lines.push(`    ${step.keyword} ${singleLine(step.action)}`);
                 if (step.table && step.table.length > 0) {
-                    const headers = step.table[0].map(c => `'${c.name}'`);
+                    const escapeCell = (v: string | number) => String(v).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, '\\n');
+                    const headers = step.table[0].map(c => escapeCell(c.name));
                     lines.push(`      | ${headers.join(' | ')} |`);
                     for (const row of step.table) {
-                        const vals = row.map(c => `'${c.value}'`);
+                        if (row.length !== headers.length || row.some((c,i) => c.name !== step.table![0][i].name)) throw new Error('Колонки таблицы Gherkin должны совпадать во всех строках.');
+                        const vals = row.map(c => escapeCell(c.value));
                         lines.push(`      | ${vals.join(' | ')} |`);
                     }
                 }
@@ -82,147 +87,26 @@ export class BDDGenerator {
         return lines.join('\n');
     }
 
-    /**
-     * Generates standard document posting BDD scenario
-     */
-    public static generateDocumentScenario(
-        docName: string,
-        tabularSection = 'Товары',
-        registerName = 'ТоварыНаСкладах'
-    ): BDDFeatureOptions {
+    /** Local scaffold uses only supplied names. It does not invent UI steps or test data. */
+    public static generateDocumentScenario(docName: string, tabularSection = '', registerName = ''): BDDFeatureOptions {
+        if (!docName?.trim()) throw new Error('Укажите проверяемый документ или требование.');
+        const clean = (v: string) => v.replace(/[\r\n]/g, ' ').trim();
         return {
-            featureName: `Проведение и валидация документа "${docName}"`,
-            role: 'Менеджер по продажам / Кладовщик',
-            objective: `быстро создавать и проводить документ "${docName}" с проверкой остатков`,
-            businessValue: 'исключить отрицательные остатки на складах и гарантировать целостность данных',
-            contextUser: 'Администратор',
-            scenarios: [
-                {
-                    name: `Успешное создание и проведение документа "${docName}"`,
-                    steps: [
-                        {
-                            keyword: 'Когда',
-                            action: `в командном интерфейсе я выбираю "Основное" -> "${docName}"`
-                        },
-                        {
-                            keyword: 'Тогда',
-                            action: `открылось окно "${docName}"`
-                        },
-                        {
-                            keyword: 'И',
-                            action: 'я нажимаю кнопку "Создать"'
-                        },
-                        {
-                            keyword: 'Тогда',
-                            action: `открылось окно "${docName} (создание)"`
-                        },
-                        {
-                            keyword: 'И',
-                            action: 'я заполняю реквизит "Организация" значением "Основная организация"'
-                        },
-                        {
-                            keyword: 'И',
-                            action: 'я заполняю реквизит "Склад" значением "Основной склад"'
-                        },
-                        {
-                            keyword: 'И',
-                            action: `в табличной части "${tabularSection}" я нажимаю кнопку "Добавить"`
-                        },
-                        {
-                            keyword: 'И',
-                            action: `в табличной части "${tabularSection}" я заполняю текущую строку:`,
-                            table: [
-                                [
-                                    { name: 'Номенклатура', value: 'Тестовый товар А' },
-                                    { name: 'Количество', value: 5 },
-                                    { name: 'Цена', value: 1200 }
-                                ]
-                            ]
-                        },
-                        {
-                            keyword: 'И',
-                            action: 'я нажимаю кнопку "Провести и закрыть"'
-                        },
-                        {
-                            keyword: 'Тогда',
-                            action: `открылось окно "${docName}"`
-                        },
-                        {
-                            keyword: 'И',
-                            action: `я проверяю движения документа по регистру "${registerName}"`
-                        }
-                    ]
-                },
-                {
-                    name: `Контроль превышения остатка при проведении "${docName}"`,
-                    steps: [
-                        {
-                            keyword: 'Когда',
-                            action: `в командном интерфейсе я выбираю "Основное" -> "${docName}"`
-                        },
-                        {
-                            keyword: 'И',
-                            action: 'я нажимаю кнопку "Создать"'
-                        },
-                        {
-                            keyword: 'И',
-                            action: `в табличной части "${tabularSection}" я заполняю текущую строку:`,
-                            table: [
-                                [
-                                    { name: 'Номенклатура', value: 'Тестовый товар Недостача' },
-                                    { name: 'Количество', value: 999999 }
-                                ]
-                            ]
-                        },
-                        {
-                            keyword: 'И',
-                            action: 'я нажимаю кнопку "Провести"'
-                        },
-                        {
-                            keyword: 'Тогда',
-                            action: 'я жду появления сообщения об ошибке "Недостаточно товара на складе"'
-                        }
-                    ]
-                }
-            ]
+            featureName: `Проверка ${clean(docName)}`,
+            scenarios: [{
+                name: `Поведение ${clean(docName)}`,
+                description: [tabularSection && `Табличная часть: ${clean(tabularSection)}`, registerName && `Регистр: ${clean(registerName)}`].filter(Boolean).join('\n'),
+                steps: []
+            }]
         };
     }
 
-    /**
-     * Parses freeform natural language intent into a structured BDD feature
-     */
+    /** Preserve the complete requirement in a draft; AI generation is a separate explicit action. */
     public static parseNaturalLanguageToFeature(prompt: string): string {
-        const trimmed = prompt.trim();
-        let targetName = '';
-
-        // 1. Quoted identifier: "ЗаказПокупателя" or «Реализация»
-        const quotedMatch = trimmed.match(/["«']([а-яА-ЯёЁa-zA-Z0-9_]+)["»']/);
-        if (quotedMatch) {
-            targetName = quotedMatch[1];
-        }
-
-        // 2. Keyword followed by identifier: документа ЗаказПокупателя
-        if (!targetName) {
-            const keywordMatch = trimmed.match(/(?:документ[а-яё]*|справочник[а-яё]*|регистр[а-яё]*)\s+([а-яА-ЯёЁa-zA-Z0-9_]+)/i);
-            if (keywordMatch) {
-                targetName = keywordMatch[1];
-            }
-        }
-
-        // 3. Fallback: CamelCase 1C identifier
-        if (!targetName) {
-            const words = trimmed.split(/\s+/);
-            const camelWord = words.find(w => /^[А-ЯЁ][а-яё]+[А-ЯЁ][а-яёА-ЯЁ0-9_]*/.test(w));
-            if (camelWord) {
-                targetName = camelWord.replace(/[^А-ЯЁа-яё0-9_]/g, '');
-            }
-        }
-
-        if (!targetName) {
-            targetName = 'РеализацияТоваровУслуг';
-        }
-
-        const featureOptions = this.generateDocumentScenario(targetName);
-        return this.generateFeature(featureOptions);
+        if (!prompt?.trim()) throw new Error('Опишите требование для сценария.');
+        return this.generateFeature({
+            featureName: 'Проверка требования',
+            scenarios: [{ name: 'Ожидаемое поведение', description: prompt.trim(), steps: [] }]
+        });
     }
 }

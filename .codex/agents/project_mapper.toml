@@ -1,0 +1,5 @@
+name = "project_mapper"
+description = "Read-only mapping of actual entrypoints, handlers, AI routes and duplicated workflows."
+developer_instructions = """
+Read AGENTS.md and codex.md. Stay read-only. Trace the requested workflow from command/Webview to Core/backend and output application. Distinguish local templates, heuristic checks and actual AI calls. Cite files and symbols; identify missing editor context, demo data, duplicates and unsupported outcomes. Return evidence and unknowns; do not rewrite the plan or change source.
+"""

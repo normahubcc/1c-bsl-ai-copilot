@@ -1,0 +1,4 @@
+interface:
+  display_name: "Проверка runtime расширения"
+  short_description: "IDE lifecycle, MCP и границы release evidence"
+  default_prompt: "Используй $copilot-runtime-verification для проверки изменения расширения с точным разделением host, browser, IDE и live AI evidence."

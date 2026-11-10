@@ -1,0 +1,4 @@
+interface:
+  display_name: "Проверка поведения 1С"
+  short_description: "Контракты, fixtures и доказательства исполнения 1С"
+  default_prompt: "Используй $onec-behavior-verification для независимой проверки изменения запроса или бизнес-логики в изолированной 1С."

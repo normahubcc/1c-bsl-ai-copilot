@@ -1,0 +1,97 @@
+﻿id,phase,work_package,deliverable,owner_role,depends_on,person_days_min,person_days_max,gate,priority,release_scope,status
+P0-01,P0,Исходная точка и reviewed scope,Source matrix; состав dirty diff; выбранный release SHA после review,Tech lead,,2,4,G0,P0,Team,planned
+P0-02,P0,Design partners и поддерживаемые задачи,3–5 design partners; Git vs Configurator segmentation; buying decision; supported acceptance stories,Product + 1C expert,,3,6,G0,P0,Team,planned
+P0-03,P0,Аудит возможностей NormaHub,Подтверждённые IAM/policy/usage/retention API; владельцы пробелов,Backend + Tech lead,P0-01,3,6,G0,P0,Team,in_progress
+P0-04,P0,Потоки данных и условия поставки,Data map; processor/retention constraints; licensing decision для стендов,Security + Product + 1C expert,P0-02;P0-03,3,6,G0,P0,Team,planned
+P0-05,P0,Baseline без подмены транспорта,Positive Tab; query/explain/BDD live smoke; N и стоимость; проверенные failures,QA + Core + 1C expert,P0-01;P0-04,4,7,G0,P0,Team,in_progress
+P0-06,P0,Начальный golden corpus,Независимые задачи/oracle; версии и права использования; held-out split,1C expert + QA,P0-02,5,9,G0,P0,Team,in_progress
+P0-07,P0,Threat model и ADR,Границы Core/runner; trust; parser; IAM; artifact custody; SDK,Tech lead + Security,P0-03;P0-04;P0-10;P0-11,3,6,G0,P0,Team,planned
+P0-08,P0,Capacity и договорённость о gates,Граф зависимостей; недельная загрузка ролей; расходы; решение G0,Tech lead + Product,P0-05;P0-06;P0-07;P0-09;P0-10;P0-11,2,3,G0,P0,Team,planned
+P0-09,P0,Протокол сравнения и baseline альтернатив,30–50 matched cases from held-out; manual + competitor; two model tracks; tolerances and denominators fixed before runs,Product + QA + 1C expert,P0-02;P0-04;P0-06,3,5,G0,P0,Team,planned
+P0-10,P0,Configurator discovery и Windows ADR,≥3 users from ≥2 teams; licensed Windows lab; integration alternatives; no-Git modes; CG1/CG2 scope and funding decision,Tech lead + Windows engineer + Product,P0-02;P0-04,4,7,G0,P0,Team,planned
+P0-11,P0,Права на справку и внешние компоненты,Source/license/access matrix; permitted indexing/export; no competitor code reuse without compatible permission,Security + Product + 1C expert,P0-04,2,4,G0,P0,Team,planned
+P1-01,P1,Версионированные контракты,Task/Context/ChangeSet/Validation schemas и совместимость,Core + Backend,P0-07,5,9,G1,P0,Team,in_progress
+P1-02,P1,Отделение Core и adapters,Независимые use cases; тонкий sidebar; единый toolbox; нет runtime fixtures,Core,P1-01,6,10,G1,P0,Team,in_progress
+P1-03,P1,Snapshots и применение изменений,Несохранённый overlay; hashes; version/lifecycle; native diff; recovery,Core + QA,P1-01;P1-02,7,12,G1,P0,Team,in_progress
+P1-04,P1,Полные метаданные поддерживаемого scope,Namespace-aware XML/EDT; типы; роли; ссылки; forms/extensions subset,Core + 1C expert,P1-01;P0-06,7,12,G1,P0,Team,planned
+P1-05,P1,Adapter BSL LS/парсера,Реальные diagnostics/symbols; конфликт правил устранён; pinned version,Core,P0-07;P1-02,5,9,G1,P0,Team,planned
+P1-06,P1,Локальный индекс и retrieval,Инкрементальные символы/связи/FTS; provenance; negative cases,Core + QA,P1-04;P1-05,8,14,G1,P0,Team,planned
+P1-07,P1,Проектный БСП lookup,Наличие и сигнатура из проекта; источник; справочный fallback отмечен,Core + 1C expert,P1-06,3,6,G1,P0,Team,planned
+P1-08,P1,Единый native task UX,Контекст; состояния; clarification; review; RU/EN; keyboard/a11y,Core + Product,P1-02;P1-03,5,9,G1,P0,Team,in_progress
+P1-09,P1,Trust и remote workspace,Restricted Mode; placement SSH/WSL; path/symlink checks; honest unsupported,Core + Security + QA,P1-02;P0-07,5,9,G1,P0,Team,planned
+P1-10,P1,События и privacy telemetry,Task traces; no-content defaults; acceptance hook capability tests,Core + Backend,P1-01;P0-04,4,7,G1,P0,Team,planned
+P1-11,P1,Windows Configurator bridge PoC,Own limited-profile prototype; capture selection/module; session/base identity; stale refusal; recovery; CG1 evidence or explicit fallback,Windows engineer + QA + 1C expert,P0-10;P0-07,8,14,CG1,P0,Team,planned
+P1-12,P1,Версионная справка и grounded API lookup,Permitted project/help sources with version/provenance; absent/wrong-context methods refused; ITS access separately gated,Core + 1C expert,P0-11;P1-06,5,9,G1,P0,Team,planned
+P1-13,P1,BusinessContract и независимые assertions,Versioned contract; requirement provenance; explicit approval; allowlisted comparators; expected/unknown/allowed changes; no self-oracle,Core + 1C expert,P1-01;P0-06,3,5,G1,P0,Team,in_progress
+P2-01,P2,Gateway контракт task/inference,Capabilities; model allowlist; route versions; timeout/usage/cancel contract,Backend,P0-03;P1-01,6,10,G2,P0,Team,planned
+P2-02,P2,Task FSM и bounded tools,State machine; schemas; max steps/repairs; cancellation; recovery,Tech lead + Core,P1-02;P1-06;P2-01,8,13,G2,P0,Team,planned
+P2-03,P2,AI query workflow,Настоящая генерация; ссылки на схему; assumptions; test profile; held-out,Core + 1C expert,P2-02;P0-06;P1-12;P2-11,7,12,G2,P0,Team,planned
+P2-04,P2,AI review workflow,Факт/гипотеза; источники; небольшие diff; независимая precision review,Core + 1C expert,P2-02;P1-05;P1-12;P2-11,7,12,G2,P0,Team,planned
+P2-05,P2,Учёт расхода задачи,Reservation/settlement/dedup; неизвестное upstream списание; лимиты repairs,Backend,P2-01;P3-02,6,10,G2,P0,Team,planned
+P2-06,P2,Inline реальный lifecycle и принятие,Positive IDE Tab; partial/unknown semantics; stale/cancel/undo fixtures,Core + QA,P1-03;P1-10;P2-01,5,9,G2,P0,Team,in_progress
+P2-07,P2,Latency и model qualification,Однородный live benchmark; N/CI; budget; модель проходит или manual/beta,Core + Backend + QA,P2-06;P2-05,6,10,G2,P0,Team,planned
+P2-08,P2,Eval harness,Разделение dev/held-out; повторы; actual transport; score и denominators,QA + 1C expert,P0-06;P1-01,6,10,G2,P0,Team,planned
+P2-09,P2,Business oracle для R1,80–120 задач; ошибки контекста; неизвестные данные; ревью специалиста,1C expert + QA,P2-08;P2-03;P2-04,8,14,G2,P0,Team,planned
+P2-10,P2,Первое парное сравнение продуктов,Pinned contemporaneous builds; 30–50 tasks; same-model and defaults tracks; independent outcomes; all failures/time/cost; limited claims,QA + 1C expert + Product,P0-09;P2-09;P3-07,6,10,G2,P0,Team,planned
+P2-11,P2,Ранний сквозной value checkpoint,Internal installed-VSIX query validation/apply + review slice; own/approved data; measured full time; continue/narrow decision before full pilot,Core + 1C expert + QA + Product,P2-02;P3-06;P2-08,4,7,Value checkpoint,P0,Team,planned
+P2-12,P2,Применимость и свежесть validation evidence,Snapshot/candidate/contract/fixture/profile binding; typed statuses; dependency invalidation; no blanket verified state,Core + QA,P1-13;P1-03;P3-07,3,5,G2,P0,Team,in_progress
+P3-01,P3,Identity и организации,OIDC flow; membership; logout/revoke; personal/team separation,Backend,P0-03;P0-04;P1-01,7,12,G3,P0,Team,planned
+P3-02,P3,Серверные capabilities/policies,RBAC/project claims; deny by policy; version binding; negative tests,Backend + Security,P3-01;P1-01,7,12,G3,P0,Team,planned
+P3-03,P3,Изоляция всех хранилищ,Tenant/project DB-cache-queue-artifact scope; IDOR/replay/bleed tests,Backend + QA + Security,P3-02,7,12,G3,P0,Team,planned
+P3-04,P3,Лимиты организации и billing reconciliation,Hard budgets; concurrent reservation; usage units; admin visibility,Backend,P2-05;P3-03,5,9,G3,P0,Team,planned
+P3-05,P3,Runner registration и job lifecycle,Project-bound runner identity; leases; heartbeat; cancellation; no master keys,1C expert + Backend,P1-01;P3-02,7,12,G3,P0,Team,in_progress
+P3-06,P3,Adapter compilation 1С,Изолированная загрузка; compiler profiles; exit/log/process completion,1C expert + QA,P3-05;P0-04,7,12,G2,P0,Team,planned
+P3-07,P3,Behavior runner query,Реальное выполнение AI-кандидатов; oracle; disposable DB; evidence binding,1C expert + QA,P3-06;P2-03;P2-08,8,14,G2,P0,Team,in_progress
+P3-08,P3,Artifact custody,Org policy; encrypted store; scoped URLs; hashes; retention/delete/backup rules,Backend + DevOps,P3-03;P0-04,6,10,G3,P0,Team,planned
+P3-09,P3,Runner hardening,OS/VM isolation; no prod/network/secrets; hostile BSL; resource limits,DevOps + Security + 1C expert,P3-05;P3-06;P3-08,8,14,G3,P0,Team,in_progress
+P3-10,P3,Поддерживаемые cfe workflows,Borrowed objects; provider revision; interceptors; build/load/execute evidence,1C expert + Core + QA,P3-07;P2-02;P1-04,9,16,G4,P1,Team selected scope,planned
+P3-11,P3,Клиент-серверный профиль,Лицензированная 1С+PostgreSQL; locks/repost/parallel cases; profile evidence,1C expert + DevOps + QA,P3-09;P0-04,8,15,G4,P1,Team selected scope,planned
+P3-12,P3,Vanessa grounded tests,Индекс настоящих шагов; forms/data binding; run; independent oracle,1C expert + Core + QA,P1-04;P3-09;P2-02,8,15,Workflow gate,P1,Optional after pilot,planned
+P3-13,P3,Онбординг команды,Project binding; policy sources; data preview; runner preflight; removal path,Core + Backend + Product,P3-01;P3-04;P3-08;P3-09,5,9,G3,P0,Team,planned
+P3-14,P3,CI adapter,Trusted jobs; protected secrets; task-scoped token; evidence as artifact/check,Backend + DevOps + QA,P3-09;P3-03,5,9,G4,P1,Team selected scope,planned
+P3-15,P3,MCP SDK/negotiation/package,Standalone install; current/older client contracts; shared auth/tool policy,Core + Backend + QA,P1-02;P3-02;P2-02,6,10,G4,P1,Team selected scope,planned
+P3-16,P3,Формы и GUI,Реальный parent/commands/handlers; compatible managed client; GUI effect tests,1C expert + QA,P3-10;P3-12,8,14,Workflow gate,P2,Optional after pilot,planned
+P3-17,P3,AI ТЖ с доказательствами,Локальные факты; redaction; гипотезы со ссылками; known-incident eval,Core + 1C expert + QA,P2-02;P0-04;P2-08,6,11,Workflow gate,P1,Optional after pilot,planned
+P3-18,P3,AI refactoring supported subset,Behavior contract; source-aware change; equivalence and rollback reports,Core + 1C expert + QA,P3-07;P2-04;P1-03,8,14,Workflow gate,P1,Team selected scope,planned
+P4-01,P4,Подключение design partners,Согласованные проекты/data policy; named owners; approved test copies,Product + Security + 1C expert,P3-13;P2-09;P2-10,4,8,G4,P0,Team,planned
+P4-02,P4,Управляемый rollout пилота,Ограниченные users/models/tools; canary; recovery drill,DevOps + QA + Tech lead,P4-01;P2-07,4,7,G4,P0,Team,planned
+P4-03,P4,Измерение net usefulness,4–6 недель; matched/crossover tasks; review cost; abandon/refusal denominators,Product + QA + 1C expert,P4-02,8,14,G4,P0,Team,planned
+P4-04,P4,Исправления по evidence,Ранжирование blockers; regression reproduction; model/prompt requalification,Core + Backend + QA,P4-02,10,20,G4,P0,Team,planned
+P4-05,P4,Unit economics и support load,Фактический cost/useful result; team budgets; внедрение и поддержка,Product + Backend,P4-03;P3-04,4,7,G4,P0,Team,planned
+P4-06,P4,Решение о Team GA scope,Две независимые подтверждённые команды; полезность; контракт выпуска,Product + Tech lead,P4-04;P4-05;P4-07;P4-08,2,4,G4,P0,Team,planned
+P4-07,P4,Повторное сравнение перед pilot exit,Current competitor version; repeatable setup; uncertainty and unsupported cases; evidence for each superiority claim,QA + Product + 1C expert,P4-03;P2-10,4,7,G4,P0,Team,planned
+P4-08,P4,Измерение подключения и повторного использования,Developer vs admin onboarding timings; ≥80% first value≤30m on ready project target; typical admin setup≤1 day target; weekly cohorts and support costs,Product + QA + Core,P4-01;P3-13,3,5,G4,P0,Team,planned
+P5-01,P5,Release pipeline и provenance,Reviewed SHA; evals; packaged smoke; SBOM; checksums/signing; no PR secrets,DevOps + QA,P1-02;P2-08;P3-09,6,10,G5,P0,Team,planned
+P5-02,P5,Compatibility matrix,Версии IDE/OS/1С/выгрузки; test profiles; unsupported states,QA + 1C expert,P4-06;P3-06,6,11,G5,P0,Team,planned
+P5-03,P5,Нагрузка и отказоустойчивость,Priority inline vs tasks; queue fairness; provider failures; resource budgets,Backend + QA + DevOps,P3-04;P4-06,6,10,G5,P0,Team,planned
+P5-04,P5,Восстановление и rollback,Backup restore; measured RPO/RTO; migrations; lost runner; package rollback,DevOps + Backend + QA,P3-08;P5-01,5,9,G5,P0,Team,planned
+P5-05,P5,Независимый security review,Tenant/tools/runner/privacy findings; устранение критических замечаний,Security + QA + Tech lead,P3-03;P3-09;P4-06,7,12,G5,P0,Team,planned
+P5-06,P5,Корпоративная поставка,Закрепление версий; signed/pinned policies; update channels; uninstall,Core + DevOps + QA,P5-01;P5-02,5,9,G5,P0,Team,planned
+P5-07,P5,Support и procurement pack,Runbooks; data map; known limits; conditions; support ownership,Product + Security + Tech lead,P4-05;P5-04;P5-05,5,9,G5,P0,Team,planned
+P5-08,P5,Team GA sign-off,Gate evidence; exact artifact/SHA; scope; staged publishing decision,Tech lead + Product + QA,P5-03;P5-06;P5-07,2,4,G5,P0,Team,planned
+D1-01,D1,Генератор допустимых query fixtures,One named deficit-query schema; actual refs/types; seed/version; boundary families; validity constraints; no copied production data,Core + 1C expert,P1-13;P1-04;P3-07,7,12,D-G1,P1,Differentiation conditional,planned
+D1-02,D1,Изолированный query replay,Same initial state and parameters for baseline/candidate; fresh engine artifacts; bounded jobs; unsupported and cleanup paths,1C expert + QA,D1-01;P3-09;P2-12,6,10,D-G1,P1,Differentiation conditional,planned
+D1-03,D1,Поиск бизнес-контрпримеров,Contract-guided deterministic boundary/property inputs; optional AI hypotheses; valid/invalid counts; budgets; honest no-witness result,Core + 1C expert,D1-01;D1-02;P2-02;P2-09,8,14,D-G1,P1,Differentiation conditional,planned
+D1-04,D1,Уменьшение воспроизводимого примера,Validity-preserving reduction; same violated assertion; replay; attempt/time cap; no global-minimality claim,Core + QA,D1-03,6,10,D-G1,P1,Differentiation conditional,planned
+D1-05,D1,Semantic diff результатов query,Typed multiset/NULL/multiplicity/decimal/ref comparison; contract ordering/tolerances; expected-vs-unexpected changes; no old-code oracle,Core + 1C expert + QA,D1-02;P1-13,5,9,D-G1,P1,Differentiation conditional,in_progress
+D1-06,D1,IDE workflow контрпример и исправление,Captured target; fixture replay; expected/actual; proposal/repair within budgets; source invalidation; explicit save/apply actions,Core + Product,D1-04;D1-05;P1-08;P2-12,5,9,D-G1,P1,Differentiation conditional,planned
+D1-07,D1,Независимая приёмка D1 и решение о вложениях,≥30 labelled defects + 20 correct/ambiguous cases; target≥80% reproduced within budget; every confirmed witness replays; two-team usefulness,QA + 1C expert + Product,D1-06;P2-08;P4-06,5,9,D-G1,P1,Differentiation conditional,planned
+D2-01,D2,Контракт наблюдаемых эффектов проведения,One document/register family; independently approved effects and allowed changes; logical refs and time/profile constraints,1C expert + Core,D1-07;P1-04;P3-07,8,14,D-G2,P1,Differentiation conditional,planned
+D2-02,D2,Двойной прогон и diff движений,Separate baseline/candidate DB copies; same snapshot; controlled background/time/external effects; register/document observables and evidence,1C expert + QA + Core,D2-01;D1-02;P3-09,8,14,D-G2,P1,Differentiation conditional,planned
+D2-03,D2,Профильные ограничения и приёмка D2,Posting/reposting/cancel; actual role/RLS checks; isolated side effects; client-server/parallel cases only on licensed P3-11; false normalization tests,1C expert + QA + Security,D2-02;P3-11,8,14,D-G2,P1,Differentiation conditional,planned
+D3-01,D3,Версии и утверждение правил проекта,Project-isolated RuleVersion/contract/fixture registry; proposed/approved/active lifecycle; approval capability and audit; retention,Backend + Core,D1-07;P1-13;P3-02;P3-08,5,9,D-G3,P1,Differentiation conditional,planned
+D3-02,D3,Применимость и повтор правил,Dependency-bound evidence; source/platform/schema/BSP/profile invalidation; conservative unknown dependencies; no skipped-as-passed tests,Core + QA,D3-01;P1-06;D1-05;P2-12,6,10,D-G3,P1,Differentiation conditional,planned
+D3-03,D3,Workflow правила и приёмка D3,Explicit reviewer approval/save/version/disable; independent replay after changes; no silent expected-output rewrite; team onboarding and usefulness,Core + Product + QA,D3-02;P1-08;P3-02,6,10,D-G3,P1,Differentiation conditional,planned
+C1-01,C1,Windows adapter общего Core,Authenticated IPC; process/window/session/base binding; unsaved capture; scoped policy; bounded helper; no duplicated AI logic,Windows engineer + Core,P1-11;P1-02;P1-10;P3-02,12,20,CG2,P1,Configurator conditional R2-C,planned
+C1-02,C1,Подключение базы без Git,Explicit permitted XML export; configuration vs DB vs extension identity; snapshot + buffer overlay; capability modes; test profile mapping,Windows engineer + 1C expert,C1-01;P1-04;P1-06;P0-04,8,14,CG2,P1,Configurator conditional R2-C,planned
+C1-03,C1,Diff/apply/Undo в Конфигураторе,Exact target re-read/hash; conflict refusal; partial-write recovery; selection boundaries; encoding/read-only handling,Windows engineer + QA,C1-01;C1-02;P1-03,10,18,CG2,P1,Configurator conditional R2-C,planned
+C1-04,C1,Windows/RDP и race qualification,Same-user multi-base; multiple sessions; reconnect/lock/focus; DPI/locale; provider restrictions; no wrong-target writes in mandatory matrix,QA + Windows engineer + 1C expert,C1-03;P3-06;P3-09,10,18,CG2,P1,Configurator conditional R2-C,planned
+C1-05,C1,Защита и поставка helper,IPC hostile tests; session ACL; signed/provenanced package; update/rollback/uninstall; separate installer and support scope,Security + DevOps + Windows engineer,C1-01;P5-01;P5-05,6,10,CG2,P1,Configurator conditional R2-C,planned
+C1-06,C1,Пилот no-Git Configurator,≥2 teams; 4–6 week observation; actual export and onboarding time; accepted changes and net effect; supported-profile limits,Product + QA + 1C expert,C1-04;C1-05;P4-06;P3-13,6,10,CG2,P1,Configurator conditional R2-C,planned
+C1-07,C1,R2-C sign-off,CG2 evidence; support/economics; approved artifact; claims scoped to Windows profiles; no claim of universal 1C superiority,Tech lead + Product + QA,C1-06;P5-08,3,5,CG2,P1,Configurator conditional R2-C,planned
+P6-01,P6,Enterprise discovery,Закрытый контур; sizing; IdP; data region; support/licensing requirements,Product + Tech lead + Security,P5-08,5,10,Enterprise G0,P1,Enterprise optional,planned
+P6-02,P6,Private inference proof,Утверждённый route; качество/latency/cost; no public egress test,Backend + AI/Core + DevOps,P6-01,12,22,Enterprise G1,P1,Enterprise optional,planned
+P6-03,P6,Enterprise identity/keys,Требуемые SAML/SCIM; provisioning; key rotation; org-owned secret integration,Backend + Security,P6-01,10,18,Enterprise G2,P1,Enterprise optional,planned
+P6-04,P6,HA и контур хранения,Выделенное размещение; backup/DR; проверенные контракты региона/retention,DevOps + Backend + Security,P6-01;P6-02,12,22,Enterprise G2,P1,Enterprise optional,planned
+P6-05,P6,Расширение матрицы заказчика,Конфигурации/версии/СУБД/desktop; regression scope по договору,1C expert + QA,P6-01;P5-02,10,20,Enterprise G3,P1,Enterprise optional,planned
+P6-06,P6,Enterprise acceptance,Customer-specific evals; isolation/DR; runbooks; согласованный SLA,Tech lead + QA + Product,P6-02;P6-03;P6-04;P6-05,8,14,Enterprise GA,P1,Enterprise optional,planned

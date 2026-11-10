@@ -1,6 +1,7 @@
 """Clipboard listener and automatic 1C code processor."""
 
 import subprocess
+import json
 import time
 from typing import Optional
 from sidecar.config import SidecarConfig
@@ -75,7 +76,12 @@ class ClipboardWatcher:
 
         # 2. Intent: Natural language query intent (e.g. "// запрос остатки номенклатуры")
         if trimmed.startswith("// запрос ") or trimmed.startswith("// создать запрос "):
-            return SidecarCore.build_batch_query("РеализацияТоваровУслуг", "Товары", "ТоварыНаСкладах")
+            raw = trimmed.removeprefix("// создать запрос ").removeprefix("// запрос ")
+            try:
+                args = json.loads(raw)
+                return SidecarCore.build_batch_query(args["entity"], args["tabular"], args["register"], fields=args["fields"])
+            except (ValueError, KeyError, TypeError):
+                return "// Для шаблона запроса задайте JSON: entity, tabular, register и fields (измерения, затем ресурс).\n" + text
 
         # 3. Intent: Vanessa BDD feature (e.g. "// ванесса РеализацияТоваровУслуг" or "// bdd ЗаказКлиента")
         if trimmed.startswith("// ванесса ") or trimmed.startswith("// bdd "):
@@ -91,7 +97,7 @@ class ClipboardWatcher:
 
         # 5. Intent: Existing BSL code snippet -> Audit and report
         issues = SidecarCore.audit_bsl_code(trimmed)
-        if issues:
+        if issues and any(i["rule"] != "INPUT-EMPTY" for i in issues):
             report_lines = [f"// [NormaHub 1C Audit] Найдено замечаний ИТС: {len(issues)}"]
             for iss in issues:
                 report_lines.append(f"// • {iss['rule']} (стр. {iss['line']}): {iss['message']}")
@@ -109,9 +115,11 @@ class ClipboardWatcher:
 
         transformed = self.process_text(content)
         if transformed and transformed != content:
-            self.set_clipboard(transformed)
-            print("✓ Clipboard successfully transformed with 1C Copilot result.")
-            return True
+            if self.set_clipboard(transformed):
+                print("✓ Clipboard transformed with 1C Copilot result.")
+                return True
+            print("Could not write clipboard.")
+            return False
 
         print("No transformation applied.")
         return False
@@ -126,7 +134,11 @@ class ClipboardWatcher:
             current = self.get_clipboard()
             if current and current != last_clip:
                 last_clip = current
-                transformed = self.process_text(current)
+                try:
+                    transformed = self.process_text(current)
+                except (ValueError, RuntimeError, OSError):
+                    print("Could not process clipboard. Check local core installation.")
+                    continue
                 if transformed and transformed != current:
                     self.set_clipboard(transformed)
                     last_clip = transformed

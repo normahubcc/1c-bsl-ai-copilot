@@ -66,10 +66,10 @@ req_models = urllib.request.Request(
 with urllib.request.urlopen(req_models, context=CTX, timeout=10) as resp:
     models_data = json.loads(resp.read().decode())
     model_ids = [m.get("id") for m in models_data.get("data", [])]
-    assert "deepseek-v4.1-flash" in model_ids, "deepseek-v4.1-flash должна быть доступна"
+    assert "deepseek-v4.1-flash-1017" in model_ids, "deepseek-v4.1-flash-1017 должна быть доступна"
     assert "gpt-6-sol" in model_ids, "gpt-6-sol должен быть доступен"
     print(f"  ✓ Шлюз NormaHub активен (HTTP 200). Доступно моделей: {len(model_ids)}")
-    print("  ✓ Ключевые модели подтверждены: deepseek-v4.1-flash, gpt-6.1-sol, gpt-6-sol")
+    print("  ✓ Ключевые модели подтверждены: deepseek-v4.1-flash-1017, gpt-6.1-sol, gpt-6-sol")
 
 # --- 2. Реальный кейс 1С №1: Автодополнение на лету (FIM Ghost Text) ---
 print("\n[ТЕСТ 2] Реальный кейс 1С: Автодополнение FIM (Ghost Text в BSL модуле)...")
@@ -97,7 +97,7 @@ suffix = """
 
 user_prompt = f"КОД ДО КУРСОРА:\n{prefix}\n\nКОД ПОСЛЕ КУРСОРА:\n{suffix}\n\nНапиши ТОЛЬКО код продолжения на позиции курсора без обратных кавычек."
 res2 = call_llm(
-    model="deepseek-v4.1-flash",
+    model="deepseek-v4.1-flash-1017",
     system_prompt="Ты AI-автокомплит для 1С:Предприятие 8.3 (BSL). Напиши ТОЛЬКО чистый код продолжения без markdown.",
     user_prompt=user_prompt,
     max_tokens=800
@@ -107,7 +107,7 @@ print("  Сгенерированный BSL-код:")
 print("  " + "\n  ".join(res2['content'].strip().split("\n")))
 assert "Количество" in res2['content'], "Автокомплит должен заполнить количество из строки"
 print("  ✓ Кейс 1 (FIM Ghost Text) успешно пройден: реквизиты строки корректно подставлены")
-results.append(("FIM Ghost Text (deepseek-v4.1-flash)", res2['elapsed'], res2['usage'].get('total_tokens'), res2['content']))
+results.append(("FIM Ghost Text (deepseek-v4.1-flash-1017)", res2['elapsed'], res2['usage'].get('total_tokens'), res2['content']))
 
 # --- 3. Реальный кейс 1С №2: Генерация пакета запроса 1С с остатками и ценами ---
 print("\n[ТЕСТ 3] Реальный кейс 1С: Генерация пакета запроса по ТЗ (Остатки + Срез цен)...")
@@ -118,7 +118,7 @@ intent_query = """Сформируй пакет запросов 1С:
 Соблюдай стандарты ИТС: параметры в виртуальных таблицах, ЕСТЬNULL."""
 
 res3 = call_llm(
-    model="deepseek-v4.1-flash",
+    model="deepseek-v4.1-flash-1017",
     system_prompt="Ты ведущий разработчик 1С:Предприятие 8.3. Напиши текст запроса 1С строго по стандартам ИТС без лишних вводных слов.",
     user_prompt=intent_query,
     max_tokens=700
@@ -149,7 +149,7 @@ bad_query = """ВЫБРАТЬ
     Док.Проведен = ИСТИНА"""
 
 res4 = call_llm(
-    model="deepseek-v4.1-flash",
+    model="deepseek-v4.1-flash-1017",
     system_prompt="Ты оптимизатор запросов 1С. Исправь прямое соединение с виртуальной таблицей Остатки, вынеси выборку в ВТ_ с параметризацией и индексацией.",
     user_prompt=f"Оптимизируй запрос:\n{bad_query}",
     max_tokens=600

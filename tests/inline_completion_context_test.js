@@ -33,6 +33,8 @@ Module._load = function (name, ...args) {
 };
 const {
   buildInlineCompletionContext,
+  getNeighboringModules,
+  DEFAULT_INLINE_CONTEXT_BUDGETS,
   renderInlineSystemPrompt,
   renderInlineUserPrompt,
   getInlineContextKey,
@@ -142,7 +144,7 @@ async function run() {
       const root = track(makeTempRoot()); // empty: no configuration files
       const doc = makeDoc(['Процедура Т()', '    Сообщить(']);
       const snap = await buildInlineCompletionContext(doc, new Position(1, 13), { workspaceRoot: root });
-      assert.equal(snap.metadata.trust, 'fallback');
+      assert.equal(snap.metadata.trust, 'unavailable');
       assert.equal(snap.metadata.summary, '', 'fallback summary must be empty by default');
       const prompt = renderInlineSystemPrompt(snap);
       for (const leaked of ['Номенклатура', 'Контрагенты', 'ЗаказКлиента', 'Демо-схема', 'ТоварыНаСкладах']) {
@@ -165,6 +167,17 @@ async function run() {
       assert.ok(prompt.includes('МояКонфа'), 'prompt must contain the real configuration name');
     }
     console.log('  ✓ real metadata included in prompt (contents asserted)');
+
+    // An unsaved document cannot select one of several projects implicitly.
+    reset();
+    {
+      const active = makeDoc(['Процедура Т()']);
+      active.uri.scheme = 'untitled';
+      api.workspace.workspaceFolders = [{uri:{fsPath:'/a'}},{uri:{fsPath:'/b'}}];
+      openDocs.push(makeDoc(['Процедура ЧужойМетод() Экспорт'], {fileName:'Другой.bsl'}));
+      assert.deepEqual(getNeighboringModules(active, DEFAULT_INLINE_CONTEXT_BUDGETS), []);
+      api.workspace.workspaceFolders = [];
+    }
 
     // 5. active module excluded from neighboring modules
     reset();

@@ -10,6 +10,8 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const SUITES = [
+  'tests/deep_recheck_test.js',
+  'tests/ai_transport_test.js',
   'tests/inline_completion_baseline_test.js',
   'tests/inline_completion_lifecycle_test.js',
   'tests/inline_completion_context_test.js',

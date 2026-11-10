@@ -1,0 +1,4 @@
+# Generated bundles contain whitespace emitted by esbuild; source files remain checked.
+dist/*.js -whitespace
+# Official 1C XML fixture uses CRLF. Preserve byte-for-byte for import tests.
+tests/onec_engine/fixture/Languages/*.xml whitespace=cr-at-eol

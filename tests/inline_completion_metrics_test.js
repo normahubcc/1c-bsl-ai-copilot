@@ -9,7 +9,7 @@ const path = require('node:path');
 const settings = {
   enableInlineCompletion: true,
   debounceMs: 0,
-  autocompleteModel: 'deepseek-v4.1-flash',
+  autocompleteModel: 'deepseek-v4.1-flash-1017',
   completionDebug: false,
 };
 const channels = [];
@@ -38,7 +38,7 @@ Module._load = function (name, ...args) {
   return name === 'vscode' ? api : load.call(this, name, ...args);
 };
 const { BSLInlineCompletionProvider } = require('../out/inlineCompletionProvider');
-const { NormaHubClient, CompletionCancelledError } = require('../out/normahubClient');
+const { NormaHubClient, CompletionCancelledError, CompletionTruncatedError } = require('../out/normahubClient');
 const { MetadataScanner } = require('../out/metadataScanner');
 const { MultiTabScanner } = require('../out/multiTabScanner');
 const { BSPHelper } = require('../out/bspHelper');
@@ -107,6 +107,7 @@ async function run() {
     assert.equal(classifyCompletionError(new Error('Ошибка шлюза NormaHub (HTTP 500): oops')), 'gateway');
     assert.equal(classifyCompletionError(new Error('Ошибка шлюза NormaHub (HTTP 402): empty')), 'gateway');
     assert.equal(classifyCompletionError(new Error('Ошибка парсинга ответа: broken')), 'parse');
+    assert.equal(classifyCompletionError(new CompletionTruncatedError({ finishReason: 'length', maxTokens: 800, reasoningTokens: 790 })), 'truncated');
     assert.equal(classifyCompletionError(new Error('Сеть недоступна')), 'unknown');
     assert.equal(classifyCompletionError(undefined), 'unknown');
   }
@@ -125,9 +126,12 @@ async function run() {
   settings.completionDebug = true;
   {
     const CANARY = 'КАНАРЕЙКА_СЕКРЕТ_ЫЫЫ';
-    const FAKE_KEY = 'nr_hub_CANARYKEY123';
+    const FAKE_KEY = 'FAKE_TEST_KEY_NEVER_USE';
     NormaHubClient.getApiKey = async () => FAKE_KEY;
-    completeImpl = async () => `Сообщить("${CANARY}");`;
+    completeImpl = async (...args) => {
+      args[6].onDiagnostics({ finishReason: 'stop', maxTokens: 800, promptTokens: 110, completionTokens: 45, reasoningTokens: 12 });
+      return `Сообщить("${CANARY}");`;
+    };
     const doc = makeDoc(['Процедура Т()', `    // ${CANARY} комментарий`, '    Сообщить(']);
     const r = await new BSLInlineCompletionProvider({}).provideInlineCompletionItems(
       doc, new api.Position(2, 13), {}, liveToken());
@@ -136,6 +140,8 @@ async function run() {
     assert.ok(!dump.includes(CANARY), 'metrics ring must not contain user code');
     assert.ok(!dump.includes(FAKE_KEY), 'metrics ring must not contain the API key');
     assert.ok(!dump.includes('КОД ДО КУРСОРА'), 'metrics ring must not contain prompt text');
+    assert.equal(getCompletionMetrics()[0].reasoningTokens, 12);
+    assert.equal(getCompletionMetrics()[0].finishReason, 'stop');
     const debugText = channels.map((c) => c.lines.join('\n')).join('\n');
     assert.ok(channels.length === 1, 'debug channel created exactly once when enabled');
     assert.ok(!debugText.includes(CANARY) && !debugText.includes(FAKE_KEY), 'debug output sanitized');
@@ -159,13 +165,13 @@ async function run() {
   {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
     const props = pkg.contributes.configuration.properties;
-    assert.equal(props['normahub1c.autocompleteModel'].default, 'deepseek-v4.1-flash');
+    assert.equal(props['normahub1c.autocompleteModel'].default, 'deepseek-v4.1-flash-1017');
     assert.equal(props['normahub1c.reasoningModel'].default, 'gpt-6.1-sol');
     assert.notEqual(props['normahub1c.autocompleteModel'].default, props['normahub1c.reasoningModel'].default);
     const providerSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'inlineCompletionProvider.ts'), 'utf-8');
     assert.ok(providerSrc.includes("get<string>('autocompleteModel'"), 'ghost text uses autocompleteModel');
     assert.ok(!providerSrc.includes('reasoningModel'), 'ghost text never touches reasoningModel');
-    const extSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'extension.ts'), 'utf-8');
+    const extSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'features', 'ai-task', 'api', 'runTask.ts'), 'utf-8');
     assert.ok(extSrc.includes("get<string>('reasoningModel'"), 'deep flows (query/explain) use reasoningModel');
   }
   console.log('  ✓ autocompleteModel (flash) vs reasoningModel (sol) never mixed');

@@ -1,3 +1,4 @@
+import { executeTool } from '../entities/toolbox/api/executeTool';
 /**
  * 1C:Enterprise Model Context Protocol (MCP) Server.
  * 
@@ -8,13 +9,6 @@
  */
 
 import * as readline from 'readline';
-import { StandardsChecker } from '../standardsChecker';
-import { BSPHelper } from '../bspHelper';
-import { QueryBuilder } from '../queryBuilder';
-import { ExtensionGenerator, ExtensionDirective } from '../extensionGenerator';
-import { MetadataScanner } from '../metadataScanner';
-import { BDDGenerator } from '../bddGenerator';
-import { TechLogAnalyzer } from '../techLogAnalyzer';
 
 interface McpRequest {
     jsonrpc: string;
@@ -59,6 +53,16 @@ export class McpServer1C {
     }
 
     private handleRequest(req: McpRequest) {
+        if (!req || typeof req !== 'object' || Array.isArray(req) || req.jsonrpc !== '2.0' || typeof req.method !== 'string' ||
+            (req.id !== undefined && req.id !== null && typeof req.id !== 'string' && typeof req.id !== 'number')) {
+            this.sendError(null, -32600, 'Invalid JSON-RPC request');
+            return;
+        }
+        if (req.id === undefined) return; // Notifications never receive a JSON-RPC response.
+        if (req.params !== undefined && (!req.params || typeof req.params !== 'object' || Array.isArray(req.params))) {
+            this.sendError(req.id, -32602, 'MCP params must be an object');
+            return;
+        }
         switch (req.method) {
             case 'initialize':
                 this.sendResult(req.id, {
@@ -68,7 +72,7 @@ export class McpServer1C {
                     },
                     serverInfo: {
                         name: '1c-bsl-ai-copilot-mcp',
-                        version: '1.0.0'
+                        version: '1.0.8'
                     }
                 });
                 break;
@@ -103,21 +107,22 @@ export class McpServer1C {
         return [
             {
                 name: '1c_audit_standards',
-                description: 'Аудит BSL-кода на соответствие стандартам разработки фирмы «1С» (ИТС) и БСП: поиск вызовов в циклах, отсутствия блокировок данных, мутабельных значений и др.',
+                description: 'Аудит BSL-кода на соответствие стандартам разработки фирмы «1С» (ИТС) и БСП: поиск вызовов в циклах, отсутствия блокировок данных, модальных вызовов; ограниченный набор эвристик, без гарантии полноты ИТС.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         code: {
                             type: 'string',
                             description: 'Исходный код на встроенном языке 1С (BSL)'
-                        }
+                        },
+                        disabledRules: {type:'array',items:{type:'string'},description:'Отключённые правила локального аудита.'}
                     },
                     required: ['code']
                 }
             },
             {
                 name: '1c_build_batch_query',
-                description: 'Генерация профессионального пакета запросов 1С по стандартам ИТС: временные таблицы (ПОМЕСТИТЬ ВТ_), индексирование (ИНДЕКСИРОВАТЬ ПО), виртуальные таблицы с параметрами среза и МенеджерВременныхТаблиц.',
+                description: 'Шаблон контроля дефицита по явно заданным полям: временные таблицы (ПОМЕСТИТЬ ВТ_), индексирование (ИНДЕКСИРОВАТЬ ПО), виртуальные таблицы с параметрами среза и МенеджерВременныхТаблиц.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -135,20 +140,23 @@ export class McpServer1C {
                         },
                         registerType: {
                             type: 'string',
-                            enum: ['Остатки', 'Обороты', 'СрезПоследних'],
+                            enum: ['Остатки'],
                             description: 'Тип виртуальной таблицы регистра'
                         },
+                        fields: { type: 'array', minItems: 2, items: { type: 'string' }, description: 'Все измерения и один числовой ресурс последним. Сопоставления: Номенклатура=Товар, Склад=@СкладШапки, Количество=Вес.' },
+                        sourceMode: {type:'string',enum:['document','table'],description:'document: сохранённые строки базы; table: текущая табличная часть модуля объекта на сервере.'},
+                        workspacePath: {type:'string',description:'Путь к проекту для проверки имён полей по реальным метаданным.'},
                         includeScaffolding: {
                             type: 'boolean',
                             description: 'Включать ли BSL-код создания объекта Запрос и обхода выборки'
                         }
                     },
-                    required: ['entityName', 'tabularSection', 'registerName']
+                    required: ['entityName', 'tabularSection', 'registerName', 'fields']
                 }
             },
             {
                 name: '1c_inspect_query',
-                description: 'Статический анализ текста запроса 1С на антипаттерны производительности СУБД (прямые соединения с виртуальными таблицами, отсутствие индексов на ВТ, пропущенный ЕСТЬNULL).',
+                description: 'Локальные структурные проверки и подсказки производительности запроса 1С. syntaxChecked=false, isValid=null не подтверждает синтаксис; false означает найденную структурную ошибку.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -162,7 +170,7 @@ export class McpServer1C {
             },
             {
                 name: '1c_generate_extension',
-                description: 'Генерация безопасного перехвата метода для расширения конфигурации (cfe) без снятия конфигурации с поддержки (&Вместо, &Перед, &После, &ИзменениеИКонтроль).',
+                description: 'BSL-шаблон перехвата метода для расширения конфигурации (cfe) без снятия конфигурации с поддержки (&Вместо, &Перед, &После).',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -172,8 +180,13 @@ export class McpServer1C {
                         },
                         directive: {
                             type: 'string',
-                            enum: ['Вместо', 'Перед', 'После', 'ИзменениеИКонтроль'],
+                            enum: ['Вместо', 'Перед', 'После'],
                             description: 'Директива расширения 1С'
+                        },
+                        moduleType: {
+                            type: 'string',
+                            enum: ['ОбщийМодуль', 'МодульОбъекта', 'МодульМенеджера', 'МодульФормы'],
+                            description: 'Тип модуля; определяет применимость сигнатуры события. По умолчанию МодульОбъекта.'
                         },
                         isFunction: {
                             type: 'boolean',
@@ -221,7 +234,7 @@ export class McpServer1C {
             },
             {
                 name: '1c_generate_bdd_feature',
-                description: 'Генерация BDD-сценариев Vanessa-Automation (.feature) на русском языке (Gherkin) для тестирования документов, справочников и бизнес-процессов 1С.',
+                description: 'Оформление .feature с полным требованием и явными шагами из библиотеки Vanessa. stepCount и executionVerified показывают состав черновика; исполнение не подтверждается.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -231,11 +244,15 @@ export class McpServer1C {
                         },
                         tabularSection: {
                             type: 'string',
-                            description: 'Имя табличной части (по умолчанию: Товары)'
+                            description: 'Имя табличной части, если известно'
                         },
                         registerName: {
                             type: 'string',
-                            description: 'Имя регистра для валидации движений (по умолчанию: ТоварыНаСкладах)'
+                            description: 'Имя регистра, если известно'
+                        },
+                        stepsText: {
+                            type: 'string',
+                            description: 'Реальные шаги Дано/Когда/Тогда или Given/When/Then с таблицами из вашей библиотеки Vanessa.'
                         },
                         prompt: {
                             type: 'string',
@@ -246,7 +263,7 @@ export class McpServer1C {
             },
             {
                 name: '1c_analyze_tech_log',
-                description: 'Глубокий экспертный анализ фрагментов Технологического Журнала 1С (ТЖ): события TLOCK, TDEADLOCK, EXCP, SDBL/DBPOSTGR/DBMSSQL с локализацией в коде BSL и архитектурными рекомендациями High-Load.',
+                description: 'Локальный разбор поддерживаемых событий Технологического Журнала 1С (ТЖ): события TLOCK, TDEADLOCK, EXCP, SDBL/DBPOSTGR/DBMSSQL с локализацией в коде BSL и архитектурными рекомендациями High-Load.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -260,7 +277,7 @@ export class McpServer1C {
             },
             {
                 name: '1c_refactor_query',
-                description: 'Интеллектуальный рефакторинг текста запроса 1С по стандартам ИТС: вынесение прямых соединений с виртуальными таблицами во временные таблицы с индексированием, оборачивание полей в ЕСТЬNULL и уничтожение ВТ.',
+                description: 'Подготовка пакета из одного SELECT с одним виртуальным JOIN. Сохраняет имена полей и семантику NULL; неподдерживаемый вход возвращает без изменений с reason. Выборка становится вторым результатом пакета.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -281,125 +298,11 @@ export class McpServer1C {
             return;
         }
 
-        const args = params.arguments || {};
+        const args = params.arguments === undefined ? {} : params.arguments;
 
         try {
-            switch (params.name) {
-                case '1c_audit_standards': {
-                    const code = args.code || '';
-                    const issues = StandardsChecker.auditCode(code);
-                    const report = StandardsChecker.formatAuditReport(issues);
-                    this.sendToolResponse(id, {
-                        issuesCount: issues.length,
-                        issues,
-                        report
-                    });
-                    break;
-                }
-
-                case '1c_build_batch_query': {
-                    const generated = QueryBuilder.generateBatchQuery({
-                        entityName: args.entityName,
-                        tabularSection: args.tabularSection,
-                        registerName: args.registerName,
-                        registerType: args.registerType || 'Остатки',
-                        fields: args.fields || ['Номенклатура', 'Количество'],
-                        includeScaffolding: args.includeScaffolding !== false
-                    });
-                    this.sendToolResponse(id, { queryCode: generated });
-                    break;
-                }
-
-                case '1c_inspect_query': {
-                    const queryText = args.queryText || '';
-                    const result = QueryBuilder.inspectQuery(queryText);
-                    this.sendToolResponse(id, result);
-                    break;
-                }
-
-                case '1c_refactor_query': {
-                    const rawQuery = args.rawQuery || '';
-                    const result = QueryBuilder.refactorQuery(rawQuery);
-                    this.sendToolResponse(id, result);
-                    break;
-                }
-
-                case '1c_generate_extension': {
-                    const interceptor = ExtensionGenerator.generateInterceptor({
-                        targetMethod: args.targetMethod,
-                        directive: args.directive as ExtensionDirective,
-                        moduleType: args.moduleType || 'МодульОбъекта',
-                        isFunction: Boolean(args.isFunction),
-                        parameters: args.parameters || [],
-                        customLogic: args.customLogic
-                    });
-                    this.sendToolResponse(id, { code: interceptor });
-                    break;
-                }
-
-                case '1c_bsp_search': {
-                    const q = (args.query || '').toLowerCase();
-                    const filtered = BSPHelper.STANDARD_MODULES.filter(m =>
-                        !q ||
-                        m.module.toLowerCase().includes(q) ||
-                        m.method.toLowerCase().includes(q) ||
-                        m.description.toLowerCase().includes(q)
-                    );
-                    this.sendToolResponse(id, {
-                        results: filtered
-                    });
-                    break;
-                }
-
-                case '1c_scan_metadata': {
-                    const wsPath = args.workspacePath || '';
-                    const metadata = await MetadataScanner.scanWorkspace(wsPath);
-                    const summary = MetadataScanner.formatForPrompt(metadata);
-                    this.sendToolResponse(id, {
-                        configName: metadata.name,
-                        version: metadata.version,
-                        objectsCount: metadata.objects.length,
-                        isDemoFallback: metadata.isDemoFallback,
-                        summary
-                    });
-                    break;
-                }
-
-                case '1c_generate_bdd_feature': {
-                    let featureContent = '';
-                    if (args.prompt) {
-                        featureContent = BDDGenerator.parseNaturalLanguageToFeature(args.prompt);
-                    } else {
-                        const entityName = args.entityName || 'РеализацияТоваровУслуг';
-                        const spec = BDDGenerator.generateDocumentScenario(
-                            entityName,
-                            args.tabularSection || 'Товары',
-                            args.registerName || 'ТоварыНаСкладах'
-                        );
-                        featureContent = BDDGenerator.generateFeature(spec);
-                    }
-                    this.sendToolResponse(id, { feature: featureContent });
-                    break;
-                }
-
-                case '1c_analyze_tech_log': {
-                    const rawLog = args.rawLog || '';
-                    const parsedEvents = TechLogAnalyzer.parseLog(rawLog);
-                    const diagnoses = TechLogAnalyzer.diagnose(parsedEvents);
-                    const report = TechLogAnalyzer.formatReport(diagnoses);
-                    this.sendToolResponse(id, {
-                        eventsFound: parsedEvents.length,
-                        diagnosesCount: diagnoses.length,
-                        diagnoses,
-                        report
-                    });
-                    break;
-                }
-
-                default:
-                    this.sendError(id, -32601, `Unknown tool: ${params.name}`);
-                    break;
-            }
+            const result = await executeTool(params.name, args);
+            this.sendToolResponse(id, result);
         } catch (err: any) {
             this.sendToolResponse(id, { error: err.message }, true);
         }

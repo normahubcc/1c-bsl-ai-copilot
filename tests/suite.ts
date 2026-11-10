@@ -114,7 +114,8 @@ console.log('\n[3/5] Testing QueryBuilder (Пакетные запросы и в
             ПО Док.Номенклатура = Остатки.Номенклатура
     `;
     const inspection = QueryBuilder.inspectQuery(badJoinQuery);
-    assert.strictEqual(inspection.isValid, false, 'Query with direct virtual table join must be invalid');
+    assert.strictEqual(inspection.isValid, null, 'Heuristics must not claim syntax validity');
+    assert.strictEqual(inspection.syntaxChecked, false);
     assert.ok(inspection.issues.some(i => i.code === 'ITS-QUERY-001'), 'Must flag ITS-QUERY-001');
     console.log('  ✓ ITS-QUERY-001: Direct JOIN with virtual table flagged');
 
@@ -142,27 +143,18 @@ console.log('\n[3/5] Testing QueryBuilder (Пакетные запросы и в
     assert.ok(generatedBatch.includes('УНИЧТОЖИТЬ ВТ_Товары'), 'Must destroy temp tables at end');
     assert.ok(generatedBatch.includes('Новый МенеджерВременныхТаблиц'), 'Must instantiate МенеджерВременныхТаблиц');
     assert.ok(generatedBatch.includes('ЕСТЬNULL'), 'Must wrap balances with ЕСТЬNULL');
-    console.log('  ✓ Batch Query Generation produces fully standards-compliant 1C package');
+    console.log('  ✓ Batch Query Generation produces a query template with explicit schema fields');
 
     // D: Intelligent query refactoring
     const refactorResult = QueryBuilder.refactorQuery(badJoinQuery);
     assert.ok(refactorResult.refactoredQuery.includes('ПОМЕСТИТЬ ВТ_Остатки'), 'Refactored query must create temp table ВТ_Остатки');
     assert.ok(refactorResult.refactoredQuery.includes('ИНДЕКСИРОВАТЬ ПО'), 'Refactored query must index temp table');
-    assert.ok(refactorResult.refactoredQuery.includes('ЕСТЬNULL(Остатки.КоличествоОстаток, 0)'), 'Refactored query must wrap with ЕСТЬNULL');
+    assert.ok(refactorResult.refactoredQuery.includes('Остатки.КоличествоОстаток КАК КоличествоОстаток'), 'Projection must preserve the original resource name');
+    assert.ok(!refactorResult.refactoredQuery.includes('ЕСТЬNULL'), 'Refactoring must preserve NULL semantics');
     assert.ok(refactorResult.refactoredQuery.includes('УНИЧТОЖИТЬ ВТ_Остатки'), 'Refactored query must destroy temp table');
-    assert.ok(refactorResult.appliedOptimizations.length >= 3, 'Must record applied optimizations');
+    assert.ok(refactorResult.appliedOptimizations.length >= 2, 'Must record applied optimizations');
     // E: QueryBuilder with СрезПоследних must use РегистрСведений
-    const srezQuery = QueryBuilder.generateBatchQuery({
-        entityName: 'УстановкаЦенНоменклатуры',
-        tabularSection: 'Товары',
-        registerName: 'ЦеныНоменклатуры',
-        registerType: 'СрезПоследних',
-        fields: ['Номенклатура', 'Цена'],
-        includeScaffolding: false
-    });
-    assert.ok(srezQuery.includes('РегистрСведений.ЦеныНоменклатуры.СрезПоследних'), 'СрезПоследних must target РегистрСведений');
-    assert.ok(!srezQuery.includes('РегистрНакопления.ЦеныНоменклатуры'), 'Must NOT target РегистрНакопления for СрезПоследних');
-    console.log('  ✓ QueryBuilder correctly targets РегистрСведений for СрезПоследних');
+    assert.throws(() => QueryBuilder.generateBatchQuery({ entityName:'УстановкаЦен',tabularSection:'Товары',registerName:'Цены',registerType:'СрезПоследних',fields:['Номенклатура','Цена'],includeScaffolding:false }), /только Остатки/, 'Do not silently apply deficit logic to prices');
 }
 
 // 4. Test ExtensionGenerator (cfe)
@@ -181,17 +173,7 @@ console.log('\n[4/5] Testing ExtensionGenerator (Расширения конфи
     console.log('  ✓ &Вместо interceptor correctly generated with ПродолжитьВызов()');
 
     // B: &ИзменениеИКонтроль
-    const controlCode = ExtensionGenerator.generateInterceptor({
-        targetMethod: 'ПроверитьЗаполнение',
-        directive: 'ИзменениеИКонтроль',
-        moduleType: 'МодульОбъекта',
-        isFunction: false,
-        parameters: ['Отказ']
-    });
-    assert.ok(controlCode.includes('&ИзменениеИКонтроль("ПроверитьЗаполнение")'), 'Must have &ИзменениеИКонтроль');
-    assert.ok(controlCode.includes('#Вставка'), 'Must include #Вставка tag');
-    assert.ok(controlCode.includes('#КонецВставки'), 'Must include #КонецВставки tag');
-    console.log('  ✓ &ИзменениеИКонтроль generated with #Вставка/#КонецВставки tags');
+    assert.throws(() => ExtensionGenerator.generateInterceptor({ targetMethod:'ПроверитьЗаполнение',directive:'ИзменениеИКонтроль',moduleType:'МодульОбъекта',isFunction:false,parameters:['Отказ'] }), /исходного метода/, 'No fake original-method placeholders');
 
     // C: Managed Form dynamic button injection
     const formCode = ExtensionGenerator.generateFormButtonExtension('КнопкаПечатиАкта', 'Печать акта', 'КомандаПечатиАкта');
@@ -241,28 +223,15 @@ console.log('\n[5/5] Testing MetadataScanner...');
 // 6. Test BDDGenerator (Vanessa-Automation BDD)
 console.log('\n[6/7] Testing BDDGenerator (Vanessa-Automation BDD)...');
 {
-    // A: Standard Document Scenario
     const spec = BDDGenerator.generateDocumentScenario('РеализацияТоваровУслуг', 'Товары', 'ТоварыНаСкладах');
-    const featureText = BDDGenerator.generateFeature(spec);
-
-    assert.ok(featureText.includes('# language: ru'), 'Must specify Russian Gherkin language header');
-    assert.ok(featureText.includes('Функционал: Проведение и валидация документа "РеализацияТоваровУслуг"'), 'Must have Feature title');
-    assert.ok(featureText.includes('Контекст:'), 'Must have Background context');
-    assert.ok(featureText.includes('Сценарий: Успешное создание и проведение документа'), 'Must have positive scenario');
-    assert.ok(featureText.includes('Сценарий: Контроль превышения остатка'), 'Must have negative scenario');
-    assert.ok(featureText.includes('| \'Номенклатура\' | \'Количество\' | \'Цена\' |'), 'Must generate data table headers');
-    assert.strictEqual(
-        featureText.split("| 'Номенклатура' | 'Количество' | 'Цена' |").length - 1,
-        1,
-        'Must emit table headers exactly once'
-    );
-    assert.ok(featureText.includes("| 'Тестовый товар А' | '5' | '1200' |"), 'Must preserve the first data row');
-    console.log('  ✓ Vanessa-Automation Russian Gherkin .feature generated with scenarios and tables');
-
-    // B: Freeform Natural Language Intent Parsing
-    const parsedFeature = BDDGenerator.parseNaturalLanguageToFeature('Создать тест для документа "ЗаказПокупателя" с проверкой остатков');
-    assert.ok(parsedFeature.includes('ЗаказПокупателя'), 'Must extract document name from natural language prompt');
-    console.log('  ✓ Natural language intent parsed into structured BDD feature');
+    const feature = BDDGenerator.generateFeature(spec);
+    assert.ok(feature.startsWith('# language: ru'));
+    assert.ok(feature.includes('TODO'));
+    assert.ok(!feature.includes('Тестовый товар'));
+    const discount = BDDGenerator.parseNaturalLanguageToFeature('Документ ЗаказКлиента: скидка 17%');
+    const deleteRule = BDDGenerator.parseNaturalLanguageToFeature('Документ ЗаказКлиента: запрет удаления');
+    assert.notStrictEqual(discount, deleteRule, 'Different requirements must not produce identical drafts');
+    assert.ok(discount.includes('17%'), 'The full requirement must survive');
 }
 
 // 7. Test TechLogAnalyzer (1C Technological Log Diagnostics)
@@ -296,7 +265,7 @@ console.log('\n[7/7] Testing TechLogAnalyzer (Технологический Ж�
 
     const report = TechLogAnalyzer.formatReport(diagnoses);
     assert.ok(report.includes('Взаимные блокировки (TDEADLOCK)'), 'Report must mention deadlock');
-    assert.ok(report.includes('Рекомендации эксперта по High-Load 1С'), 'Report must provide High-Load recommendations');
+    assert.ok(report.includes('Что проверить:'), 'Report must provide High-Load recommendations');
     console.log('  ✓ TLOCK, TDEADLOCK, EXCP and slow SQL diagnosed with High-Load fixes');
 }
 
@@ -355,7 +324,7 @@ console.log('\n[8/8] Testing BSLTokenizer & BSLScopeAnalyzer (Flagship AST Engin
     assert.strictEqual(falsePositives.length, 0, 'Commented or stringified query calls MUST NOT trigger ITS-PERF-001');
     console.log('  ✓ Deterministic tokenization of pipes, quotes and directives verified');
     console.log('  ✓ Scope analysis accurately extracts method, parameters and Перем');
-    console.log('  ✓ StandardsChecker verified 100% immune to commented-out false positives');
+    console.log('  ✓ StandardsChecker verified ignores commented query execution calls');
 }
 
 console.log('\n====================================================');

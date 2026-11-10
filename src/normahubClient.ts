@@ -1,3 +1,4 @@
+import { boundedCompletionControls } from './shared/config/models';
 import * as vscode from 'vscode';
 import * as https from 'https';
 import { NormaHubBalanceInfo } from './types';
@@ -18,6 +19,31 @@ export class CompletionCancelledError extends Error {
 export interface CompletionRequestOptions {
     signal?: AbortSignal;
     timeoutMs?: number;
+    /** Counts and fixed status only. Never receives model text, prompts or credentials. */
+    onDiagnostics?: (diagnostics: CompletionDiagnostics) => void;
+}
+
+export interface CompletionDiagnostics {
+    readonly finishReason: 'stop' | 'length' | 'other' | 'missing';
+    readonly maxTokens: number;
+    readonly promptTokens?: number;
+    readonly completionTokens?: number;
+    readonly reasoningTokens?: number;
+}
+
+export class CompletionTruncatedError extends Error {
+    readonly diagnostics: CompletionDiagnostics;
+    constructor(diagnostics: CompletionDiagnostics) {
+        super(diagnostics.reasoningTokens !== undefined && diagnostics.reasoningTokens >= diagnostics.maxTokens * 0.75
+            ? 'Модель израсходовала лимит ответа преимущественно на рассуждение. Сократите контекст или задачу и повторите запрос.'
+            : 'Ответ модели обрезан лимитом токенов. Сократите задачу.');
+        this.name = 'CompletionTruncatedError';
+        this.diagnostics = diagnostics;
+    }
+}
+
+function tokenCount(value: unknown): number | undefined {
+    return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 1_000_000_000 ? value as number : undefined;
 }
 
 export class NormaHubClient {
@@ -54,7 +80,7 @@ export class NormaHubClient {
             };
         }
 
-        // Validate key against NormaHub /v1/models endpoint
+        // Probe the authenticated model-list endpoint; this does not establish account balance.
         return new Promise((resolve) => {
             const baseUrl = this.getBaseUrl();
             const url = new URL(`${baseUrl}/models`);
@@ -70,10 +96,20 @@ export class NormaHubClient {
                 },
                 (res) => {
                     let body = '';
+                    const interrupted = () => resolve({ balanceRub: 0, currency: 'USD', status: 'invalid_key', error: 'Ответ шлюза прерван.' });
+                    res.on('error', interrupted);
+                    res.on('aborted', interrupted);
                     res.on('data', chunk => { body += chunk; });
                     res.on('end', () => {
                         if (res.statusCode === 200) {
-                            // Key is verified and active on NormaHub gateway
+                            try {
+                                const models = JSON.parse(body);
+                                if (!models || !Array.isArray(models.data)) throw new Error('Invalid model list');
+                            } catch {
+                                resolve({ balanceRub: 0, currency: 'USD', status: 'invalid_key', error: 'Шлюз вернул некорректный список моделей.' });
+                                return;
+                            }
+                            // A valid model list establishes connectivity, not credit or inference permission.
                             resolve({
                                 balanceRub: 0,
                                 currency: 'USD',
@@ -157,7 +193,8 @@ export class NormaHubClient {
                     { role: 'user', content: userPrompt }
                 ],
                 temperature,
-                max_tokens: maxTokens
+                max_tokens: maxTokens,
+                ...boundedCompletionControls(model)
             });
 
             let settled = false;
@@ -181,15 +218,31 @@ export class NormaHubClient {
                 },
                 (res) => {
                     let data = '';
-                    res.on('data', chunk => { data += chunk; });
+                    res.on('data', chunk => {
+                        data += chunk;
+                        if (data.length > 2 * 1024 * 1024) { settleReject(new Error('Ответ шлюза превышает допустимый размер.')); req.destroy(); }
+                    });
+                    res.on('error', () => settleReject(new Error('Ответ шлюза прерван.')));
                     res.on('end', () => {
                         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                             try {
                                 const parsed = JSON.parse(data);
+                                const finish = parsed.choices?.[0]?.finish_reason;
+                                const diagnostics: CompletionDiagnostics = Object.freeze({
+                                    finishReason: finish === 'stop' || finish === 'length' ? finish : finish == null ? 'missing' : 'other',
+                                    maxTokens,
+                                    ...(tokenCount(parsed.usage?.prompt_tokens) !== undefined ? { promptTokens: tokenCount(parsed.usage.prompt_tokens) } : {}),
+                                    ...(tokenCount(parsed.usage?.completion_tokens) !== undefined ? { completionTokens: tokenCount(parsed.usage.completion_tokens) } : {}),
+                                    ...(tokenCount(parsed.usage?.completion_tokens_details?.reasoning_tokens) !== undefined
+                                        ? { reasoningTokens: tokenCount(parsed.usage.completion_tokens_details.reasoning_tokens) } : {})
+                                });
+                                try { options?.onDiagnostics?.(diagnostics); } catch { /* Diagnostics cannot break inference. */ }
+                                if (finish === 'length') throw new CompletionTruncatedError(diagnostics);
                                 const content = parsed.choices?.[0]?.message?.content || '';
+                                if (typeof content !== 'string') throw new Error('Ожидался текстовый ответ модели');
                                 settleResolve(content);
                             } catch (e: any) {
-                                settleReject(new Error(`Ошибка парсинга ответа: ${e.message}`));
+                                settleReject(e instanceof CompletionTruncatedError ? e : new Error(`Ошибка парсинга ответа: ${e.message}`));
                             }
                         } else {
                             settleReject(new Error(`Ошибка шлюза NormaHub (HTTP ${res.statusCode})`));

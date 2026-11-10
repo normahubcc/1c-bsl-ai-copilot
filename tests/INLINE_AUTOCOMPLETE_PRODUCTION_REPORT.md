@@ -65,7 +65,7 @@ node ./tests/inline_completion_coverage.js
 ## 6. Consistency-аудит (10 пунктов Промпта 7)
 
 1. README ↔ поведение: клеймы `<250 мс` сняты (2 места), добавлен честный раздел (работа/не-запросы/отмена/задержки/отправка/настройки/тесты). Остальные фичи-описания соответствуют коду.
-2. `package.json` ↔ runtime defaults: `debounceMs` 250, `requestTimeoutMs` 25000, `maxCompletionLines` 20, `maxCompletionChars` 1000, `contextBudgetChars` 12000, `completionDebug` false — совпадают с fallback в коде.
+2. `package.json` ↔ runtime defaults: `debounceMs` 250, `requestTimeoutMs` 25000, `maxCompletionLines` 20, `maxCompletionChars` 1000, `contextBudgetChars` 200000, `completionDebug` false — совпадают с fallback в коде.
 3. Модели: ghost — только `autocompleteModel` (default flash), reasoning (`reasoningModel`, default sol) — только query/explain; зафиксировано тестом, смешения нет.
 4. `debounceMs` ↔ debounce: настоящий trailing, ровно `debounceMs`, рестарт каждым нажатием.
 5. `requestTimeoutMs` ↔ HTTP: передаётся в `https.request timeout` + `req.destroy()`; default 25000 (лимит шлюза; для ghost долговато — P1 follow-up).

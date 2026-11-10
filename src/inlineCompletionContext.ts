@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
 import { MetadataScanner } from './metadataScanner';
+import { workspaceRoot as resolveWorkspaceRoot } from './shared/config/workspace';
 import { BSPHelper } from './bspHelper';
+import { exportedSignatures, moduleIdentity } from './shared/bsl/moduleContext';
 import { BSLTokenizer, BSLScopeAnalyzer, BSLScopeContext } from './bslTokenizer';
 
 /**
@@ -64,14 +65,14 @@ export interface InlineContextBudgets {
 }
 
 export const DEFAULT_INLINE_CONTEXT_BUDGETS: InlineContextBudgets = {
-    prefixChars: 4000,
-    suffixChars: 1500,
-    metadataChars: 2000,
-    bspChars: 3000,
-    multiTabChars: 2000,
+    prefixChars: 100000,
+    suffixChars: 20000,
+    metadataChars: 30000,
+    bspChars: 25000,
+    multiTabChars: 25000,
     maxNeighborModules: 6,
     maxMethodsPerModule: 8,
-    totalChars: 12000,
+    totalChars: 200000,
 };
 
 export interface BuildInlineContextOptions {
@@ -99,7 +100,7 @@ export function truncateCodePoints(text: string, maxChars: number, keep: 'head' 
 // ---------------------------------------------------------------------------
 
 interface MetaCacheEntry {
-    mtimeMs: number;
+    mtimeMs: string;
     trust: MetadataTrust;
     /** Full untruncated summary; budgets apply at render time. */
     summary: string;
@@ -109,30 +110,9 @@ interface MetaCacheEntry {
 
 const metaCache = new Map<string, MetaCacheEntry>();
 
-const CONFIG_FILE_CANDIDATES = [
-    'Configuration.xml',
-    path.join('src', 'cf', 'Configuration.xml'),
-    path.join('src', 'Configuration.mdo'),
-    path.join('cf', 'Configuration.xml'),
-];
-
-/** Max mtime of known configuration entry files; -1 when none exist. */
-function getConfigMtimeMs(rootPath: string): number {
-    if (!rootPath) {
-        return 0;
-    }
-    let max = -1;
-    for (const rel of CONFIG_FILE_CANDIDATES) {
-        try {
-            const st = fs.statSync(path.join(rootPath, rel));
-            if (st.isFile() && st.mtimeMs > max) {
-                max = st.mtimeMs;
-            }
-        } catch (_) {
-            // Missing candidate — not an error.
-        }
-    }
-    return max;
+/** Shared revision contract with the raw scanner prevents stale AI-query schemas. */
+function getConfigMtimeMs(rootPath: string): string {
+    return MetadataScanner.sourceRevision(rootPath);
 }
 
 function classifyTrust(isDemoFallback: boolean, objectCount: number): MetadataTrust {
@@ -210,6 +190,8 @@ function getCachedBsp(): string {
 // ---------------------------------------------------------------------------
 
 interface SignatureCacheEntry {
+    maxMethods: number;
+    document: vscode.TextDocument;
     version: number;
     moduleName: string;
     fileName: string;
@@ -219,20 +201,8 @@ interface SignatureCacheEntry {
 
 const signatureCache = new Map<string, SignatureCacheEntry>();
 
-const EXPORT_SIGNATURE_RE = /(?:Процедура|Функция)\s+([A-Za-zА-Яа-яЁё0-9_]+)\s*\(([^)]*)\)\s*(?:Экспорт|Export)/gi;
-
 function parseExportedMethods(text: string, cap: number): string[] {
-    const out: string[] = [];
-    EXPORT_SIGNATURE_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = EXPORT_SIGNATURE_RE.exec(text)) !== null) {
-        const rawParams = (match[2] || '').trim();
-        out.push(`${match[1]}(${rawParams ? rawParams.replace(/\s+/g, ' ') : ''})`);
-        if (out.length >= cap) {
-            break;
-        }
-    }
-    return out;
+    return exportedSignatures(text, cap);
 }
 
 /** Neighboring open modules, active document excluded. Exported signatures win over prose. */
@@ -241,26 +211,34 @@ export function getNeighboringModules(
     budgets: InlineContextBudgets
 ): ModuleSignature[] {
     const out: ModuleSignature[] = [];
+    if (budgets.maxNeighborModules <= 0) return out;
     const seen = new Set<string>();
     const activeUri = activeDocument.uri.toString();
     const docs = vscode.workspace.textDocuments || [];
+    const folders = vscode.workspace.workspaceFolders || [];
+    const activeRoot = vscode.workspace.getWorkspaceFolder?.(activeDocument.uri) || (activeDocument.uri.scheme !== 'file' && folders.length === 1 ? folders[0] : undefined);
+    if (folders.length > 1 && !activeRoot) return [];
+    if (activeDocument.uri.scheme === 'file' && !activeRoot) return [];
 
     for (const doc of docs) {
         if (!doc || doc.uri.toString() === activeUri) {
             continue;
         }
+        const neighborRoot = vscode.workspace.getWorkspaceFolder?.(doc.uri);
+        if (activeRoot && neighborRoot?.uri.toString() !== activeRoot.uri.toString()) continue;
         const fileName = (doc as vscode.TextDocument).fileName || '';
         if (!fileName.endsWith('.bsl') && !fileName.endsWith('.os')) {
             continue;
         }
+        if (doc.isClosed) continue;
         const key = doc.uri.toString();
         seen.add(key);
         const cached = signatureCache.get(key);
-        if (cached && cached.version === doc.version) {
+        if (cached && cached.document === doc && cached.version === doc.version && cached.maxMethods >= budgets.maxMethodsPerModule) {
             out.push({
                 moduleName: cached.moduleName,
                 fileName: cached.fileName,
-                exportedMethods: [...cached.exportedMethods],
+                exportedMethods: cached.exportedMethods.slice(0, budgets.maxMethodsPerModule),
                 isCommonModule: cached.isCommonModule,
             });
         } else {
@@ -276,13 +254,13 @@ export function getNeighboringModules(
             if (!text) {
                 continue;
             }
-            const base = path.basename(fileName, path.extname(fileName));
+            const identity = moduleIdentity(fileName);
             const entry: SignatureCacheEntry = {
-                version: doc.version,
-                moduleName: base,
+                maxMethods: budgets.maxMethodsPerModule, document: doc, version: doc.version,
+                moduleName: identity.moduleName,
                 fileName: path.basename(fileName),
                 exportedMethods: parseExportedMethods(text, budgets.maxMethodsPerModule),
-                isCommonModule: /клиент|сервер|общ/i.test(base),
+                isCommonModule: identity.isCommonModule,
             };
             signatureCache.set(key, entry);
             out.push({
@@ -340,8 +318,7 @@ export async function buildInlineCompletionContext(
     const budgets: InlineContextBudgets = { ...DEFAULT_INLINE_CONTEXT_BUDGETS, ...(options?.budgets || {}) };
     const rootPath =
         options?.workspaceRoot ??
-        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
-        '';
+        resolveWorkspaceRoot(document);
 
     // Same window as before: 50 lines before, 15 lines after; budgets trim the tails.
     const startLine = Math.max(0, position.line - 50);

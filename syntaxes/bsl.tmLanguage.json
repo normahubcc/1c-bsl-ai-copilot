@@ -1,0 +1,51 @@
+{
+  "name": "1C (BSL)",
+  "scopeName": "source.bsl",
+  "fileTypes": ["bsl", "os", "1c"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#directive" },
+    { "include": "#preprocessor" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#date" },
+    { "include": "#keyword" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.bsl",
+      "match": "//.*$"
+    },
+    "directive": {
+      "name": "keyword.control.directive.bsl",
+      "match": "&[а-яА-ЯёЁa-zA-Z0-9_]+"
+    },
+    "preprocessor": {
+      "name": "keyword.control.preprocessor.bsl",
+      "match": "#[а-яА-ЯёЁa-zA-Z0-9_]+"
+    },
+    "string": {
+      "name": "string.quoted.double.bsl",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.bsl",
+          "match": "\"\""
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.bsl",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+    "date": {
+      "name": "constant.other.date.bsl",
+      "match": "'[^'\\n]*'"
+    },
+    "keyword": {
+      "name": "keyword.control.bsl",
+      "match": "(?i)\\b(процедура|функция|конецпроцедуры|конецфункции|если|тогда|иначеесли|иначе|конецесли|для|каждого|из|по|цикл|конеццикла|пока|попытка|исключение|конецпопытки|возврат|продолжить|прервать|перем|экспорт|новый|выполнить|и|или|не|истина|ложь|неопределено|знач)\\b"
+    }
+  }
+}

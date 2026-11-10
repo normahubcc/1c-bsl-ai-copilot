@@ -33,7 +33,263 @@ __export(server_exports, {
   McpServer1C: () => McpServer1C
 });
 module.exports = __toCommonJS(server_exports);
-var readline = __toESM(require("readline"));
+
+// src/bslTokenizer.ts
+var BSLTokenizer = class {
+  static KEYWORDS = /* @__PURE__ */ new Set([
+    "\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430",
+    "\u0444\u0443\u043D\u043A\u0446\u0438\u044F",
+    "\u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B",
+    "\u043A\u043E\u043D\u0435\u0446\u0444\u0443\u043D\u043A\u0446\u0438\u0438",
+    "\u0435\u0441\u043B\u0438",
+    "\u0442\u043E\u0433\u0434\u0430",
+    "\u0438\u043D\u0430\u0447\u0435\u0435\u0441\u043B\u0438",
+    "\u0438\u043D\u0430\u0447\u0435",
+    "\u043A\u043E\u043D\u0435\u0446\u0435\u0441\u043B\u0438",
+    "\u0434\u043B\u044F",
+    "\u043A\u0430\u0436\u0434\u043E\u0433\u043E",
+    "\u0438\u0437",
+    "\u043F\u043E",
+    "\u0446\u0438\u043A\u043B",
+    "\u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430",
+    "\u043F\u043E\u043A\u0430",
+    "\u043F\u043E\u043F\u044B\u0442\u043A\u0430",
+    "\u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435",
+    "\u043A\u043E\u043D\u0435\u0446\u043F\u043E\u043F\u044B\u0442\u043A\u0438",
+    "\u0432\u043E\u0437\u0432\u0440\u0430\u0442",
+    "\u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C",
+    "\u043F\u0440\u0435\u0440\u0432\u0430\u0442\u044C",
+    "\u043F\u0435\u0440\u0435\u043C",
+    "\u044D\u043A\u0441\u043F\u043E\u0440\u0442",
+    "\u043D\u043E\u0432\u044B\u0439",
+    "\u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C",
+    "\u0438",
+    "\u0438\u043B\u0438",
+    "\u043D\u0435",
+    "\u0438\u0441\u0442\u0438\u043D\u0430",
+    "\u043B\u043E\u0436\u044C",
+    "\u043D\u0435\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E",
+    "\u0437\u043D\u0430\u0447"
+  ]);
+  /**
+   * Tokenizes full BSL code into a sequential stream of tokens.
+   */
+  static tokenize(source) {
+    const tokens = [];
+    let i = 0;
+    let line = 1;
+    let lineStart = 0;
+    while (i < source.length) {
+      const ch = source[i];
+      const col = i - lineStart + 1;
+      if (ch === "\n") {
+        line++;
+        i++;
+        lineStart = i;
+        continue;
+      }
+      if (ch === "\r") {
+        if (source[i + 1] === "\n") {
+          i++;
+        }
+        line++;
+        i++;
+        lineStart = i;
+        continue;
+      }
+      if (ch === " " || ch === "	") {
+        i++;
+        continue;
+      }
+      if (ch === "/" && source[i + 1] === "/") {
+        const start = i;
+        while (i < source.length && source[i] !== "\n" && source[i] !== "\r") {
+          i++;
+        }
+        tokens.push({
+          type: "COMMENT" /* COMMENT */,
+          value: source.substring(start, i),
+          line,
+          column: col,
+          offset: start
+        });
+        continue;
+      }
+      if (ch === "&") {
+        const start = i;
+        i++;
+        while (i < source.length && /[а-яА-ЯёЁa-zA-Z0-9_]/.test(source[i])) {
+          i++;
+        }
+        tokens.push({
+          type: "DIRECTIVE" /* DIRECTIVE */,
+          value: source.substring(start, i),
+          line,
+          column: col,
+          offset: start
+        });
+        continue;
+      }
+      if (ch === "#") {
+        const start = i;
+        i++;
+        while (i < source.length && /[а-яА-ЯёЁa-zA-Z0-9_]/.test(source[i])) {
+          i++;
+        }
+        tokens.push({
+          type: "PREPROCESSOR" /* PREPROCESSOR */,
+          value: source.substring(start, i),
+          line,
+          column: col,
+          offset: start
+        });
+        continue;
+      }
+      if (ch === '"' || ch === "|") {
+        const start = i;
+        i++;
+        let insideQuotes = ch === '"';
+        while (i < source.length) {
+          if (source[i] === '"') {
+            if (source[i + 1] === '"') {
+              i += 2;
+              continue;
+            } else {
+              insideQuotes = false;
+              i++;
+              break;
+            }
+          } else if (source[i] === "\n" || source[i] === "\r") {
+            break;
+          } else {
+            i++;
+          }
+        }
+        tokens.push({
+          type: "STRING_LITERAL" /* STRING_LITERAL */,
+          value: source.substring(start, i),
+          line,
+          column: col,
+          offset: start
+        });
+        continue;
+      }
+      if (ch === "'") {
+        const start = i;
+        i++;
+        while (i < source.length && source[i] !== "'" && source[i] !== "\n") {
+          i++;
+        }
+        if (source[i] === "'") i++;
+        tokens.push({
+          type: "DATE_LITERAL" /* DATE_LITERAL */,
+          value: source.substring(start, i),
+          line,
+          column: col,
+          offset: start
+        });
+        continue;
+      }
+      if (/[0-9]/.test(ch)) {
+        const start = i;
+        while (i < source.length && /[0-9.]/.test(source[i])) {
+          i++;
+        }
+        tokens.push({
+          type: "NUMBER_LITERAL" /* NUMBER_LITERAL */,
+          value: source.substring(start, i),
+          line,
+          column: col,
+          offset: start
+        });
+        continue;
+      }
+      if (/[а-яА-ЯёЁa-zA-Z_]/.test(ch)) {
+        const start = i;
+        while (i < source.length && /[а-яА-ЯёЁa-zA-Z0-9_]/.test(source[i])) {
+          i++;
+        }
+        const val = source.substring(start, i);
+        const isKw = this.KEYWORDS.has(val.toLowerCase());
+        tokens.push({
+          type: isKw ? "KEYWORD" /* KEYWORD */ : "IDENTIFIER" /* IDENTIFIER */,
+          value: val,
+          line,
+          column: col,
+          offset: start
+        });
+        continue;
+      }
+      if (ch === "<" && source[i + 1] === ">") {
+        tokens.push({ type: "OPERATOR" /* OPERATOR */, value: "<>", line, column: col, offset: i });
+        i += 2;
+        continue;
+      }
+      if ((ch === "<" || ch === ">") && source[i + 1] === "=") {
+        tokens.push({ type: "OPERATOR" /* OPERATOR */, value: ch + "=", line, column: col, offset: i });
+        i += 2;
+        continue;
+      }
+      if ("=+-*/%<>".includes(ch)) {
+        tokens.push({ type: "OPERATOR" /* OPERATOR */, value: ch, line, column: col, offset: i });
+        i++;
+        continue;
+      }
+      if (";,().[]".includes(ch)) {
+        tokens.push({ type: "PUNCTUATION" /* PUNCTUATION */, value: ch, line, column: col, offset: i });
+        i++;
+        continue;
+      }
+      tokens.push({ type: "UNKNOWN" /* UNKNOWN */, value: ch, line, column: col, offset: i });
+      i++;
+    }
+    return tokens;
+  }
+};
+
+// src/shared/bsl/text.ts
+var reserved = new Set("\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430 \u0444\u0443\u043D\u043A\u0446\u0438\u044F \u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B \u043A\u043E\u043D\u0435\u0446\u0444\u0443\u043D\u043A\u0446\u0438\u0438 \u0435\u0441\u043B\u0438 \u0442\u043E\u0433\u0434\u0430 \u0438\u043D\u0430\u0447\u0435\u0435\u0441\u043B\u0438 \u0438\u043D\u0430\u0447\u0435 \u043A\u043E\u043D\u0435\u0446\u0435\u0441\u043B\u0438 \u0434\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u0438\u0437 \u043F\u043E \u0446\u0438\u043A\u043B \u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430 \u043F\u043E\u043A\u0430 \u043F\u043E\u043F\u044B\u0442\u043A\u0430 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A\u043E\u043D\u0435\u0446\u043F\u043E\u043F\u044B\u0442\u043A\u0438 \u0432\u043E\u0437\u0432\u0440\u0430\u0442 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u043F\u0440\u0435\u0440\u0432\u0430\u0442\u044C \u043F\u0435\u0440\u0435\u043C \u044D\u043A\u0441\u043F\u043E\u0440\u0442 \u043D\u043E\u0432\u044B\u0439 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C \u0438 \u0438\u043B\u0438 \u043D\u0435 \u0438\u0441\u0442\u0438\u043D\u0430 \u043B\u043E\u0436\u044C \u043D\u0435\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E \u0437\u043D\u0430\u0447 procedure function endprocedure endfunction if then elsif else endif for each in to do enddo while try except endtry return continue break var export new execute and or not true false undefined val".split(" "));
+function identifier(value, label = "\u0418\u043C\u044F") {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (!/^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*$/.test(name)) {
+    throw new Error(`${label}: \u0443\u043A\u0430\u0436\u0438\u0442\u0435 \u0438\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 1\u0421 \u0431\u0435\u0437 \u043F\u0440\u043E\u0431\u0435\u043B\u043E\u0432 \u0438 \u0441\u043F\u0435\u0446\u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.`);
+  }
+  if (reserved.has(name.toLowerCase())) throw new Error(`${label}: \u043A\u043B\u044E\u0447\u0435\u0432\u043E\u0435 \u0441\u043B\u043E\u0432\u043E BSL \u043D\u0435\u043B\u044C\u0437\u044F \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C \u043A\u0430\u043A \u0438\u043C\u044F.`);
+  return name;
+}
+function bslString(value) {
+  return `"${value.replace(/"/g, '""').replace(/\r\n?/g, "\n").replace(/\n/g, "\n|")}"`;
+}
+function maskedText(source, ranges) {
+  const parts = [];
+  let cursor = 0;
+  for (const range of ranges) {
+    parts.push(source.slice(cursor, range.offset), range.value.replace(/[^\r\n]/g, " "));
+    cursor = range.offset + range.value.length;
+  }
+  parts.push(source.slice(cursor));
+  return parts.join("");
+}
+function withoutComments(text) {
+  let result = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '"') {
+      result += text[i];
+      if (quoted && text[i + 1] === '"') {
+        result += text[++i];
+        continue;
+      }
+      quoted = !quoted;
+    } else if (!quoted && text[i] === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") {
+        result += " ";
+        i++;
+      }
+      if (i < text.length) result += "\n";
+    } else result += text[i];
+  }
+  return result;
+}
 
 // src/bspHelper.ts
 var BSPHelper = class {
@@ -372,33 +628,21 @@ var BSPHelper = class {
   /**
    * Detects manual reinvented wheels in BSL code and suggests standard BSP replacements.
    */
-  static analyzeForBSPOptimization(code) {
+  static analyzeForBSPOptimization(code, tokens = BSLTokenizer.tokenize(code)) {
     const suggestions = [];
-    const lines = code.split("\n");
+    const executable = maskedText(code, tokens.filter((t) => ["COMMENT" /* COMMENT */, "STRING_LITERAL" /* STRING_LITERAL */].includes(t.type)));
+    const original = code.split("\n");
+    const lines = executable.split("\n");
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      if (/\.ПолучитьОбъект\s*\(\s*\)\.[\w\u0400-\u04FF]+/i.test(line)) {
+      const access = line.match(/\.ПолучитьОбъект\s*\(\s*\)\.[\w\u0400-\u04FF]+(?:\.[\w\u0400-\u04FF]+)*/i);
+      if (access && !/^\s*(?:=|\(|\[)/.test(line.slice(access.index + access[0].length))) {
         suggestions.push({
-          originalCodeSnippet: line,
+          originalCodeSnippet: original[i].trim(),
+          line: i + 1,
           recommendedCall: '\u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F.\u0417\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u0430\u041E\u0431\u044A\u0435\u043A\u0442\u0430(\u0421\u0441\u044B\u043B\u043A\u0430, "\u0418\u043C\u044F\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u0430")',
-          explanation: "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 \u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C\u041E\u0431\u044A\u0435\u043A\u0442() \u0441\u0447\u0438\u0442\u044B\u0432\u0430\u0435\u0442 \u0432\u0441\u044E \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u0432 \u043F\u0430\u043C\u044F\u0442\u044C \u0438 \u0431\u043B\u043E\u043A\u0438\u0440\u0443\u0435\u0442 \u0435\u0435. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u043B\u0435\u0433\u043A\u043E\u0432\u0435\u0441\u043D\u044B\u0439 \u043C\u0435\u0442\u043E\u0434 \u0411\u0421\u041F.",
+          explanation: "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 \u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C\u041E\u0431\u044A\u0435\u043A\u0442() \u0441\u0447\u0438\u0442\u044B\u0432\u0430\u0435\u0442 \u0432\u0441\u044E \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u0432 \u043F\u0430\u043C\u044F\u0442\u044C. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0441\u0442\u044C \u0438 \u0441\u0438\u0433\u043D\u0430\u0442\u0443\u0440\u0443 \u0430\u043B\u044C\u0442\u0435\u0440\u043D\u0430\u0442\u0438\u0432\u044B \u0432 \u0432\u0430\u0448\u0435\u0439 \u0432\u0435\u0440\u0441\u0438\u0438 \u0411\u0421\u041F. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u043B\u0435\u0433\u043A\u043E\u0432\u0435\u0441\u043D\u044B\u0439 \u043C\u0435\u0442\u043E\u0434 \u0411\u0421\u041F.",
           moduleName: "\u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F"
-        });
-      }
-      if (/Найти\s*\(.*,\s*["',;]/i.test(line) && lines.slice(Math.max(0, i - 3), i + 4).some((l) => /Пока|Цикл/i.test(l))) {
-        suggestions.push({
-          originalCodeSnippet: line,
-          recommendedCall: "\u0421\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u0435\u0424\u0443\u043D\u043A\u0446\u0438\u0438\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440.\u0420\u0430\u0437\u043B\u043E\u0436\u0438\u0442\u044C\u0421\u0442\u0440\u043E\u043A\u0443\u0412\u041C\u0430\u0441\u0441\u0438\u0432\u041F\u043E\u0434\u0441\u0442\u0440\u043E\u043A(\u0421\u0442\u0440\u043E\u043A\u0430, \u0420\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u044C)",
-          explanation: "\u0420\u0443\u0447\u043D\u043E\u0439 \u0440\u0430\u0437\u0431\u043E\u0440 \u0441\u0442\u0440\u043E\u043A\u0438 \u0432 \u0446\u0438\u043A\u043B\u0435 \u043F\u043E\u0434\u0432\u0435\u0440\u0436\u0435\u043D \u043E\u0448\u0438\u0431\u043A\u0430\u043C \u0441\u043C\u0435\u0449\u0435\u043D\u0438\u044F \u0438\u043D\u0434\u0435\u043A\u0441\u0430. \u0417\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u043D\u0430 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0439 \u043C\u0435\u0442\u043E\u0434 \u0411\u0421\u041F.",
-          moduleName: "\u0421\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u0435\u0424\u0443\u043D\u043A\u0446\u0438\u0438\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440"
-        });
-      }
-      if (/Попытка/i.test(line) && lines.slice(i, i + 3).some((l) => /\[\s*".*"\s*\]|\.[\w\u0400-\u04FF]+/i.test(l))) {
-        suggestions.push({
-          originalCodeSnippet: line,
-          recommendedCall: '\u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440.\u0421\u0432\u043E\u0439\u0441\u0442\u0432\u043E(\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430, "\u041A\u043B\u044E\u0447", \u0417\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u041F\u043E\u0423\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E)',
-          explanation: "\u041F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0445 \u0441\u0432\u043E\u0439\u0441\u0442\u0432 \u0447\u0435\u0440\u0435\u0437 \u041F\u043E\u043F\u044B\u0442\u043A\u0430-\u0418\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u0441\u043D\u0438\u0436\u0430\u0435\u0442 \u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C \u043E\u0442\u043B\u0430\u0434\u0447\u0438\u043A\u0430 \u0438 \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u043C\u0435\u0442\u043E\u0434 \u0411\u0421\u041F.",
-          moduleName: "\u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440"
         });
       }
     }
@@ -408,14 +652,85 @@ var BSPHelper = class {
    * Formats summary of BSP knowledge for LLM Prompt injection.
    */
   static getBSPPromptInjection() {
-    return `\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u044B \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438 \u0441 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435\u043C \u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0438 \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0445 \u041F\u043E\u0434\u0441\u0438\u0441\u0442\u0435\u043C (\u0411\u0421\u041F):
-1. \u0427\u0442\u0435\u043D\u0438\u0435 \u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u043E\u0432 \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432: \u0412\u0441\u0435\u0433\u0434\u0430 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C "\u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F.\u0417\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u0430\u041E\u0431\u044A\u0435\u043A\u0442\u0430(\u0421\u0441\u044B\u043B\u043A\u0430, "\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442")" \u0438\u043B\u0438 "\u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F.\u0417\u043D\u0430\u0447\u0435\u043D\u0438\u044F\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u043E\u0432\u041E\u0431\u044A\u0435\u043A\u0442\u043E\u0432()", \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E \u0432\u044B\u0437\u044B\u0432\u0430\u0442\u044C "\u0421\u0441\u044B\u043B\u043A\u0430.\u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C\u041E\u0431\u044A\u0435\u043A\u0442().\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442".
-2. \u0420\u0430\u0431\u043E\u0442\u0430 \u0441\u043E \u0441\u0442\u0440\u043E\u043A\u0430\u043C\u0438: \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C "\u0421\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u0435\u0424\u0443\u043D\u043A\u0446\u0438\u0438\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440.\u0420\u0430\u0437\u043B\u043E\u0436\u0438\u0442\u044C\u0421\u0442\u0440\u043E\u043A\u0443\u0412\u041C\u0430\u0441\u0441\u0438\u0432\u041F\u043E\u0434\u0441\u0442\u0440\u043E\u043A" \u0438 "\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B\u0412\u0421\u0442\u0440\u043E\u043A\u0443".
-3. \u0411\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u0430\u044F \u0440\u0430\u0431\u043E\u0442\u0430 \u0441\u043E \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430\u043C\u0438: \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u044C "\u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440.\u0421\u0432\u043E\u0439\u0441\u0442\u0432\u043E(\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430, \u041A\u043B\u044E\u0447, \u0417\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u041F\u043E\u0423\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E)".
-4. \u0414\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043F\u0440\u043E\u0446\u0435\u0441\u0441\u044B: \u0412\u044B\u043D\u043E\u0441\u0438\u0442\u044C \u0432 \u0444\u043E\u043D \u0447\u0435\u0440\u0435\u0437 "\u0414\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435\u041E\u043F\u0435\u0440\u0430\u0446\u0438\u0438.\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435\u0412\u0424\u043E\u043D\u0435".
-5. \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0438: \u0422\u0435\u043A\u0443\u0449\u0435\u0433\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u043F\u043E\u043B\u0443\u0447\u0430\u0442\u044C \u0447\u0435\u0440\u0435\u0437 "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0438.\u0410\u0432\u0442\u043E\u0440\u0438\u0437\u043E\u0432\u0430\u043D\u043D\u044B\u0439\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C()".`;
+    return `\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 \u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0438 \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0445 \u041F\u043E\u0434\u0441\u0438\u0441\u0442\u0435\u043C (\u0411\u0421\u041F):
+\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u043C\u0435\u0442\u043E\u0434\u044B, \u043D\u0430\u043B\u0438\u0447\u0438\u0435 \u0438 \u0441\u0438\u0433\u043D\u0430\u0442\u0443\u0440\u044B \u043A\u043E\u0442\u043E\u0440\u044B\u0445 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u044B \u043C\u043E\u0434\u0443\u043B\u044F\u043C\u0438 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438.
+\u0421\u0442\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u043A\u0430\u0442\u0430\u043B\u043E\u0433 \u043F\u0440\u0438\u043C\u0435\u0440\u043E\u0432 \u043D\u0435 \u0434\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0435\u0442 \u043D\u0430\u043B\u0438\u0447\u0438\u0435 \u043C\u0435\u0442\u043E\u0434\u0430 \u0432 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043D\u043E\u0439 \u0432\u0435\u0440\u0441\u0438\u0438 \u0411\u0421\u041F.
+\u0414\u043B\u044F \u0447\u0442\u0435\u043D\u0438\u044F \u043E\u0434\u043D\u043E\u0433\u043E \u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u0430 \u0440\u0430\u0441\u0441\u043C\u043E\u0442\u0440\u0438\u0442\u0435 \u0441\u043F\u0435\u0446\u0438\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0439 API \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u0432\u043C\u0435\u0441\u0442\u043E \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0432\u0441\u0435\u0433\u043E \u043E\u0431\u044A\u0435\u043A\u0442\u0430.
+\u0414\u043B\u044F \u0441\u0442\u0440\u043E\u043A \u0438 \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0435 \u043C\u0435\u0442\u043E\u0434\u044B \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B; \u0442\u044F\u0436\u0451\u043B\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 \u043E\u0442\u0434\u0435\u043B\u044F\u0439\u0442\u0435 \u043E\u0442 \u043A\u043B\u0438\u0435\u043D\u0442\u0441\u043A\u043E\u0433\u043E UI.
+\u0415\u0441\u043B\u0438 \u0441\u0438\u0433\u043D\u0430\u0442\u0443\u0440\u0430 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430, \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u0435 \u0443\u0442\u043E\u0447\u043D\u0435\u043D\u0438\u0435 \u0432\u043C\u0435\u0441\u0442\u043E \u0432\u044B\u0434\u0443\u043C\u0430\u043D\u043D\u043E\u0433\u043E \u0432\u044B\u0437\u043E\u0432\u0430.`;
   }
 };
+
+// src/entities/query/model/source.ts
+function querySources(code) {
+  const plain = withoutComments(code);
+  if (/^\s*(?:ВЫБРАТЬ|SELECT|УНИЧТОЖИТЬ)(?:\s|$)/i.test(plain)) return [{ text: code, line: 1 }];
+  const tokens = BSLTokenizer.tokenize(code).filter((t) => t.type !== "COMMENT" /* COMMENT */);
+  const sources = [];
+  const receivers = /* @__PURE__ */ new Map();
+  for (let i = 0; i < tokens.length - 3; i++) {
+    const word = tokens[i].value.toLowerCase();
+    if (/^(?:процедура|функция|procedure|function)$/.test(word)) receivers.clear();
+    if (tokens[i].type === "IDENTIFIER" /* IDENTIFIER */ && tokens[i + 1]?.value === "=" && tokens[i - 1]?.value !== ".") receivers.set(word, /^(?:новый|new)$/i.test(tokens[i + 2]?.value || "") && /^(?:запрос|query)$/i.test(tokens[i + 3]?.value || ""));
+    const receiver = tokens[i - 1]?.value.toLowerCase() || "";
+    if (!(receivers.get(receiver) ?? /^(?:запрос|query)$/.test(receiver))) continue;
+    if (tokens[i].value !== "." || !/^(?:Текст|Text)$/i.test(tokens[i + 1].value) || tokens[i + 2].value !== "=") continue;
+    let end = i + 3;
+    while (end < tokens.length && tokens[end].value !== ";") end++;
+    const dynamic = tokens.slice(i + 3, end).some((t) => t.type !== "STRING_LITERAL" /* STRING_LITERAL */ && t.value !== "+");
+    for (let j = i + 3; j < end; j++) {
+      const token = tokens[j];
+      if (token.type !== "STRING_LITERAL" /* STRING_LITERAL */ || !token.value.startsWith('"')) continue;
+      const chunks = [token.value];
+      while (tokens[j + 1]?.type === "STRING_LITERAL" /* STRING_LITERAL */ && tokens[j + 1].value.startsWith("|")) chunks.push(tokens[++j].value);
+      const text = chunks.map((chunk) => chunk.slice(1, chunk.endsWith('"') ? -1 : void 0).replace(/""/g, '"')).join("\n");
+      if (/^\s*(?:ВЫБРАТЬ|SELECT|УНИЧТОЖИТЬ)(?:\s|$)/i.test(text)) sources.push({ text, line: token.line, dynamic });
+    }
+  }
+  return sources;
+}
+function queryExecutable(text) {
+  return withoutComments(text).replace(/"(?:""|[^"])*"|'(?:''|[^'])*'/g, (value) => "0" + value.slice(1).replace(/[^\r\n]/g, " "));
+}
+
+// src/entities/query/model/batchMapping.ts
+function parseFieldMapping(value) {
+  if (typeof value !== "string") throw new Error("\u041F\u043E\u043B\u0435: \u0443\u043A\u0430\u0436\u0438\u0442\u0435 \u0438\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 1\u0421.");
+  const parts = value.split("=");
+  if (parts.length > 2) throw new Error("\u0421\u043E\u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043F\u043E\u043B\u044F: \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u041F\u043E\u043B\u0435\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430=\u041F\u043E\u043B\u0435\u0421\u0442\u0440\u043E\u043A\u0438 \u0438\u043B\u0438 \u041F\u043E\u043B\u0435\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430=@\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u0428\u0430\u043F\u043A\u0438.");
+  const target = identifier(parts[0], "\u041F\u043E\u043B\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430");
+  const source = (parts[1] ?? parts[0]).trim(), header = source.startsWith("@");
+  return { target, source: identifier(header ? source.slice(1) : source, "\u041F\u043E\u043B\u0435 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430"), header };
+}
+function validateBatchSchema(metadata, entity, tabular, register, mappings) {
+  if (metadata.isDemoFallback || !metadata.objects.length) return ["\u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B: \u0438\u043C\u0435\u043D\u0430 \u0438 \u0442\u0438\u043F\u044B \u043F\u043E\u043B\u0435\u0439 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u044B."];
+  const parts = entity.split("."), kind = parts.length === 2 ? parts[0] : "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442", name = parts.at(-1);
+  const object = metadata.objects.find((o) => o.kind === kind && o.name.toLowerCase() === name.toLowerCase());
+  const accumulation = metadata.objects.find((o) => o.kind === "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F" && o.name.toLowerCase() === register.replace(/^РегистрНакопления\./, "").toLowerCase());
+  if (!object) throw new Error(`\u041E\u0431\u044A\u0435\u043A\u0442 ${entity} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u0432 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.`);
+  if (!accumulation) throw new Error(`\u0420\u0435\u0433\u0438\u0441\u0442\u0440 ${register} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u0432 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.`);
+  if (accumulation.registerType === "\u041E\u0431\u043E\u0440\u043E\u0442\u044B") throw new Error("\u0414\u043B\u044F \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u0434\u0435\u0444\u0438\u0446\u0438\u0442\u0430 \u043D\u0443\u0436\u0435\u043D \u0440\u0435\u0433\u0438\u0441\u0442\u0440 \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432, \u0430 \u043D\u0435 \u043E\u0431\u043E\u0440\u043E\u0442\u043E\u0432.");
+  const section = object.tabularSections?.find((t) => t.name.toLowerCase() === tabular.toLowerCase());
+  if (!section) throw new Error(`\u0422\u0430\u0431\u043B\u0438\u0447\u043D\u0430\u044F \u0447\u0430\u0441\u0442\u044C ${tabular} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0432 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.`);
+  const warnings = [];
+  for (let i = 0; i < mappings.length; i++) {
+    const field = mappings[i];
+    const sourceFields = field.header ? object.fields : section.fields;
+    const source = sourceFields?.find((f) => f.name.toLowerCase() === field.source.toLowerCase());
+    const destination = accumulation.fields?.find((f) => f.name.toLowerCase() === field.target.toLowerCase());
+    if (!source) throw new Error(`\u041F\u043E\u043B\u0435 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430 ${field.source} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E \u0432 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.`);
+    if (!destination) throw new Error(`\u041F\u043E\u043B\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 ${field.target} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E \u0432 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0440\u043E\u0435\u043A\u0442\u0430.`);
+    const expected = i === mappings.length - 1 ? "resource" : "dimension";
+    if (destination.role && destination.role !== expected) throw new Error(`\u041F\u043E\u043B\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 ${field.target}: \u043D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0440\u043E\u043B\u044C \u0434\u043B\u044F \u0448\u0430\u0431\u043B\u043E\u043D\u0430 \u0434\u0435\u0444\u0438\u0446\u0438\u0442\u0430.`);
+    if (expected === "resource" && [source.type, destination.type].some((t) => t && /^(?:Строка|Булево|Дата|String|Boolean|Date|xs:(?:string|boolean|date)|cfg:(?:CatalogRef|DocumentRef)|СправочникСсылка|ДокументСсылка)/i.test(t))) throw new Error("\u0420\u0435\u0441\u0443\u0440\u0441 \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u0434\u0435\u0444\u0438\u0446\u0438\u0442\u0430 \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u0447\u0438\u0441\u043B\u043E\u0432\u044B\u043C.");
+    if (!source.type || !destination.type) warnings.push(`\u0422\u0438\u043F\u044B \u043F\u043E\u043B\u044F ${field.target} \u0442\u0440\u0435\u0431\u0443\u044E\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u0432 1\u0421.`);
+  }
+  for (const dimension of accumulation.fields?.filter((f) => f.role === "dimension") || []) {
+    if (!mappings.slice(0, -1).some((m) => m.target.toLowerCase() === dimension.name.toLowerCase())) throw new Error(`\u041D\u0435 \u0441\u043E\u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043E \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 ${dimension.name}.`);
+  }
+  if (!accumulation.fields?.some((f) => f.role)) warnings.push("\u0420\u043E\u043B\u0438 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0439 \u0438 \u0440\u0435\u0441\u0443\u0440\u0441\u043E\u0432 \u043D\u0435 \u043E\u043F\u0438\u0441\u0430\u043D\u044B \u0432 \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0445: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u043E\u043B\u043D\u043E\u0442\u0443 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0439.");
+  return [...new Set(warnings)];
+}
 
 // src/queryBuilder.ts
 var QueryBuilder = class {
@@ -424,12 +739,35 @@ var QueryBuilder = class {
    */
   static inspectQuery(queryText) {
     const issues = [];
-    const lines = queryText.split("\n");
+    const original = withoutComments(queryText);
+    queryText = queryExecutable(queryText);
+    const result = () => ({
+      isValid: issues.some((i) => i.severity === "error") ? false : null,
+      syntaxChecked: false,
+      recognized: /^\s*(?:ВЫБРАТЬ|SELECT|УНИЧТОЖИТЬ)(?:\s|$)/i.test(queryText),
+      hasErrors: issues.some((i) => i.severity === "error"),
+      issues
+    });
+    const invalid = (message) => {
+      issues.push({ code: "QUERY-STRUCTURE", severity: "error", message, recommendation: "\u0418\u0441\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0437\u0430\u043F\u0440\u043E\u0441 \u0432 \u043A\u043E\u043D\u0441\u043E\u043B\u0438 \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 1\u0421." });
+      return result();
+    };
+    if (!original.trim()) return invalid("\u041D\u0435\u0442 \u0442\u0435\u043A\u0441\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438.");
+    if (!result().recognized) return invalid("\u041E\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044F \u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0412\u042B\u0411\u0420\u0410\u0422\u042C. BSL-\u043C\u043E\u0434\u0443\u043B\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0439\u0442\u0435 \u0430\u0443\u0434\u0438\u0442\u043E\u043C \u043A\u043E\u0434\u0430.");
+    let depth = 0;
+    for (const character of queryText) {
+      if (character === "(") depth++;
+      if (character === ")" && --depth < 0) return invalid("\u041D\u0435\u0441\u043E\u0433\u043B\u0430\u0441\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0441\u043A\u043E\u0431\u043A\u0438 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441\u0435.");
+    }
+    if (depth !== 0) return invalid("\u041D\u0435\u0441\u043E\u0433\u043B\u0430\u0441\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0441\u043A\u043E\u0431\u043A\u0438 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441\u0435.");
+    if (/(?:ВЫБРАТЬ|SELECT)\s*(?:(?:ИЗ|ПОМЕСТИТЬ|FROM|INTO)(?![\w\u0400-\u04FF])|;|$)/i.test(queryText) || /(?:^|\s)(?:ИЗ|СОЕДИНЕНИЕ|FROM|JOIN)\s*(?:(?:ГДЕ|КАК|ПО|WHERE|AS|ON)(?![\w\u0400-\u04FF])|;|$)/i.test(queryText)) return invalid("\u041D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D\u044B \u043F\u043E\u043B\u044F \u0432\u044B\u0431\u043E\u0440\u043A\u0438 \u0438\u043B\u0438 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0434\u0430\u043D\u043D\u044B\u0445.");
+    const unquoted = original.replace(/"(?:""|[^"])*"|'(?:''|[^'])*'/g, "");
+    if (/["']/.test(unquoted)) return invalid("\u041D\u0435\u0437\u0430\u043A\u0440\u044B\u0442\u0430\u044F \u0441\u0442\u0440\u043E\u043A\u0430 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441\u0435.");
     const directVirtualJoinRegex = /(ЛЕВОЕ|ПРАВОЕ|ВНУТРЕННЕЕ|ПОЛНОЕ)?\s+СОЕДИНЕНИЕ\s+Регистр(Накопления|Сведений|Бухгалтерии)\.[\w\u0400-\u04FF]+\.(Остатки|Обороты|СрезПоследних|СрезПервых)/i;
     if (directVirtualJoinRegex.test(queryText)) {
       issues.push({
         code: "ITS-QUERY-001",
-        severity: "error",
+        severity: "warning",
         message: "\u041F\u0440\u044F\u043C\u043E\u0435 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 \u0441 \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u0435\u0439 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441\u0435.",
         recommendation: "\u0412\u044B\u043D\u0435\u0441\u0438\u0442\u0435 \u0432\u044B\u0431\u043E\u0440\u043A\u0443 \u0438\u0437 \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0432 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0443\u044E \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u0443\u044E \u0442\u0430\u0431\u043B\u0438\u0446\u0443 \u0441 \u0444\u0438\u043B\u044C\u0442\u0440\u043E\u043C \u043F\u043E \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0430\u043C \u0441\u0440\u0435\u0437\u0430 \u0438 \u0441\u043E\u0435\u0434\u0438\u043D\u044F\u0439\u0442\u0435 \u0435\u0435 \u0441 \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u0435\u0439."
       });
@@ -437,7 +775,8 @@ var QueryBuilder = class {
     const tempTableMatches = queryText.matchAll(/ПОМЕСТИТЬ\s+(ВТ_[\w\u0400-\u04FF]+)/gi);
     for (const match of tempTableMatches) {
       const tableName = match[1];
-      const hasIndex = new RegExp(`\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C\\s+\u041F\u041E`, "i").test(queryText);
+      const statement = queryText.slice(0, match.index).split(";").pop() + queryText.slice(match.index).split(";")[0];
+      const hasIndex = /ИНДЕКСИРОВАТЬ\s+ПО/i.test(statement);
       const isJoined = new RegExp(`\u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u0415\\s+${tableName}`, "i").test(queryText) || new RegExp(`\u0418\u0417\\s+${tableName}\\s+\u041A\u0410\u041A.*\u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u0415`, "i").test(queryText);
       if (isJoined && !hasIndex) {
         issues.push({
@@ -452,19 +791,26 @@ var QueryBuilder = class {
     if (unparameterizedVirtualRegex.test(queryText)) {
       issues.push({
         code: "ITS-QUERY-003",
-        severity: "error",
-        message: "\u041E\u0431\u0440\u0430\u0449\u0435\u043D\u0438\u0435 \u043A \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u0435 \u0431\u0435\u0437 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0444\u0438\u043B\u044C\u0442\u0440\u0430\u0446\u0438\u0438 (\u0432 \u0441\u043A\u043E\u0431\u043A\u0430\u0445 \u043F\u0443\u0441\u0442\u043E).",
-        recommendation: "\u0412\u0441\u0435\u0433\u0434\u0430 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u0443\u0441\u043B\u043E\u0432\u0438\u044F \u043E\u0442\u0431\u043E\u0440\u0430 \u0432 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0432 \u0441\u043A\u043E\u0431\u043A\u0430\u0445, \u0447\u0442\u043E\u0431\u044B \u0444\u0438\u043B\u044C\u0442\u0440\u0430\u0446\u0438\u044F \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u043B\u0430\u0441\u044C \u043D\u0430 \u0443\u0440\u043E\u0432\u043D\u0435 \u0421\u0423\u0411\u0414 \u0434\u043E \u0432\u044B\u0447\u0438\u0441\u043B\u0435\u043D\u0438\u044F \u0441\u0440\u0435\u0437\u0430/\u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432."
-      });
-    }
-    if (/ЛЕВОЕ\s+СОЕДИНЕНИЕ/i.test(queryText) && !/ЕСТЬNULL/i.test(queryText)) {
-      issues.push({
-        code: "ITS-QUERY-004",
         severity: "warning",
-        message: "\u0412 \u0437\u0430\u043F\u0440\u043E\u0441\u0435 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u041B\u0415\u0412\u041E\u0415 \u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u0415, \u043D\u043E \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u044E\u0442 \u0444\u0443\u043D\u043A\u0446\u0438\u0438 \u0415\u0421\u0422\u042CNULL \u0434\u043B\u044F \u0447\u0438\u0441\u043B\u043E\u0432\u044B\u0445 \u0440\u0435\u0441\u0443\u0440\u0441\u043E\u0432 \u0438\u043B\u0438 \u043F\u043E\u043B\u0435\u0439 \u043E\u0442\u0431\u043E\u0440\u0430.",
-        recommendation: "\u041E\u0431\u043E\u0440\u0430\u0447\u0438\u0432\u0430\u0439\u0442\u0435 \u043F\u043E\u043B\u044F \u043F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0432 \u0415\u0421\u0422\u042CNULL(\u041F\u043E\u043B\u0435, 0), \u0447\u0442\u043E\u0431\u044B \u0438\u0437\u0431\u0435\u0436\u0430\u0442\u044C \u043F\u043E\u044F\u0432\u043B\u0435\u043D\u0438\u044F \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0439 NULL \u0432 \u0430\u0440\u0438\u0444\u043C\u0435\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0445 \u043E\u043F\u0435\u0440\u0430\u0446\u0438\u044F\u0445."
+        message: "\u041E\u0431\u0440\u0430\u0449\u0435\u043D\u0438\u0435 \u043A \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u0435 \u0431\u0435\u0437 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0444\u0438\u043B\u044C\u0442\u0440\u0430\u0446\u0438\u0438 (\u0432 \u0441\u043A\u043E\u0431\u043A\u0430\u0445 \u043F\u0443\u0441\u0442\u043E).",
+        recommendation: "\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u044C \u0443\u0441\u043B\u043E\u0432\u0438\u0439 \u043E\u0442\u0431\u043E\u0440\u0430 \u0432 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0432 \u0441\u043A\u043E\u0431\u043A\u0430\u0445, \u0447\u0442\u043E\u0431\u044B \u0444\u0438\u043B\u044C\u0442\u0440\u0430\u0446\u0438\u044F \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u043B\u0430\u0441\u044C \u043D\u0430 \u0443\u0440\u043E\u0432\u043D\u0435 \u0421\u0423\u0411\u0414 \u0434\u043E \u0432\u044B\u0447\u0438\u0441\u043B\u0435\u043D\u0438\u044F \u0441\u0440\u0435\u0437\u0430/\u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432."
       });
     }
+    const rawArithmetic = queryText.split(";").some((statement) => {
+      const aliases = [...statement.matchAll(/ЛЕВОЕ\s+СОЕДИНЕНИЕ\s+[^;]+?\s+КАК\s+([А-Яа-яЁёA-Za-z_][А-Яа-яЁёA-Za-z_0-9]*)\s+ПО/gi)].map((m) => m[1]);
+      const projections = statement.split(/(?:^|\s)ВЫБРАТЬ(?=\s)/i).slice(1).map((part) => part.split(/\s+(?:ПОМЕСТИТЬ|ИЗ)(?=\s)/i)[0]);
+      return aliases.some((alias) => projections.some((projection) => {
+        const masked = projection.replace(/ЕСТЬNULL\s*\([^()]*\)/gi, "");
+        const field = `${alias}\\.[\u0410-\u042F\u0430-\u044F\u0401\u0451A-Za-z_][\u0410-\u042F\u0430-\u044F\u0401\u0451A-Za-z_0-9]*`;
+        return new RegExp(`(?:${field}\\s*[+*/-]|[+*/-]\\s*${field})`, "i").test(masked);
+      }));
+    });
+    if (rawArithmetic) issues.push({
+      code: "ITS-QUERY-004",
+      severity: "warning",
+      message: "\u0410\u0440\u0438\u0444\u043C\u0435\u0442\u0438\u043A\u0430 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442 \u043F\u043E\u043B\u0435 \u043F\u0440\u0430\u0432\u043E\u0439 \u0441\u0442\u043E\u0440\u043E\u043D\u044B \u041B\u0415\u0412\u041E\u0413\u041E \u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u042F \u0431\u0435\u0437 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0438 NULL.",
+      recommendation: "\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u043C\u0443\u044E \u0441\u0435\u043C\u0430\u043D\u0442\u0438\u043A\u0443 NULL \u0438 \u043F\u0440\u0438 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0415\u0421\u0422\u042CNULL \u0434\u043B\u044F \u044D\u0442\u043E\u0433\u043E \u043F\u043E\u043B\u044F."
+    });
     if (/ПОМЕСТИТЬ\s+ВТ_/i.test(queryText) && !/УНИЧТОЖИТЬ\s+ВТ_/i.test(queryText)) {
       issues.push({
         code: "ITS-QUERY-005",
@@ -473,556 +819,283 @@ var QueryBuilder = class {
         recommendation: '\u0414\u043E\u0431\u0430\u0432\u043B\u044F\u0439\u0442\u0435 "\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C \u0412\u0422_\u0418\u043C\u044F\u0422\u0430\u0431\u043B\u0438\u0446\u044B;" \u0432 \u043A\u043E\u043D\u0446\u0435 \u043F\u0430\u043A\u0435\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u043E\u0441\u0432\u043E\u0431\u043E\u0436\u0434\u0435\u043D\u0438\u044F \u043E\u043F\u0435\u0440\u0430\u0442\u0438\u0432\u043D\u043E\u0439 \u043F\u0430\u043C\u044F\u0442\u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 1\u0421 \u0438 tempdb \u0421\u0423\u0411\u0414.'
       });
     }
-    return {
-      isValid: issues.filter((i) => i.severity === "error").length === 0,
-      issues
-    };
+    return result();
   }
-  /**
-   * Generates a fully standards-compliant 1C Batch Query with Temp Tables, indexing, and cleanup.
-   */
+  /** A query template, not transaction/posting logic. Fields must match the real schema. */
   static generateBatchQuery(options) {
-    const vtSource = `\u0412\u0422_${options.tabularSection}`;
-    const cleanReg = options.registerName.replace(/^(РегистрНакопления|РегистрСведений|РегистрБухгалтерии)\./, "");
-    const vtBalances = `\u0412\u0422_\u041E\u0441\u0442\u0430\u0442\u043A\u0438${cleanReg}`;
-    let fullEntity = options.entityName.trim();
-    if (!fullEntity.includes(".")) {
-      fullEntity = `\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442.${fullEntity}`;
+    if (options.registerType && options.registerType !== "\u041E\u0441\u0442\u0430\u0442\u043A\u0438") {
+      throw new Error("\u0428\u0430\u0431\u043B\u043E\u043D \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u0434\u0435\u0444\u0438\u0446\u0438\u0442\u0430 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u041E\u0441\u0442\u0430\u0442\u043A\u0438 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 \u043D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F. \u0414\u043B\u044F \u043E\u0431\u043E\u0440\u043E\u0442\u043E\u0432 \u0438 \u0446\u0435\u043D \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0437\u0430\u043F\u0440\u043E\u0441 \u043F\u043E \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044E.");
     }
-    let registerKind = "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F";
-    const regType = options.registerType || "\u041E\u0441\u0442\u0430\u0442\u043A\u0438";
-    if (options.registerName.startsWith("\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439.") || regType === "\u0421\u0440\u0435\u0437\u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0445" || regType === "\u0421\u0440\u0435\u0437\u041F\u0435\u0440\u0432\u044B\u0445") {
-      registerKind = "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439";
-    } else if (options.registerName.startsWith("\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0411\u0443\u0445\u0433\u0430\u043B\u0442\u0435\u0440\u0438\u0438.")) {
-      registerKind = "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0411\u0443\u0445\u0433\u0430\u043B\u0442\u0435\u0440\u0438\u0438";
+    const entity = options.entityName?.trim() || "";
+    const parts = entity.split(".");
+    if (parts.length > 2 || parts.length === 2 && !["\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442", "\u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A"].includes(parts[0])) {
+      throw new Error("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442.\u0418\u043C\u044F \u0438\u043B\u0438 \u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A.\u0418\u043C\u044F.");
     }
-    const rawFields = options.fields && options.fields.length > 0 ? options.fields : ["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"];
-    const resourceKeywords = /Количество|Сумма|Вес|Объем|Стоимость|Цена|Остаток/i;
-    const dimensions = rawFields.filter((f) => !resourceKeywords.test(f));
-    const resources = rawFields.filter((f) => resourceKeywords.test(f));
-    const mainDim = dimensions[0] || "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430";
-    const mainRes = resources[0] || "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E";
-    const srcSelectLines = [];
-    for (const dim of dimensions.length ? dimensions : [mainDim]) {
-      srcSelectLines.push(`    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.${dim} \u041A\u0410\u041A ${dim}`);
+    const fullEntity = parts.length === 1 ? `\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442.${identifier(entity, "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442")}` : `${parts[0]}.${identifier(parts[1])}`;
+    const tabular = identifier(options.tabularSection, "\u0422\u0430\u0431\u043B\u0438\u0447\u043D\u0430\u044F \u0447\u0430\u0441\u0442\u044C");
+    const register = identifier(options.registerName?.replace(/^РегистрНакопления\./, ""), "\u0420\u0435\u0433\u0438\u0441\u0442\u0440 \u043D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F");
+    if (options.sourceMode && !["document", "table"].includes(options.sourceMode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0441\u0442\u0440\u043E\u043A \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430.");
+    const mappings = options.fields?.map(parseFieldMapping) || [];
+    const fields = mappings.map((m) => m.target);
+    const warnings = validateBatchSchema(options.metadata || { name: "", objects: [] }, entity, tabular, register, mappings);
+    if (mappings.some((m) => m.header && /^(?:СтрокиДокумента|ПериодКонтроля)$/i.test(m.source))) throw new Error("\u0418\u043C\u044F \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0430 \u0448\u0430\u043F\u043A\u0438 \u043F\u0435\u0440\u0435\u0441\u0435\u043A\u0430\u0435\u0442\u0441\u044F \u0441\u043E \u0441\u043B\u0443\u0436\u0435\u0431\u043D\u044B\u043C \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u043C \u0437\u0430\u043F\u0440\u043E\u0441\u0430.");
+    if (fields.length < 2 || new Set(fields.map((f) => f.toLowerCase())).size !== fields.length) {
+      throw new Error("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u044F \u0438 \u043E\u0434\u0438\u043D \u0447\u0438\u0441\u043B\u043E\u0432\u043E\u0439 \u0440\u0435\u0441\u0443\u0440\u0441 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u043C \u043F\u043E\u043B\u0435\u043C; \u0438\u043C\u0435\u043D\u0430 \u043D\u0435 \u0434\u043E\u043B\u0436\u043D\u044B \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0442\u044C\u0441\u044F.");
     }
-    for (const res of resources.length ? resources : [mainRes]) {
-      srcSelectLines.push(`    \u0421\u0423\u041C\u041C\u0410(\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.${res}) \u041A\u0410\u041A ${res}`);
+    const dimensions = fields.slice(0, -1), resource = fields[fields.length - 1];
+    const balance = `${resource}\u041E\u0441\u0442\u0430\u0442\u043E\u043A`;
+    const fromTable = options.sourceMode === "table";
+    const expression = (index) => {
+      const m = mappings[index];
+      return m.header ? fromTable ? `&${m.source}` : `\u0421\u0442\u0440\u043E\u043A\u0438.\u0421\u0441\u044B\u043B\u043A\u0430.${m.source}` : `\u0421\u0442\u0440\u043E\u043A\u0438.${m.source}`;
+    };
+    const groups = dimensions.map((_, i) => expression(i)).filter((value) => !value.startsWith("&"));
+    const rawTable = "\u0412\u0422_\u0412\u0445\u043E\u0434\u043D\u044B\u0435\u0421\u0442\u0440\u043E\u043A\u0438";
+    if (mappings.at(-1)?.header) throw new Error("\u0427\u0438\u0441\u043B\u043E\u0432\u043E\u0439 \u0440\u0435\u0441\u0443\u0440\u0441 \u0434\u043E\u043B\u0436\u0435\u043D \u043F\u043E\u0441\u0442\u0443\u043F\u0430\u0442\u044C \u0438\u0437 \u0441\u0442\u0440\u043E\u043A \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430.");
+    let sourceTable = `\u0412\u0422_${tabular}`;
+    if (sourceTable.toLowerCase() === rawTable.toLowerCase()) sourceTable += "_\u0413\u0440\u0443\u043F\u043F\u0430";
+    let balanceTable = `\u0412\u0422_\u041E\u0441\u0442\u0430\u0442\u043A\u0438${register}`;
+    if (sourceTable.toLowerCase() === balanceTable.toLowerCase()) balanceTable += "_\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430";
+    if (dimensions.some((d) => ["\u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F", "\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E", "\u0434\u0435\u0444\u0438\u0446\u0438\u0442"].includes(d.toLowerCase()))) {
+      throw new Error("\u0418\u043C\u0435\u043D\u0430 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u0439 \u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F, \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u0438 \u0414\u0435\u0444\u0438\u0446\u0438\u0442 \u043F\u0435\u0440\u0435\u0441\u0435\u043A\u0430\u044E\u0442\u0441\u044F \u0441 \u043A\u043E\u043B\u043E\u043D\u043A\u0430\u043C\u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0437\u0430\u043F\u0440\u043E\u0441 \u043F\u043E \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044E \u0441 \u044F\u0432\u043D\u044B\u043C\u0438 \u043F\u0441\u0435\u0432\u0434\u043E\u043D\u0438\u043C\u0430\u043C\u0438.");
     }
-    const groupByDims = (dimensions.length ? dimensions : [mainDim]).map((d) => `    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.${d}`).join(",\n");
-    const indexDims = (dimensions.length ? dimensions : [mainDim]).join(", ");
-    let vtResName = mainRes;
-    if (registerKind === "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F") {
-      if (regType === "\u041E\u0441\u0442\u0430\u0442\u043A\u0438") {
-        vtResName = `${mainRes}\u041E\u0441\u0442\u0430\u0442\u043E\u043A`;
-      } else if (regType === "\u041E\u0431\u043E\u0440\u043E\u0442\u044B") {
-        vtResName = `${mainRes}\u041E\u0431\u043E\u0440\u043E\u0442`;
-      }
-    }
-    const vtFilterCondition = `${mainDim} \u0412 (\u0412\u042B\u0411\u0420\u0410\u0422\u042C ${vtSource}.${mainDim} \u0418\u0417 ${vtSource})`;
-    const joinConditions = (dimensions.length ? dimensions : [mainDim]).map((d) => `\u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${d} = \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${d}`).join("\n        \u0418 ");
-    let query = `\u0412\u042B\u0411\u0420\u0410\u0422\u042C
-${srcSelectLines.join(",\n")}
-\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${vtSource}
-\u0418\u0417
-    ${fullEntity}.${options.tabularSection} \u041A\u0410\u041A \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430
-\u0413\u0414\u0415
-    \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0422\u0430\u0431\u043B\u0438\u0446\u0430.\u0421\u0441\u044B\u043B\u043A\u0430 = &\u0421\u0441\u044B\u043B\u043A\u0430
-\u0421\u0413\u0420\u0423\u041F\u041F\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E
-${groupByDims}
-\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E
-    ${indexDims}
+    const rawFields = [...new Set(mappings.filter((m) => !m.header).map((m) => m.source))];
+    const preparation = fromTable ? `\u0412\u042B\u0411\u0420\u0410\u0422\u042C
+${rawFields.map((f) => `    \u0412\u0445\u043E\u0434\u043D\u044B\u0435.${f} \u041A\u0410\u041A ${f}`).join(",\n")}
+\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${rawTable}
+\u0418\u0417 &\u0421\u0442\u0440\u043E\u043A\u0438\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u041A\u0410\u041A \u0412\u0445\u043E\u0434\u043D\u044B\u0435
 ;
 
-////////////////////////////////////////////////////////////////////////////////
+` : "";
+    const query = preparation + `\u0412\u042B\u0411\u0420\u0410\u0422\u042C
+${dimensions.map((d, i) => `    ${expression(i)} \u041A\u0410\u041A ${d}`).join(",\n")},
+    \u0421\u0423\u041C\u041C\u0410(${expression(mappings.length - 1)}) \u041A\u0410\u041A ${resource}
+\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${sourceTable}
+\u0418\u0417 ${fromTable ? rawTable : `${fullEntity}.${tabular}`} \u041A\u0410\u041A \u0421\u0442\u0440\u043E\u043A\u0438
+${fromTable ? "" : "\u0413\u0414\u0415 \u0421\u0442\u0440\u043E\u043A\u0438.\u0421\u0441\u044B\u043B\u043A\u0430 = &\u0421\u0441\u044B\u043B\u043A\u0430\n"}${groups.length ? `\u0421\u0413\u0420\u0423\u041F\u041F\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E ${groups.join(", ")}
+` : ""}
+\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E ${dimensions.join(", ")}
+;
+
 \u0412\u042B\u0411\u0420\u0410\u0422\u042C
-    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${mainDim} \u041A\u0410\u041A ${mainDim},
-    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName} \u041A\u0410\u041A ${vtResName}
-\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${vtBalances}
-\u0418\u0417
-    ${registerKind}.${cleanReg}.${regType}(
-        &\u041F\u0435\u0440\u0438\u043E\u0434\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044F,
-        ${vtFilterCondition}
-    ) \u041A\u0410\u041A \u041E\u0441\u0442\u0430\u0442\u043A\u0438
-\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E
-    ${mainDim}
+${dimensions.map((d) => `    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${d} \u041A\u0410\u041A ${d}`).join(",\n")},
+    \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${balance} \u041A\u0410\u041A ${balance}
+\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${balanceTable}
+\u0418\u0417 \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F.${register}.\u041E\u0441\u0442\u0430\u0442\u043A\u0438(
+    &\u041F\u0435\u0440\u0438\u043E\u0434\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044F,
+    (${dimensions.join(", ")}) \u0412 (\u0412\u042B\u0411\u0420\u0410\u0422\u042C ${dimensions.join(", ")} \u0418\u0417 ${sourceTable})
+) \u041A\u0410\u041A \u041E\u0441\u0442\u0430\u0442\u043A\u0438
+\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E ${dimensions.join(", ")}
 ;
 
-////////////////////////////////////////////////////////////////////////////////
 \u0412\u042B\u0411\u0420\u0410\u0422\u042C
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainDim} \u041A\u0410\u041A ${mainDim},
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainRes} \u041A\u0410\u041A \u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F,
-    \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName}, 0) \u041A\u0410\u041A \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E,
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainRes} - \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName}, 0) \u041A\u0410\u041A \u0414\u0435\u0444\u0438\u0446\u0438\u0442
-\u0418\u0417
-    ${vtSource} \u041A\u0410\u041A \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435
-    \u041B\u0415\u0412\u041E\u0415 \u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u0415 ${vtBalances} \u041A\u0410\u041A \u041E\u0441\u0442\u0430\u0442\u043A\u0438
-        \u041F\u041E ${joinConditions}
-\u0413\u0414\u0415
-    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${mainRes} > \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${vtResName}, 0)
+${dimensions.map((d) => `    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${d} \u041A\u0410\u041A ${d}`).join(",\n")},
+    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${resource} \u041A\u0410\u041A \u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F,
+    \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${balance}, 0) \u041A\u0410\u041A \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E,
+    \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${resource} - \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${balance}, 0) \u041A\u0410\u041A \u0414\u0435\u0444\u0438\u0446\u0438\u0442
+\u0418\u0417 ${sourceTable} \u041A\u0410\u041A \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435
+    \u041B\u0415\u0412\u041E\u0415 \u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u0415 ${balanceTable} \u041A\u0410\u041A \u041E\u0441\u0442\u0430\u0442\u043A\u0438
+    \u041F\u041E ${dimensions.map((d) => `\u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${d} = \u041E\u0441\u0442\u0430\u0442\u043A\u0438.${d}`).join("\n        \u0418 ")}
+\u0413\u0414\u0415 \u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0435.${resource} > \u0415\u0421\u0422\u042CNULL(\u041E\u0441\u0442\u0430\u0442\u043A\u0438.${balance}, 0)
 ;
 
-////////////////////////////////////////////////////////////////////////////////
-\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${vtSource}
+\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${sourceTable}
 ;
-
-////////////////////////////////////////////////////////////////////////////////
-\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${vtBalances}`;
-    if (!options.includeScaffolding) {
-      return query;
-    }
-    return `// \u0418\u043D\u0438\u0446\u0438\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u0417\u0430\u043F\u0440\u043E\u0441 \u0441 \u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u043E\u043C \u0412\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0445 \u0422\u0430\u0431\u043B\u0438\u0446
+\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${balanceTable}${fromTable ? `;
+\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${rawTable}` : ""}`;
+    if (!options.includeScaffolding) return query;
+    return `${warnings.map((warning) => `// ${warning}`).join("\n")}
+// \u0428\u0430\u0431\u043B\u043E\u043D \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u0434\u0435\u0444\u0438\u0446\u0438\u0442\u0430. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0438\u043C\u0435\u043D\u0430 \u0438 \u0442\u0438\u043F\u044B \u043F\u043E\u043B\u0435\u0439 \u043F\u043E \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438.
+// \u0412\u0441\u0435 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u044F \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 \u0434\u043E\u043B\u0436\u043D\u044B \u0431\u044B\u0442\u044C \u0443\u0447\u0442\u0435\u043D\u044B \u0432 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0438 \u043B\u0438\u0431\u043E \u044F\u0432\u043D\u043E \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u044B.
+// ${fromTable ? "\u0422\u0435\u043A\u0443\u0449\u0438\u0435 \u0441\u0442\u0440\u043E\u043A\u0438 \u0432\u044B\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F \u0438\u0437 \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 \u043C\u043E\u0434\u0443\u043B\u044F \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435." : "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u2014 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u0441\u0442\u0440\u043E\u043A\u0438 \u0431\u0430\u0437\u044B \u043F\u043E \u0421\u0441\u044B\u043B\u043A\u0430; \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0432 \u043F\u0430\u043C\u044F\u0442\u0438 \u043D\u0435 \u0447\u0438\u0442\u0430\u044E\u0442\u0441\u044F."}
+// \u041F\u0435\u0440\u0438\u043E\u0434\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u0437\u0430\u0434\u0430\u0451\u0442\u0441\u044F \u0432\u044B\u0437\u044B\u0432\u0430\u044E\u0449\u0438\u043C \u043A\u043E\u0434\u043E\u043C; \u0443\u0447\u0442\u0438\u0442\u0435 \u0441\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0435 \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u044F \u043F\u0440\u0438 \u043F\u0435\u0440\u0435\u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0438.
+// \u0414\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E \u0440\u0435\u0430\u043B\u0438\u0437\u0443\u0439\u0442\u0435 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438, \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u044F \u0438 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0443 \u043E\u0442\u043A\u0430\u0437\u0430.
 \u0417\u0430\u043F\u0440\u043E\u0441 = \u041D\u043E\u0432\u044B\u0439 \u0417\u0430\u043F\u0440\u043E\u0441;
 \u0417\u0430\u043F\u0440\u043E\u0441.\u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0412\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0445\u0422\u0430\u0431\u043B\u0438\u0446 = \u041D\u043E\u0432\u044B\u0439 \u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0412\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0445\u0422\u0430\u0431\u043B\u0438\u0446;
-\u0417\u0430\u043F\u0440\u043E\u0441.\u0422\u0435\u043A\u0441\u0442 = 
-    "${query.split("\n").join('"\n    + "')}";
-
-\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440("\u0421\u0441\u044B\u043B\u043A\u0430", \u0421\u0441\u044B\u043B\u043A\u0430);
-\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440("\u041F\u0435\u0440\u0438\u043E\u0434\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044F", ?(\u0417\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E(\u0414\u0430\u0442\u0430), \u0414\u0430\u0442\u0430, \u0422\u0435\u043A\u0443\u0449\u0430\u044F\u0414\u0430\u0442\u0430\u0421\u0435\u0430\u043D\u0441\u0430()));
-
+\u0417\u0430\u043F\u0440\u043E\u0441.\u0422\u0435\u043A\u0441\u0442 = ${bslString(query)};
+${fromTable ? `\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440("\u0421\u0442\u0440\u043E\u043A\u0438\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430", ${tabular}.\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C());` : '\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440("\u0421\u0441\u044B\u043B\u043A\u0430", \u0421\u0441\u044B\u043B\u043A\u0430);'}
+${fromTable ? [...new Set(mappings.filter((m) => m.header).map((m) => m.source))].map((name) => `\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440("${name}", ${name});`).join("\n") : ""}
+\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440("\u041F\u0435\u0440\u0438\u043E\u0434\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044F", \u041F\u0435\u0440\u0438\u043E\u0434\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044F);
 \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B = \u0417\u0430\u043F\u0440\u043E\u0441.\u0412\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C\u041F\u0430\u043A\u0435\u0442();
-// \u0418\u043D\u0434\u0435\u043A\u0441 2 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0442\u0440\u0435\u0442\u044C\u0435\u043C\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0443 \u0432\u044B\u0431\u043E\u0440\u043A\u0438 \u0434\u0435\u0444\u0438\u0446\u0438\u0442\u0430 (\u043F\u043E\u0441\u043B\u0435 \u0434\u0432\u0443\u0445 \u043F\u043E\u043C\u0435\u0449\u0435\u043D\u0438\u0439 \u0432\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B)
-\u0412\u044B\u0431\u043E\u0440\u043A\u0430\u0414\u0435\u0444\u0438\u0446\u0438\u0442 = \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B[2].\u0412\u044B\u0431\u0440\u0430\u0442\u044C();
-
-\u041F\u043E\u043A\u0430 \u0412\u044B\u0431\u043E\u0440\u043A\u0430\u0414\u0435\u0444\u0438\u0446\u0438\u0442.\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439() \u0426\u0438\u043A\u043B
-    // \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u043D\u0435\u0445\u0432\u0430\u0442\u043A\u0438 \u0442\u043E\u0432\u0430\u0440\u0430
-    \u041E\u0431\u0449\u0435\u0433\u043E\u041D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440.\u0421\u043E\u043E\u0431\u0449\u0438\u0442\u044C\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E(
-        \u0421\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u0435\u0424\u0443\u043D\u043A\u0446\u0438\u0438\u041A\u043B\u0438\u0435\u043D\u0442\u0421\u0435\u0440\u0432\u0435\u0440.\u0412\u0441\u0442\u0430\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B\u0412\u0421\u0442\u0440\u043E\u043A\u0443(
-            \u041D\u0421\u0442\u0440("ru = '\u041D\u0435\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E \u0442\u043E\u0432\u0430\u0440\u0430 "%1": \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F %2, \u0432 \u043D\u0430\u043B\u0438\u0447\u0438\u0438 %3'"),
-            \u0412\u044B\u0431\u043E\u0440\u043A\u0430\u0414\u0435\u0444\u0438\u0446\u0438\u0442.\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430,
-            \u0412\u044B\u0431\u043E\u0440\u043A\u0430\u0414\u0435\u0444\u0438\u0446\u0438\u0442.\u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F,
-            \u0412\u044B\u0431\u043E\u0440\u043A\u0430\u0414\u0435\u0444\u0438\u0446\u0438\u0442.\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E
-        )
-    );
-\u041A\u043E\u043D\u0435\u0446\u0426\u0438\u043A\u043B\u0430;`;
+// \u0417\u0430\u043F\u0440\u043E\u0441 \u0441 \u0438\u043D\u0434\u0435\u043A\u0441\u043E\u043C ${fromTable ? 3 : 2} \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0434\u0435\u0444\u0438\u0446\u0438\u0442. \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u0439\u0442\u0435 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0432 \u043B\u043E\u0433\u0438\u043A\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430.
+\u0422\u0430\u0431\u043B\u0438\u0446\u0430\u0414\u0435\u0444\u0438\u0446\u0438\u0442\u0430 = \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B[${fromTable ? 3 : 2}].\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C();`;
   }
-  /**
-   * Intelligently refactors an arbitrary 1C query according to ITS standards:
-   * - Isolates virtual table JOINs into temporary indexed tables
-   * - Wraps numeric fields from LEFT JOINs with ЕСТЬNULL(..., 0)
-   * - Appends УНИЧТОЖИТЬ ВТ_... to release server memory
-   */
+  /** Conservative extraction of one virtual JOIN from a plain, single SELECT. */
   static refactorQuery(rawQuery) {
-    const appliedOptimizations = [];
-    let modified = rawQuery.trim();
-    const vtJoinRegex = /(ЛЕВОЕ|ПРАВОЕ|ВНУТРЕННЕЕ|ПОЛНОЕ)?\s*СОЕДИНЕНИЕ\s+(Регистр(?:Накопления|Сведений|Бухгалтерии)\.([а-яА-ЯёЁa-zA-Z0-9_]+)\.(Остатки|Обороты|СрезПоследних|СрезПервых)\s*\(([^)]*)\))\s+КАК\s+([а-яА-ЯёЁa-zA-Z0-9_]+)\s+ПО\s+([^\n;]+)/i;
-    const match = modified.match(vtJoinRegex);
-    if (match) {
-      const joinType = match[1] || "\u041B\u0415\u0412\u041E\u0415";
-      const fullVtExpr = match[2];
-      const registerName = match[3];
-      const vtType = match[4];
-      const alias = match[6];
-      const onCondition = match[7].trim();
-      let joinField = "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430";
-      const fieldMatch = onCondition.match(new RegExp(`${alias}\\.([\u0430-\u044F\u0410-\u042F\u0451\u0401a-zA-Z0-9_]+)`, "i"));
-      if (fieldMatch) {
-        joinField = fieldMatch[1];
-      }
-      const vtName = `\u0412\u0422_${alias}`;
-      const tempTablePart = `\u0412\u042B\u0411\u0420\u0410\u0422\u042C
-    ${alias}.${joinField} \u041A\u0410\u041A ${joinField},
-    ${alias}.\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E${vtType === "\u041E\u0441\u0442\u0430\u0442\u043A\u0438" ? "\u041E\u0441\u0442\u0430\u0442\u043E\u043A" : ""} \u041A\u0410\u041A \u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E
-\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${vtName}
-\u0418\u0417
-    ${fullVtExpr} \u041A\u0410\u041A ${alias}
-\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E
-    ${joinField}
+    const unchanged = (reason) => ({ refactoredQuery: rawQuery, appliedOptimizations: [], reason });
+    const text = withoutComments(rawQuery).trim().replace(/;\s*$/, "");
+    if (/\bFOR\s+UPDATE\b|ДЛЯ\s+ИЗМЕНЕНИЯ|РАЗРЕШЕННЫЕ/i.test(text)) {
+      return unchanged("\u0417\u0430\u043F\u0440\u043E\u0441 \u0441 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u043C\u0438 \u0438\u043B\u0438 \u0420\u0410\u0417\u0420\u0415\u0428\u0415\u041D\u041D\u042B\u0415 \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0440\u0443\u0447\u043D\u043E\u0433\u043E \u0430\u043D\u0430\u043B\u0438\u0437\u0430 \u0442\u0440\u0430\u043D\u0437\u0430\u043A\u0446\u0438\u0439 \u0438 \u043F\u0440\u0430\u0432. \u0410\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u0435 \u043F\u0440\u0435\u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u043E\u0442\u043C\u0435\u043D\u0435\u043D\u043E.");
+    }
+    if (!/^ВЫБРАТЬ\s/i.test(text) || /[;"*]|ПОМЕСТИТЬ|ОБЪЕДИНИТЬ/i.test(text) || (text.match(/ВЫБРАТЬ/gi) || []).length !== 1) {
+      return unchanged("\u041F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F \u043E\u0434\u0438\u043D \u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0412\u042B\u0411\u0420\u0410\u0422\u042C \u0431\u0435\u0437 \u0432\u043B\u043E\u0436\u0435\u043D\u043D\u044B\u0445 \u0432\u044B\u0431\u043E\u0440\u043E\u043A, \u0441\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u0445 \u043B\u0438\u0442\u0435\u0440\u0430\u043B\u043E\u0432, \u043F\u0430\u043A\u0435\u0442\u043E\u0432 \u0438 *. BSL-\u043C\u043E\u0434\u0443\u043B\u0438 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u043D\u0435 \u043F\u0435\u0440\u0435\u043F\u0438\u0441\u044B\u0432\u0430\u044E\u0442\u0441\u044F.");
+    }
+    const expr = /СОЕДИНЕНИЕ\s+(Регистр(?:Накопления|Сведений)\.[А-Яа-яЁёA-Za-z0-9_]+\.(?:Остатки|Обороты|СрезПоследних|СрезПервых)\s*\()/gi;
+    const matches = [...text.matchAll(expr)];
+    if (matches.length !== 1) return unchanged("\u0414\u043B\u044F \u043F\u0440\u0435\u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u043D\u0438\u044F \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F \u0440\u043E\u0432\u043D\u043E \u043E\u0434\u043D\u043E \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 \u0441 \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u0435\u0439. \u041E\u0441\u0442\u0430\u043B\u044C\u043D\u043E\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439.");
+    const match = matches[0];
+    const expressionStart = match.index + match[0].indexOf(match[1]);
+    let end = match.index + match[0].length, depth = 1;
+    while (end < text.length && depth > 0) {
+      if (text[end] === "(") depth++;
+      if (text[end] === ")") depth--;
+      end++;
+    }
+    if (depth) return unchanged("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0441\u043A\u043E\u0431\u043A\u0438.");
+    const aliasMatch = text.slice(end).match(/^\s+КАК\s+([А-Яа-яЁёA-Za-z0-9_]+)\s+ПО\s+/i);
+    if (!aliasMatch) return unchanged("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043F\u0441\u0435\u0432\u0434\u043E\u043D\u0438\u043C \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0438 \u0443\u0441\u043B\u043E\u0432\u0438\u0435 \u041F\u041E.");
+    const alias = aliasMatch[1], vt = `\u0412\u0422_${alias}`;
+    if (text.toLowerCase().includes(vt.toLowerCase())) return unchanged(`\u0418\u043C\u044F ${vt} \u0443\u0436\u0435 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F; \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u0435 \u043F\u0440\u0435\u043E\u0431\u0440\u0430\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u043E\u0442\u043C\u0435\u043D\u0435\u043D\u043E.`);
+    const fieldPattern = new RegExp(`(?:^|[^\u0410-\u042F\u0430-\u044F\u0401\u0451A-Za-z0-9_.])${alias}\\.([\u0410-\u042F\u0430-\u044F\u0401\u0451A-Za-z0-9_]+)`, "gi");
+    const references = text.slice(0, expressionStart) + text.slice(end);
+    const fields = [...references.matchAll(fieldPattern)].map((m) => m[1]);
+    const unique = fields.filter((f, i) => fields.findIndex((v) => v.toLowerCase() === f.toLowerCase()) === i);
+    const condition = text.slice(end + aliasMatch[0].length).split(/\s+(?:WHERE|ГДЕ|СГРУППИРОВАТЬ|УПОРЯДОЧИТЬ|ИТОГИ)(?=\s|$)/i)[0];
+    const indexField = [...condition.matchAll(fieldPattern)][0]?.[1];
+    if (!unique.length || !indexField) return unchanged("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C \u043F\u043E\u043B\u044F \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0438 \u043F\u043E\u043B\u0435 \u0441\u0432\u044F\u0437\u0438.");
+    const extraction = `\u0412\u042B\u0411\u0420\u0410\u0422\u042C
+${unique.map((f) => `    ${alias}.${f} \u041A\u0410\u041A ${f}`).join(",\n")}
+\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C ${vt}
+\u0418\u0417 ${text.slice(expressionStart, end)} \u041A\u0410\u041A ${alias}
+\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E ${indexField}
 ;
 
-////////////////////////////////////////////////////////////////////////////////
 `;
-      appliedOptimizations.push(`\u0412\u044B\u043D\u0435\u0441\u0435\u043D\u0438\u0435 \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B ${registerName}.${vtType} \u0432 \u0438\u043D\u0434\u0435\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u0443\u044E \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u0443\u044E \u0442\u0430\u0431\u043B\u0438\u0446\u0443 ${vtName}`);
-      appliedOptimizations.push(`\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0430 \u044F\u0432\u043D\u0430\u044F \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u044F \u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E ${joinField}`);
-      const replacementJoin = `${joinType} \u0421\u041E\u0415\u0414\u0418\u041D\u0415\u041D\u0418\u0415 ${vtName} \u041A\u0410\u041A ${alias} \u041F\u041E ${onCondition}`;
-      modified = modified.replace(match[0], replacementJoin);
-      modified = `${tempTablePart}${modified}
-
-////////////////////////////////////////////////////////////////////////////////
-\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${vtName};`;
-      appliedOptimizations.push(`\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0430 \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u044F \u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${vtName} \u0434\u043B\u044F \u043E\u0441\u0432\u043E\u0431\u043E\u0436\u0434\u0435\u043D\u0438\u044F \u043F\u0430\u043C\u044F\u0442\u0438 \u0421\u0423\u0411\u0414`);
-    }
-    if (/ЛЕВОЕ\s+СОЕДИНЕНИЕ/i.test(modified) && !/ЕСТЬNULL/i.test(modified)) {
-      const nullTarget = /([а-яА-ЯёЁa-zA-Z0-9_]+\.(?:Количество|Сумма|Остаток)[а-яА-ЯёЁa-zA-Z0-9_]*)/gi;
-      if (nullTarget.test(modified)) {
-        modified = modified.replace(nullTarget, "\u0415\u0421\u0422\u042CNULL($1, 0)");
-        appliedOptimizations.push("\u041E\u0431\u0435\u0440\u0442\u044B\u0432\u0430\u043D\u0438\u0435 \u0447\u0438\u0441\u043B\u043E\u0432\u044B\u0445 \u043F\u043E\u043B\u0435\u0439 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u044F \u0432 \u0444\u0443\u043D\u043A\u0446\u0438\u044E \u0415\u0421\u0422\u042CNULL(..., 0)");
-      }
-    }
     return {
-      refactoredQuery: modified,
-      appliedOptimizations
+      refactoredQuery: extraction + text.slice(0, expressionStart) + vt + text.slice(end) + `;
+
+\u0423\u041D\u0418\u0427\u0422\u041E\u0416\u0418\u0422\u042C ${vt};`,
+      appliedOptimizations: [`\u0412\u044B\u0431\u043E\u0440\u043A\u0430 \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0435\u043D\u0430 \u0432 ${vt}; \u0438\u043C\u0435\u043D\u0430 \u043F\u043E\u043B\u0435\u0439 \u0438 \u0441\u0435\u043C\u0430\u043D\u0442\u0438\u043A\u0430 NULL \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u044B.`, `\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D \u0438\u043D\u0434\u0435\u043A\u0441 \u043F\u043E ${indexField}. \u0421\u0440\u0430\u0432\u043D\u0438\u0442\u0435 \u043F\u043B\u0430\u043D\u044B \u0438 \u0432\u0440\u0435\u043C\u044F \u043D\u0430 \u0441\u0432\u043E\u0438\u0445 \u0434\u0430\u043D\u043D\u044B\u0445.`],
+      reason: "\u041F\u043E\u043B\u0443\u0447\u0438\u043B\u0441\u044F \u043F\u0430\u043A\u0435\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432. \u0412\u044B\u0431\u043E\u0440\u043A\u0430 \u0438\u0441\u0445\u043E\u0434\u043D\u043E\u0433\u043E SELECT \u2014 \u0432\u0442\u043E\u0440\u043E\u0439 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0412\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C\u041F\u0430\u043A\u0435\u0442() (\u0438\u043D\u0434\u0435\u043A\u0441 1); \u0430\u0434\u0430\u043F\u0442\u0438\u0440\u0443\u0439\u0442\u0435 \u0432\u044B\u0437\u044B\u0432\u0430\u044E\u0449\u0438\u0439 BSL-\u043A\u043E\u0434."
     };
   }
 };
 
-// src/bslTokenizer.ts
-var BSLTokenizer = class {
-  static KEYWORDS = /* @__PURE__ */ new Set([
-    "\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430",
-    "\u0444\u0443\u043D\u043A\u0446\u0438\u044F",
-    "\u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B",
-    "\u043A\u043E\u043D\u0435\u0446\u0444\u0443\u043D\u043A\u0446\u0438\u0438",
-    "\u0435\u0441\u043B\u0438",
-    "\u0442\u043E\u0433\u0434\u0430",
-    "\u0438\u043D\u0430\u0447\u0435\u0435\u0441\u043B\u0438",
-    "\u0438\u043D\u0430\u0447\u0435",
-    "\u043A\u043E\u043D\u0435\u0446\u0435\u0441\u043B\u0438",
-    "\u0434\u043B\u044F",
-    "\u043A\u0430\u0436\u0434\u043E\u0433\u043E",
-    "\u0438\u0437",
-    "\u043F\u043E",
-    "\u0446\u0438\u043A\u043B",
-    "\u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430",
-    "\u043F\u043E\u043A\u0430",
-    "\u043F\u043E\u043F\u044B\u0442\u043A\u0430",
-    "\u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435",
-    "\u043A\u043E\u043D\u0435\u0446\u043F\u043E\u043F\u044B\u0442\u043A\u0438",
-    "\u0432\u043E\u0437\u0432\u0440\u0430\u0442",
-    "\u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C",
-    "\u043F\u0440\u0435\u0440\u0432\u0430\u0442\u044C",
-    "\u043F\u0435\u0440\u0435\u043C",
-    "\u044D\u043A\u0441\u043F\u043E\u0440\u0442",
-    "\u043D\u043E\u0432\u044B\u0439",
-    "\u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C",
-    "\u0438",
-    "\u0438\u043B\u0438",
-    "\u043D\u0435",
-    "\u0438\u0441\u0442\u0438\u043D\u0430",
-    "\u043B\u043E\u0436\u044C",
-    "\u043D\u0435\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E",
-    "\u0437\u043D\u0430\u0447"
-  ]);
-  /**
-   * Tokenizes full BSL code into a sequential stream of tokens.
-   */
-  static tokenize(source) {
-    const tokens = [];
-    let i = 0;
-    let line = 1;
-    let lineStart = 0;
-    while (i < source.length) {
-      const ch = source[i];
-      const col = i - lineStart + 1;
-      if (ch === "\n") {
-        line++;
-        i++;
-        lineStart = i;
-        continue;
-      }
-      if (ch === "\r") {
-        if (source[i + 1] === "\n") {
-          i++;
-        }
-        line++;
-        i++;
-        lineStart = i;
-        continue;
-      }
-      if (ch === " " || ch === "	") {
-        i++;
-        continue;
-      }
-      if (ch === "/" && source[i + 1] === "/") {
-        const start = i;
-        while (i < source.length && source[i] !== "\n" && source[i] !== "\r") {
-          i++;
-        }
-        tokens.push({
-          type: "COMMENT" /* COMMENT */,
-          value: source.substring(start, i),
-          line,
-          column: col,
-          offset: start
-        });
-        continue;
-      }
-      if (ch === "&") {
-        const start = i;
-        i++;
-        while (i < source.length && /[а-яА-ЯёЁa-zA-Z0-9_]/.test(source[i])) {
-          i++;
-        }
-        tokens.push({
-          type: "DIRECTIVE" /* DIRECTIVE */,
-          value: source.substring(start, i),
-          line,
-          column: col,
-          offset: start
-        });
-        continue;
-      }
-      if (ch === "#") {
-        const start = i;
-        i++;
-        while (i < source.length && /[а-яА-ЯёЁa-zA-Z0-9_]/.test(source[i])) {
-          i++;
-        }
-        tokens.push({
-          type: "PREPROCESSOR" /* PREPROCESSOR */,
-          value: source.substring(start, i),
-          line,
-          column: col,
-          offset: start
-        });
-        continue;
-      }
-      if (ch === '"' || ch === "|") {
-        const start = i;
-        i++;
-        let insideQuotes = ch === '"';
-        while (i < source.length) {
-          if (source[i] === '"') {
-            if (source[i + 1] === '"') {
-              i += 2;
-              continue;
-            } else {
-              insideQuotes = false;
-              i++;
-              break;
-            }
-          } else if (source[i] === "\n" || source[i] === "\r") {
-            break;
-          } else {
-            i++;
-          }
-        }
-        tokens.push({
-          type: "STRING_LITERAL" /* STRING_LITERAL */,
-          value: source.substring(start, i),
-          line,
-          column: col,
-          offset: start
-        });
-        continue;
-      }
-      if (ch === "'") {
-        const start = i;
-        i++;
-        while (i < source.length && source[i] !== "'" && source[i] !== "\n") {
-          i++;
-        }
-        if (source[i] === "'")
-          i++;
-        tokens.push({
-          type: "DATE_LITERAL" /* DATE_LITERAL */,
-          value: source.substring(start, i),
-          line,
-          column: col,
-          offset: start
-        });
-        continue;
-      }
-      if (/[0-9]/.test(ch)) {
-        const start = i;
-        while (i < source.length && /[0-9.]/.test(source[i])) {
-          i++;
-        }
-        tokens.push({
-          type: "NUMBER_LITERAL" /* NUMBER_LITERAL */,
-          value: source.substring(start, i),
-          line,
-          column: col,
-          offset: start
-        });
-        continue;
-      }
-      if (/[а-яА-ЯёЁa-zA-Z_]/.test(ch)) {
-        const start = i;
-        while (i < source.length && /[а-яА-ЯёЁa-zA-Z0-9_]/.test(source[i])) {
-          i++;
-        }
-        const val = source.substring(start, i);
-        const isKw = this.KEYWORDS.has(val.toLowerCase());
-        tokens.push({
-          type: isKw ? "KEYWORD" /* KEYWORD */ : "IDENTIFIER" /* IDENTIFIER */,
-          value: val,
-          line,
-          column: col,
-          offset: start
-        });
-        continue;
-      }
-      if (ch === "<" && source[i + 1] === ">") {
-        tokens.push({ type: "OPERATOR" /* OPERATOR */, value: "<>", line, column: col, offset: i });
-        i += 2;
-        continue;
-      }
-      if ((ch === "<" || ch === ">") && source[i + 1] === "=") {
-        tokens.push({ type: "OPERATOR" /* OPERATOR */, value: ch + "=", line, column: col, offset: i });
-        i += 2;
-        continue;
-      }
-      if ("=+-*/%<>".includes(ch)) {
-        tokens.push({ type: "OPERATOR" /* OPERATOR */, value: ch, line, column: col, offset: i });
-        i++;
-        continue;
-      }
-      if (";,().[]".includes(ch)) {
-        tokens.push({ type: "PUNCTUATION" /* PUNCTUATION */, value: ch, line, column: col, offset: i });
-        i++;
-        continue;
-      }
-      tokens.push({ type: "UNKNOWN" /* UNKNOWN */, value: ch, line, column: col, offset: i });
-      i++;
+// src/entities/audit/model/lexicalChecks.ts
+function lexicalChecks(all) {
+  const tokens = all.filter((t) => t.type !== "COMMENT" /* COMMENT */);
+  const issues = [], queries = /* @__PURE__ */ new Map();
+  const low = (i) => tokens[i]?.value.toLowerCase();
+  const add = (i, rule, severity, message, suggestion) => issues.push({ line: tokens[i].line, rule, severity, message, suggestion });
+  const isQuery = (name) => queries.get(name) ?? /^(?:запрос|query)$/.test(name);
+  let loops = 0, posting = false, postingLine = 0, locked = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i], value = low(i);
+    if (token.type === "STRING_LITERAL" /* STRING_LITERAL */) continue;
+    if (["\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430", "\u0444\u0443\u043D\u043A\u0446\u0438\u044F", "procedure", "function"].includes(value)) {
+      queries.clear();
+      loops = 0;
+      posting = low(i + 1) === "\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F";
+      postingLine = i;
+      locked = false;
     }
-    return tokens;
+    if (["\u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B", "\u043A\u043E\u043D\u0435\u0446\u0444\u0443\u043D\u043A\u0446\u0438\u0438", "endprocedure", "endfunction"].includes(value)) {
+      if (posting && !locked) add(
+        postingLine,
+        "ITS-LOCK-001",
+        "warning",
+        "\u0412 \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u044F\u0432\u043D\u0430\u044F \u0411\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u0414\u0430\u043D\u043D\u044B\u0445; \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043C\u0435\u0445\u0430\u043D\u0438\u0437\u043C \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043E\u043A \u0432\u044B\u0437\u044B\u0432\u0430\u0435\u043C\u043E\u0433\u043E \u043A\u043E\u0434\u0430.",
+        "\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0442\u0440\u0430\u043D\u0437\u0430\u043A\u0446\u0438\u044E \u0438 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438 \u0432 \u0432\u044B\u0437\u044B\u0432\u0430\u0435\u043C\u043E\u043C \u043A\u043E\u0434\u0435. \u0415\u0441\u043B\u0438 \u043E\u043D\u0438 \u0443\u0436\u0435 \u043E\u0431\u0435\u0441\u043F\u0435\u0447\u0435\u043D\u044B, \u043F\u043E\u0434\u0430\u0432\u0438\u0442\u0435 \u044D\u0442\u043E \u043F\u0440\u0430\u0432\u0438\u043B\u043E \u0434\u043B\u044F \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0430."
+      );
+      posting = false;
+      loops = 0;
+      queries.clear();
+    }
+    if (posting && ["\u043D\u043E\u0432\u044B\u0439", "new"].includes(value) && /^(?:блокировкаданных|datalock)$/.test(low(i + 1))) locked = true;
+    if (["\u0446\u0438\u043A\u043B", "do"].includes(value)) loops++;
+    if (["\u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430", "enddo"].includes(value)) loops = Math.max(0, loops - 1);
+    if (token.type === "IDENTIFIER" /* IDENTIFIER */ && low(i + 1) === "=" && low(i - 1) !== ".") {
+      queries.set(value, /^(?:новый|new)$/.test(low(i + 2)) && /^(?:запрос|query)$/.test(low(i + 3)));
+    }
+    if (loops && /^(?:выполнить|выполнитьпакет|execute|executebatch)$/.test(value) && low(i - 1) === "." && low(i + 1) === "(" && isQuery(low(i - 2))) {
+      add(
+        i,
+        "ITS-PERF-001",
+        "error",
+        "\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0432\u043D\u0443\u0442\u0440\u0438 \u0446\u0438\u043A\u043B\u0430 (\u0417\u0430\u043F\u0440\u043E\u0441.\u0412\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C()).",
+        "\u041F\u0435\u0440\u0435\u043D\u0435\u0441\u0438\u0442\u0435 \u0447\u0442\u0435\u043D\u0438\u0435 \u0434\u0430\u043D\u043D\u044B\u0445 \u0432 \u0437\u0430\u043F\u0440\u043E\u0441 \u0434\u043E \u0446\u0438\u043A\u043B\u0430; \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u044C \u043F\u0430\u043A\u0435\u0442\u043D\u043E\u0439 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0438."
+      );
+    }
+    if (/^(?:текст|text)$/.test(value) && low(i - 1) === "." && low(i + 1) === "=" && isQuery(low(i - 2))) {
+      let plus = false, dynamic = false;
+      for (let j = i + 2; j < tokens.length && low(j) !== ";"; j++) {
+        if (low(j) === "+") plus = true;
+        if (tokens[j].type === "IDENTIFIER" /* IDENTIFIER */ && !(isQuery(low(j)) && low(j + 1) === ".") && !/^(?:текст|text)$/.test(low(j))) dynamic = true;
+      }
+      if (plus && dynamic) add(
+        i,
+        "ITS-SEC-001",
+        "warning",
+        "\u0414\u0438\u043D\u0430\u043C\u0438\u0447\u0435\u0441\u043A\u0430\u044F \u0441\u043A\u043B\u0435\u0439\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0441\u043E \u0441\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u043C\u0438 \u043F\u0435\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u043C\u0438 (\u0440\u0438\u0441\u043A 1\u0421-\u0438\u043D\u044A\u0435\u043A\u0446\u0438\u0438).",
+        "\u041F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0447\u0435\u0440\u0435\u0437 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0437\u0430\u043F\u0440\u043E\u0441\u0430. \u0414\u0438\u043D\u0430\u043C\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u0438\u043C\u0435\u043D\u0430 \u043F\u043E\u043B\u0435\u0439 \u0438 \u0443\u0441\u043B\u043E\u0432\u0438\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0439\u0442\u0435 \u043F\u043E \u0440\u0430\u0437\u0440\u0435\u0448\u0451\u043D\u043D\u043E\u043C\u0443 \u0441\u043F\u0438\u0441\u043A\u0443."
+      );
+    }
+    if (/^(?:предупреждение|вопрос|ввестистроку|ввестичисло|warning|doquerybox)$/.test(value) && low(i - 1) !== "." && !/^(?:процедура|функция|procedure|function)$/.test(low(i - 1)) && low(i + 1) === "(") {
+      add(
+        i,
+        "ITS-UI-003",
+        "warning",
+        `\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u043C\u043E\u0434\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u043E\u043A\u043D\u0430 (${token.value}). \u0417\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E \u0432 \u0432\u0435\u0431-\u043A\u043B\u0438\u0435\u043D\u0442\u0435 \u0438 \u043C\u043E\u0431\u0438\u043B\u044C\u043D\u043E\u043C \u043A\u043B\u0438\u0435\u043D\u0442\u0435.`,
+        "\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0430\u0441\u0438\u043D\u0445\u0440\u043E\u043D\u043D\u044B\u0439 API \u0446\u0435\u043B\u0435\u0432\u043E\u0439 \u0432\u0435\u0440\u0441\u0438\u0438 \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B: \u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C\u041F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435(), \u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C\u0412\u043E\u043F\u0440\u043E\u0441() \u0438\u043B\u0438 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u0439 async/await."
+      );
+    }
   }
-};
+  return issues;
+}
+
+// src/entities/audit/model/policy.ts
+function applyAuditPolicy(issues, tokens, options) {
+  const directives = tokens.filter((t) => t.type === "COMMENT" /* COMMENT */).flatMap((token) => {
+    const match = token.value.match(/^\/\/\s*normahub-(disable-next-line|disable|enable)\s+([A-Z0-9,-]+(?:\s*,\s*[A-Z0-9-]+)*)/i);
+    return match ? [{ line: token.line, action: match[1].toLowerCase(), rules: match[2].toUpperCase().split(/\s*,\s*/) }] : [];
+  });
+  const disabled = new Set(options.disabledRules || []);
+  return issues.filter((issue) => {
+    if (disabled.has(issue.rule)) return false;
+    let suppressed = false;
+    for (const directive of directives) {
+      if (!directive.rules.includes(issue.rule)) continue;
+      if (directive.action === "disable-next-line" && directive.line + 1 === issue.line) return false;
+      if (directive.action !== "disable-next-line" && directive.line <= issue.line) suppressed = directive.action === "disable";
+    }
+    return !suppressed;
+  });
+}
 
 // src/standardsChecker.ts
 var StandardsChecker = class {
-  static auditCode(code) {
+  static auditCode(code, options = {}) {
     const issues = [];
+    if (!withoutComments(code).trim()) return [{ line: 1, rule: "INPUT-EMPTY", severity: "info", message: "\u041D\u0435\u0442 \u0438\u0441\u043F\u043E\u043B\u043D\u044F\u0435\u043C\u043E\u0433\u043E \u043A\u043E\u0434\u0430 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438.", suggestion: "\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043C\u043E\u0434\u0443\u043B\u044C BSL \u0438\u043B\u0438 \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442." }];
     const tokens = BSLTokenizer.tokenize(code);
-    const lines = code.split("\n");
-    const linesInsideLoop = /* @__PURE__ */ new Set();
-    const commentsByLine = /* @__PURE__ */ new Set();
-    let loopDepth = 0;
-    let inPosting = false;
-    let postingStartLine = 0;
-    let hasDataLockInPosting = false;
-    for (let i = 0; i < tokens.length; i++) {
-      const tok = tokens[i];
-      if (tok.type === "COMMENT" /* COMMENT */) {
-        commentsByLine.add(tok.line);
-        continue;
-      }
-      if (tok.type === "KEYWORD" /* KEYWORD */ && tok.value.toLowerCase() === "\u0446\u0438\u043A\u043B") {
-        loopDepth++;
-      }
-      if (tok.type === "KEYWORD" /* KEYWORD */ && tok.value.toLowerCase() === "\u043A\u043E\u043D\u0435\u0446\u0446\u0438\u043A\u043B\u0430") {
-        loopDepth = Math.max(0, loopDepth - 1);
-      }
-      if (loopDepth > 0) {
-        linesInsideLoop.add(tok.line);
-      }
-      if (tok.type === "KEYWORD" /* KEYWORD */ && tok.value.toLowerCase() === "\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430") {
-        const nextTok = tokens[i + 1];
-        if (nextTok && nextTok.value.toLowerCase() === "\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F") {
-          inPosting = true;
-          postingStartLine = tok.line;
-          hasDataLockInPosting = false;
-        }
-      }
-      if (inPosting && tok.type === "IDENTIFIER" /* IDENTIFIER */ && tok.value.toLowerCase() === "\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u0434\u0430\u043D\u043D\u044B\u0445") {
-        hasDataLockInPosting = true;
-      }
-      if (inPosting && tok.type === "KEYWORD" /* KEYWORD */ && tok.value.toLowerCase() === "\u043A\u043E\u043D\u0435\u0446\u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B") {
-        if (!hasDataLockInPosting) {
-          issues.push({
-            line: tok.line,
-            rule: "ITS-LOCK-001",
-            severity: "error",
-            message: "\u0412 \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0435 \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u043E\u0431\u044A\u0435\u043A\u0442 \u0411\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u0414\u0430\u043D\u043D\u044B\u0445.",
-            suggestion: "\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u0443\u044E \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0443 \u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u0435\u0440\u0435\u0434 \u0447\u0442\u0435\u043D\u0438\u0435\u043C \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432 \u0434\u043B\u044F \u043F\u0440\u0435\u0434\u043E\u0442\u0432\u0440\u0430\u0449\u0435\u043D\u0438\u044F \u0432\u0437\u0430\u0438\u043C\u043E\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043E\u043A (Deadlock) \u043F\u0440\u0438 \u043F\u0430\u0440\u0430\u043B\u043B\u0435\u043B\u044C\u043D\u043E\u043C \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0438."
-          });
-        }
-        inPosting = false;
-        hasDataLockInPosting = false;
-      }
-    }
-    for (let i = 0; i < tokens.length; i++) {
-      const tok = tokens[i];
-      if (tok.type === "COMMENT" /* COMMENT */ || tok.type === "STRING_LITERAL" /* STRING_LITERAL */) {
-        continue;
-      }
-      if (linesInsideLoop.has(tok.line) && (tok.type === "IDENTIFIER" /* IDENTIFIER */ || tok.type === "KEYWORD" /* KEYWORD */) && tok.value.toLowerCase() === "\u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C") {
-        const prev = tokens[i - 1];
-        const next = tokens[i + 1];
-        const caller = tokens[i - 2]?.value.toLowerCase();
-        const nonQueryCallers = ["\u0444\u043E\u043D\u043E\u0432\u044B\u0435\u0437\u0430\u0434\u0430\u043D\u0438\u044F", "\u0444\u043E\u043D\u043E\u0432\u043E\u0435\u0437\u0430\u0434\u0430\u043D\u0438\u0435", "\u043A\u043E\u043C\u0430\u043D\u0434\u0430", "\u043A\u043E\u043C\u0430\u043D\u0434\u044B", "\u0432\u043D\u0435\u0448\u043D\u044F\u044F\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430", "\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430", "\u0444\u043E\u0440\u043C\u0430", "\u0430\u043B\u0433\u043E\u0440\u0438\u0442\u043C"];
-        if (prev && prev.value === "." && next && next.value === "(" && (!caller || !nonQueryCallers.includes(caller))) {
-          issues.push({
-            line: tok.line,
-            rule: "ITS-PERF-001",
-            severity: "error",
-            message: "\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0432\u043D\u0443\u0442\u0440\u0438 \u0446\u0438\u043A\u043B\u0430 (\u0417\u0430\u043F\u0440\u043E\u0441.\u0412\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C()).",
-            suggestion: "\u041F\u0435\u0440\u0435\u043D\u0435\u0441\u0438\u0442\u0435 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0443 \u0434\u0430\u043D\u043D\u044B\u0445 \u0432 \u043E\u0434\u0438\u043D \u043F\u0430\u043A\u0435\u0442\u043D\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u0434\u043E \u0446\u0438\u043A\u043B\u0430 \u0441 \u043F\u043E\u043C\u0435\u0449\u0435\u043D\u0438\u0435\u043C \u0432\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u0443\u044E \u0442\u0430\u0431\u043B\u0438\u0446\u0443 \u0438 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435\u043C \u043F\u043E \u043C\u0430\u0441\u0441\u0438\u0432\u0443 \u0441\u0441\u044B\u043B\u043E\u043A."
-          });
-        }
-      }
-      if (tok.type === "IDENTIFIER" /* IDENTIFIER */ && ["\u043E\u0441\u0442\u0430\u0442\u043A\u0438", "\u0441\u0440\u0435\u0437\u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0445", "\u0441\u0440\u0435\u0437\u043F\u0435\u0440\u0432\u044B\u0445", "\u043E\u0431\u043E\u0440\u043E\u0442\u044B"].includes(tok.value.toLowerCase())) {
-        const prev = tokens[i - 1];
-        const next = tokens[i + 1];
-        const nextNext = tokens[i + 2];
-        if (prev && prev.value === "." && next && next.value === "(" && nextNext && nextNext.value === ")") {
-          issues.push({
-            line: tok.line,
-            rule: "ITS-PERF-002",
-            severity: "warning",
-            message: `\u041E\u0431\u0440\u0430\u0449\u0435\u043D\u0438\u0435 \u043A \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u0435 "${tok.value}" \u0431\u0435\u0437 \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0441\u0440\u0435\u0437\u0430/\u0443\u0441\u043B\u043E\u0432\u0438\u044F.`,
-            suggestion: "\u0412\u0441\u0435\u0433\u0434\u0430 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0438\u043E\u0434\u0430 \u0438 \u0443\u0441\u043B\u043E\u0432\u0438\u0439 \u043E\u0442\u0431\u043E\u0440\u0430 \u0432 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B, \u0430 \u043D\u0435 \u0444\u0438\u043B\u044C\u0442\u0440\u0443\u0439\u0442\u0435 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0432 \u0441\u0435\u043A\u0446\u0438\u0438 \u0413\u0414\u0415."
-          });
-        }
-      }
-      if (tok.type === "IDENTIFIER" /* IDENTIFIER */ && ["\u043F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435", "\u0432\u043E\u043F\u0440\u043E\u0441", "\u0432\u0432\u0435\u0441\u0442\u0438\u0441\u0442\u0440\u043E\u043A\u0443", "\u0432\u0432\u0435\u0441\u0442\u0438\u0447\u0438\u0441\u043B\u043E"].includes(tok.value.toLowerCase())) {
-        const prev = tokens[i - 1];
-        const next = tokens[i + 1];
-        if ((!prev || prev.value !== ".") && next && next.value === "(") {
-          let hasNotification = false;
-          let k = i + 2;
-          while (k < tokens.length && tokens[k].value !== ")" && tokens[k].line === tok.line) {
-            if (tokens[k].value.toLowerCase().includes("\u043E\u043F\u043E\u0432\u0435\u0449\u0435\u043D\u0438")) {
-              hasNotification = true;
-              break;
-            }
-            k++;
-          }
-          if (!hasNotification) {
-            issues.push({
-              line: tok.line,
-              rule: "ITS-UI-003",
-              severity: "warning",
-              message: `\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u043C\u043E\u0434\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u043E\u043A\u043D\u0430 (${tok.value}). \u0417\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E \u0432 \u0432\u0435\u0431-\u043A\u043B\u0438\u0435\u043D\u0442\u0435 \u0438 \u043C\u043E\u0431\u0438\u043B\u044C\u043D\u043E\u043C \u043A\u043B\u0438\u0435\u043D\u0442\u0435.`,
-              suggestion: "\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0430\u0441\u0438\u043D\u0445\u0440\u043E\u043D\u043D\u044B\u0435 \u043C\u0435\u0442\u043E\u0434\u044B: \u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C\u041F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435(), \u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C\u0412\u043E\u043F\u0440\u043E\u0441() \u0441 \u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0435\u0439 \u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435\u041E\u043F\u043E\u0432\u0435\u0449\u0435\u043D\u0438\u044F."
-            });
-          }
-        }
-      }
-    }
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      const lineNum = i + 1;
-      if (trimmed.startsWith("//")) {
-        continue;
-      }
-      if (/Запрос\.Текст\s*=\s*Запрос\.Текст\s*\+\s*["'].*(\+|&)/i.test(trimmed) && !/Параметр/i.test(trimmed)) {
-        issues.push({
-          line: lineNum,
-          rule: "ITS-SEC-001",
-          severity: "warning",
-          message: "\u0414\u0438\u043D\u0430\u043C\u0438\u0447\u0435\u0441\u043A\u0430\u044F \u0441\u043A\u043B\u0435\u0439\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 \u0441\u043E \u0441\u0442\u0440\u043E\u043A\u043E\u0432\u044B\u043C\u0438 \u043F\u0435\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u043C\u0438 (\u0440\u0438\u0441\u043A 1\u0421-\u0438\u043D\u044A\u0435\u043A\u0446\u0438\u0438).",
-          suggestion: "\u0412\u0441\u0435\u0433\u0434\u0430 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0447\u0435\u0440\u0435\u0437 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0437\u0430\u043F\u0440\u043E\u0441\u0430 (\u0417\u0430\u043F\u0440\u043E\u0441.\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440), \u0430 \u043D\u0435 \u043A\u043E\u043D\u043A\u0430\u0442\u0435\u043D\u0438\u0440\u0443\u0439\u0442\u0435 \u0442\u0435\u043A\u0441\u0442."
-        });
-      }
-    }
-    const bspSuggestions = BSPHelper.analyzeForBSPOptimization(code);
+    issues.push(...lexicalChecks(tokens));
+    const bspSuggestions = BSPHelper.analyzeForBSPOptimization(code, tokens);
     for (const bsp of bspSuggestions) {
       issues.push({
-        line: 1,
+        line: bsp.line || 1,
         rule: "ITS-BSP-001",
         severity: "info",
         message: `\u0420\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0435\u0442\u0441\u044F \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435 \u043C\u043E\u0434\u0443\u043B\u044F \u0411\u0421\u041F "${bsp.moduleName}": ${bsp.explanation}`,
         suggestion: `\u0417\u0430\u043C\u0435\u043D\u0438\u0442\u0435 \u043D\u0430: ${bsp.recommendedCall}`
       });
     }
-    const queryInspection = QueryBuilder.inspectQuery(code);
-    for (const qIssue of queryInspection.issues) {
-      issues.push({
-        line: 1,
-        rule: qIssue.code,
-        severity: qIssue.severity,
-        message: qIssue.message,
-        suggestion: qIssue.recommendation
-      });
+    for (const source of querySources(code)) {
+      for (const qIssue of QueryBuilder.inspectQuery(source.text).issues) {
+        if (source.dynamic && qIssue.code === "QUERY-STRUCTURE") continue;
+        issues.push({
+          line: source.line + (qIssue.line || 1) - 1,
+          rule: qIssue.code,
+          severity: qIssue.severity,
+          message: qIssue.message,
+          suggestion: qIssue.recommendation
+        });
+      }
     }
-    return issues;
+    return applyAuditPolicy(issues, tokens, options);
   }
   static formatAuditReport(issues) {
     if (issues.length === 0) {
-      return "\u2713 \u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438 \u0444\u0438\u0440\u043C\u044B \xAB1\u0421\xBB (\u0418\u0422\u0421) \u043D\u0435 \u043E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u043E. \u041A\u043E\u0434 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u043A\u043E\u0440\u043F\u043E\u0440\u0430\u0442\u0438\u0432\u043D\u043E\u043C\u0443 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0443 \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430.";
+      return "\u0421\u043E\u0432\u043F\u0430\u0434\u0435\u043D\u0438\u0439 \u043F\u043E \u0440\u0435\u0430\u043B\u0438\u0437\u043E\u0432\u0430\u043D\u043D\u044B\u043C \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430\u043C \u043D\u0435\u0442. \u041F\u043E\u043B\u043D\u043E\u0442\u0430 \u0418\u0422\u0421, \u0441\u0438\u043D\u0442\u0430\u043A\u0441\u0438\u0441 \u0438 \u043F\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435 \u0442\u0440\u0435\u0431\u0443\u044E\u0442 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438.";
     }
     const lines = [
       `\u041D\u0430\u0439\u0434\u0435\u043D\u043E \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421: ${issues.length}
@@ -1043,13 +1116,23 @@ var StandardsChecker = class {
   }
 };
 
+// src/shared/bsl/parameters.ts
+function methodParameter(source) {
+  const value = source.trim();
+  if (/[\r\n]/.test(value)) throw new Error("\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440 \u0434\u043E\u043B\u0436\u0435\u043D \u0437\u0430\u043D\u0438\u043C\u0430\u0442\u044C \u043E\u0434\u043D\u0443 \u0441\u0442\u0440\u043E\u043A\u0443.");
+  const match = value.match(/^(?:(Знач|Val)\s+)?([А-Яа-яЁёA-Za-z_][А-Яа-яЁёA-Za-z_0-9]*)(?:\s*=\s*(.+))?$/i);
+  if (!match) throw new Error("\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440: \u0443\u043A\u0430\u0436\u0438\u0442\u0435 \u0438\u043C\u044F \u0438 \u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E\u0435 \u043A\u043E\u043D\u0441\u0442\u0430\u043D\u0442\u043D\u043E\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E.");
+  const name = identifier(match[2], "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440"), fallback = match[3];
+  if (fallback !== void 0 && !/^(?:Неопределено|Undefined|Истина|Ложь|True|False|[-+]?\d+(?:\.\d+)?|"(?:""|[^"])*"|'\d{8}(?:\d{6})?')$/i.test(fallback)) throw new Error("\u0417\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0430 \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u043A\u043E\u043D\u0441\u0442\u0430\u043D\u0442\u043E\u0439 BSL.");
+  return { name, declaration: `${match[1] ? "\u0417\u043D\u0430\u0447 " : ""}${name}${fallback === void 0 ? "" : " = " + fallback}` };
+}
+
 // src/extensionGenerator.ts
 var CANONICAL_SIGNATURES = {
   "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F": { params: ["\u041E\u0442\u043A\u0430\u0437", "\u0420\u0435\u0436\u0438\u043C\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F"] },
   "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u044F\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u044F": { params: ["\u041E\u0442\u043A\u0430\u0437"] },
   "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F": { params: ["\u0414\u0430\u043D\u043D\u044B\u0435\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F", "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430"] },
   "\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0438\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F": { params: ["\u041E\u0442\u043A\u0430\u0437", "\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u0435\u043C\u044B\u0435\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B"] },
-  "\u041F\u0435\u0440\u0435\u0434\u0417\u0430\u043F\u0438\u0441\u044C\u044E": { params: ["\u041E\u0442\u043A\u0430\u0437"] },
   "\u041F\u0440\u0438\u0417\u0430\u043F\u0438\u0441\u0438": { params: ["\u041E\u0442\u043A\u0430\u0437"] },
   "\u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435": { params: ["\u041E\u0442\u043A\u0430\u0437", "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430"], defaultDirective: "&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435" },
   "\u041F\u0440\u0438\u041E\u0442\u043A\u0440\u044B\u0442\u0438\u0438": { params: ["\u041E\u0442\u043A\u0430\u0437"], defaultDirective: "&\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435" },
@@ -1059,22 +1142,37 @@ var CANONICAL_SIGNATURES = {
 };
 var ExtensionGenerator = class {
   /**
-   * Generates a fully compliant 1C Extension method interceptor with verified signature.
+   * Generates a scaffold; known-event inference is case insensitive and module scoped.
    */
   static generateInterceptor(options) {
-    const canonical = CANONICAL_SIGNATURES[options.targetMethod];
+    options = { ...options, targetMethod: identifier(options.targetMethod, "\u041F\u0435\u0440\u0435\u0445\u0432\u0430\u0442\u044B\u0432\u0430\u0435\u043C\u044B\u0439 \u043C\u0435\u0442\u043E\u0434") };
+    if (!["\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430", "\u041C\u043E\u0434\u0443\u043B\u044C\u0424\u043E\u0440\u043C\u044B", "\u041E\u0431\u0449\u0438\u0439\u041C\u043E\u0434\u0443\u043B\u044C", "\u041C\u043E\u0434\u0443\u043B\u044C\u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0430"].includes(options.moduleType)) throw new Error("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u0439 \u0442\u0438\u043F \u043C\u043E\u0434\u0443\u043B\u044F.");
+    if (!["\u0412\u043C\u0435\u0441\u0442\u043E", "\u041F\u0435\u0440\u0435\u0434", "\u041F\u043E\u0441\u043B\u0435"].includes(options.directive)) {
+      throw new Error("&\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0438\u0441\u0445\u043E\u0434\u043D\u043E\u0433\u043E \u043C\u0435\u0442\u043E\u0434\u0430 \u043F\u043E\u0441\u0442\u0430\u0432\u0449\u0438\u043A\u0430. \u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u0442\u0430\u043A\u043E\u0439 \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 \u0432 \u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0442\u043E\u0440\u0435; \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0431\u0435\u0437 \u0438\u0441\u0445\u043E\u0434\u043D\u0438\u043A\u0430 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430.");
+    }
+    if (options.isFunction && options.directive !== "\u0412\u043C\u0435\u0441\u0442\u043E") {
+      throw new Error("\u0414\u043B\u044F \u0444\u0443\u043D\u043A\u0446\u0438\u0438 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F &\u0412\u043C\u0435\u0441\u0442\u043E \u0441 \u0432\u043E\u0437\u0432\u0440\u0430\u0442\u043E\u043C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430.");
+    }
+    const known = Object.entries(CANONICAL_SIGNATURES).find(([name]) => name.toLowerCase() === options.targetMethod.toLowerCase());
+    const signature = known?.[1];
+    const canonical = signature && (signature.defaultDirective ? options.moduleType === "\u041C\u043E\u0434\u0443\u043B\u044C\u0424\u043E\u0440\u043C\u044B" : options.moduleType === "\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430") ? signature : void 0;
     let params = options.parameters;
     if ((!params || params.length === 0) && canonical) {
       params = canonical.params;
     }
-    const isFunc = canonical?.isFunction !== void 0 ? canonical.isFunction : options.isFunction;
+    if (canonical && !!canonical.isFunction !== options.isFunction) throw new Error("\u0412\u0438\u0434 \u043C\u0435\u0442\u043E\u0434\u0430 \u043D\u0435 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0441\u0438\u0433\u043D\u0430\u0442\u0443\u0440\u0435 \u0441\u043E\u0431\u044B\u0442\u0438\u044F \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B.");
+    const isFunc = canonical ? !!canonical.isFunction : options.isFunction;
     const keyword = isFunc ? "\u0424\u0443\u043D\u043A\u0446\u0438\u044F" : "\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430";
     const endKeyword = isFunc ? "\u041A\u043E\u043D\u0435\u0446\u0424\u0443\u043D\u043A\u0446\u0438\u0438" : "\u041A\u043E\u043D\u0435\u0446\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B";
-    const paramsList = params.join(", ");
+    const parsed = (params || []).map(methodParameter);
+    if (new Set(parsed.map((p) => p.name.toLowerCase())).size !== parsed.length) throw new Error("\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043D\u0435 \u0434\u043E\u043B\u0436\u043D\u044B \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0442\u044C\u0441\u044F.");
+    const paramsList = parsed.map((p) => p.declaration).join(", ");
+    const callParams = parsed.map((p) => p.name).join(", ");
     const directiveName = `&${options.directive}("${options.targetMethod}")`;
     let compilationHeader = "";
     if (options.moduleType === "\u041C\u043E\u0434\u0443\u043B\u044C\u0424\u043E\u0440\u043C\u044B" || options.compilationDirective || canonical?.defaultDirective) {
       const comp = options.compilationDirective || canonical?.defaultDirective || "&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435";
+      if (!["&\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435", "&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435", "&\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435\u0411\u0435\u0437\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430", "&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435\u0411\u0435\u0437\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430"].includes(comp)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0434\u0438\u0440\u0435\u043A\u0442\u0438\u0432\u0430 \u043A\u043E\u043C\u043F\u0438\u043B\u044F\u0446\u0438\u0438.");
       compilationHeader = `${comp}
 `;
     }
@@ -1086,7 +1184,7 @@ var ExtensionGenerator = class {
     ${options.customLogic || "// \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u0435\u0434\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432"}
 
     // \u0412\u044B\u0437\u043E\u0432 \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0438\u043F\u043E\u0432\u043E\u0439 \u0444\u0443\u043D\u043A\u0446\u0438\u0438 \u043F\u043E\u0441\u0442\u0430\u0432\u0449\u0438\u043A\u0430
-    \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 = \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C\u0412\u044B\u0437\u043E\u0432(${paramsList});
+    \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 = \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C\u0412\u044B\u0437\u043E\u0432(${callParams});
 
     // \u041F\u043E\u0441\u0442\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430
     \u0412\u043E\u0437\u0432\u0440\u0430\u0442 \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442;`;
@@ -1095,7 +1193,7 @@ var ExtensionGenerator = class {
     ${options.customLogic || "// \u041F\u0440\u0435\u0434\u0432\u0430\u0440\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F"}
 
     // \u0412\u044B\u0437\u043E\u0432 \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0438\u043F\u043E\u0432\u043E\u0439 \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B \u043F\u043E\u0441\u0442\u0430\u0432\u0449\u0438\u043A\u0430
-    \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C\u0412\u044B\u0437\u043E\u0432(${paramsList});
+    \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C\u0412\u044B\u0437\u043E\u0432(${callParams});
 
     // \u041F\u043E\u0441\u0442\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430`;
         }
@@ -1110,19 +1208,9 @@ var ExtensionGenerator = class {
         body = `    // \u041B\u043E\u0433\u0438\u043A\u0430, \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u043C\u0430\u044F \u041F\u041E\u0421\u041B\u0415 \u0443\u0441\u043F\u0435\u0448\u043D\u043E\u0433\u043E \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043C\u0435\u0442\u043E\u0434\u0430
     ${options.customLogic || "// \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F \u0441\u043E\u0431\u044B\u0442\u0438\u044F, \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0430 \u0443\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F \u0438\u043B\u0438 \u0437\u0430\u043F\u0438\u0441\u044C \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0445 \u0434\u0430\u043D\u043D\u044B\u0445"}`;
         break;
-      case "\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C":
-        body = `    // \u0422\u0438\u043F\u043E\u0432\u043E\u0439 \u043A\u043E\u0434 \u043F\u043E\u0441\u0442\u0430\u0432\u0449\u0438\u043A\u0430 \u043E\u0441\u0442\u0430\u0435\u0442\u0441\u044F \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439
-    // ... \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u0440\u043E\u043A\u0438 \u043C\u0435\u0442\u043E\u0434\u0430 ...
-
-#\u0412\u0441\u0442\u0430\u0432\u043A\u0430
-    // [NormaHub Extension] \u0412\u0441\u0442\u0430\u0432\u043A\u0430 \u043D\u043E\u0432\u043E\u0433\u043E \u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B\u0430 \u0431\u0435\u0437 \u0441\u043D\u044F\u0442\u0438\u044F \u0441 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0438
-    ${options.customLogic || '\u0421\u043E\u043E\u0431\u0449\u0438\u0442\u044C("\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D \u043C\u043E\u0434\u0438\u0444\u0438\u0446\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0439 \u0443\u0447\u0430\u0441\u0442\u043E\u043A \u043B\u043E\u0433\u0438\u043A\u0438 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F");'}
-#\u041A\u043E\u043D\u0435\u0446\u0412\u0441\u0442\u0430\u0432\u043A\u0438
-
-    // ... \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0435\u043D\u0438\u0435 \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u043A\u043E\u0434\u0430 ...`;
-        break;
     }
-    return `// &${options.directive} \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 \u0434\u043B\u044F \u043C\u0435\u0442\u043E\u0434\u0430 "${options.targetMethod}"
+    return `// BSL-\u0448\u0430\u0431\u043B\u043E\u043D. \u0421\u0432\u0435\u0440\u044C\u0442\u0435 \u0441\u0438\u0433\u043D\u0430\u0442\u0443\u0440\u0443 \u0438 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 \u0432 \u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0442\u043E\u0440\u0435.
+// &${options.directive} \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442 \u0434\u043B\u044F \u043C\u0435\u0442\u043E\u0434\u0430 "${options.targetMethod}"
 ${compilationHeader}${directiveName}
 ${keyword} \u0420\u0430\u0441\u0448_${options.targetMethod}(${paramsList})
 ${body}
@@ -1131,18 +1219,29 @@ ${endKeyword}`;
   /**
    * Generates a complete Managed Form extension handler with dynamic button injection.
    */
-  static generateFormButtonExtension(buttonName, buttonTitle, commandName) {
-    return `&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435
+  static generateFormButtonExtension(buttonName, buttonTitle, commandName, parentName = "\u041A\u043E\u043C\u0430\u043D\u0434\u043D\u0430\u044F\u041F\u0430\u043D\u0435\u043B\u044C") {
+    buttonName = identifier(buttonName, "\u0418\u043C\u044F \u043A\u043D\u043E\u043F\u043A\u0438");
+    commandName = identifier(commandName, "\u0418\u043C\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u044B");
+    parentName = identifier(parentName, "\u0418\u043C\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u0439 \u043F\u0430\u043D\u0435\u043B\u0438");
+    if (!buttonTitle?.trim()) throw new Error("\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u043A\u043D\u043E\u043F\u043A\u0438.");
+    const title = bslString(buttonTitle);
+    return `// \u0428\u0430\u0431\u043B\u043E\u043D \u0434\u043B\u044F \u043C\u043E\u0434\u0443\u043B\u044F \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u043E\u0439 \u0444\u043E\u0440\u043C\u044B \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F.
+// \u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0440\u0435\u0430\u043B\u044C\u043D\u0443\u044E \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u0443\u044E \u043F\u0430\u043D\u0435\u043B\u044C \u0438 \u0440\u0435\u0430\u043B\u0438\u0437\u0443\u0439\u0442\u0435 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A \u043A\u043E\u043C\u0430\u043D\u0434\u044B.
+&\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435
 &\u041F\u043E\u0441\u043B\u0435("\u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435")
 \u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430 \u0420\u0430\u0441\u0448_\u041F\u0440\u0438\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0438\u041D\u0430\u0421\u0435\u0440\u0432\u0435\u0440\u0435(\u041E\u0442\u043A\u0430\u0437, \u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430)
+    \u0420\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u041A\u043D\u043E\u043F\u043A\u0438 = \u042D\u043B\u0435\u043C\u0435\u043D\u0442\u044B.\u041D\u0430\u0439\u0442\u0438("${parentName}");
+    \u0415\u0441\u043B\u0438 \u0420\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u041A\u043D\u043E\u043F\u043A\u0438 = \u041D\u0435\u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u043E \u0422\u043E\u0433\u0434\u0430
+        \u0412\u044B\u0437\u0432\u0430\u0442\u044C\u0418\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 "\u041D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u0430\u044F \u043F\u0430\u043D\u0435\u043B\u044C ${parentName}. \u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0435\u0451 \u0438\u043C\u044F \u0432 \u0448\u0430\u0431\u043B\u043E\u043D\u0435.";
+    \u041A\u043E\u043D\u0435\u0446\u0415\u0441\u043B\u0438;
     // 1. \u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0444\u043E\u0440\u043C\u044B \u0432 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0438
     \u041A\u043E\u043C\u0430\u043D\u0434\u0430\u0424\u043E\u0440\u043C\u044B = \u041A\u043E\u043C\u0430\u043D\u0434\u044B.\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C("${commandName}");
     \u041A\u043E\u043C\u0430\u043D\u0434\u0430\u0424\u043E\u0440\u043C\u044B.\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435 = "\u0420\u0430\u0441\u0448_${commandName}";
-    \u041A\u043E\u043C\u0430\u043D\u0434\u0430\u0424\u043E\u0440\u043C\u044B.\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A = "${buttonTitle}";
-    \u041A\u043E\u043C\u0430\u043D\u0434\u0430\u0424\u043E\u0440\u043C\u044B.\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430 = "${buttonTitle} (\u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435\u043C NormaHub)";
+    \u041A\u043E\u043C\u0430\u043D\u0434\u0430\u0424\u043E\u0440\u043C\u044B.\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A = ${title};
+    \u041A\u043E\u043C\u0430\u043D\u0434\u0430\u0424\u043E\u0440\u043C\u044B.\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430 = ${title};
 
     // 2. \u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043A\u043D\u043E\u043F\u043A\u0438 \u0432 \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u0443\u044E \u043F\u0430\u043D\u0435\u043B\u044C \u0444\u043E\u0440\u043C\u044B
-    \u041A\u043D\u043E\u043F\u043A\u0430\u0424\u043E\u0440\u043C\u044B = \u042D\u043B\u0435\u043C\u0435\u043D\u0442\u044B.\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C("${buttonName}", \u0422\u0438\u043F("\u041A\u043D\u043E\u043F\u043A\u0430\u0424\u043E\u0440\u043C\u044B"), \u042D\u043B\u0435\u043C\u0435\u043D\u0442\u044B.\u041A\u043E\u043C\u0430\u043D\u0434\u043D\u0430\u044F\u041F\u0430\u043D\u0435\u043B\u044C);
+    \u041A\u043D\u043E\u043F\u043A\u0430\u0424\u043E\u0440\u043C\u044B = \u042D\u043B\u0435\u043C\u0435\u043D\u0442\u044B.\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C("${buttonName}", \u0422\u0438\u043F("\u041A\u043D\u043E\u043F\u043A\u0430\u0424\u043E\u0440\u043C\u044B"), \u0420\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u041A\u043D\u043E\u043F\u043A\u0438);
     \u041A\u043D\u043E\u043F\u043A\u0430\u0424\u043E\u0440\u043C\u044B.\u0418\u043C\u044F\u041A\u043E\u043C\u0430\u043D\u0434\u044B = "${commandName}";
     \u041A\u043D\u043E\u043F\u043A\u0430\u0424\u043E\u0440\u043C\u044B.\u0412\u0438\u0434 = \u0412\u0438\u0434\u041A\u043D\u043E\u043F\u043A\u0438\u0424\u043E\u0440\u043C\u044B.\u041A\u043D\u043E\u043F\u043A\u0430\u041A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u0439\u041F\u0430\u043D\u0435\u043B\u0438;
 \u041A\u043E\u043D\u0435\u0446\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B
@@ -1150,7 +1249,8 @@ ${endKeyword}`;
 &\u041D\u0430\u041A\u043B\u0438\u0435\u043D\u0442\u0435
 \u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0430 \u0420\u0430\u0441\u0448_${commandName}(\u041A\u043E\u043C\u0430\u043D\u0434\u0430)
     // \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A \u043D\u0430\u0436\u0430\u0442\u0438\u044F \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043D\u043E\u0439 \u043A\u043D\u043E\u043F\u043A\u0438 \u043D\u0430 \u043A\u043B\u0438\u0435\u043D\u0442\u0435
-    \u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C\u041E\u043F\u043E\u0432\u0435\u0449\u0435\u043D\u0438\u0435\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F("${buttonTitle}", , "\u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0430.");
+    // TODO: \u0440\u0435\u0430\u043B\u0438\u0437\u0443\u0439\u0442\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u044B.
+    // \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A: ${buttonTitle.replace(/[\r\n]/g, " ")}
 \u041A\u043E\u043D\u0435\u0446\u041F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u044B`;
   }
   /**
@@ -1176,25 +1276,160 @@ ${endKeyword}`;
   }
 };
 
+// src/bddGenerator.ts
+var BDDGenerator = class {
+  /**
+   * Formats a Gherkin draft; callers must verify steps against their Vanessa library.
+   */
+  static generateFeature(options) {
+    const lines = [];
+    const singleLine = (value) => {
+      if (typeof value !== "string" || !value.trim() || /[\r\n]/.test(value)) throw new Error("\u0418\u043C\u044F \u0438\u043B\u0438 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 Gherkin \u0434\u043E\u043B\u0436\u043D\u043E \u0437\u0430\u043D\u0438\u043C\u0430\u0442\u044C \u043E\u0434\u043D\u0443 \u043D\u0435\u043F\u0443\u0441\u0442\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443.");
+      return value.trim();
+    };
+    lines.push("# language: ru");
+    lines.push("");
+    lines.push(`\u0424\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B: ${singleLine(options.featureName)}`);
+    if (options.role) {
+      lines.push(`  \u041A\u0430\u043A ${singleLine(options.role)}`);
+    }
+    if (options.objective) {
+      lines.push(`  \u042F \u0445\u043E\u0447\u0443 ${singleLine(options.objective)}`);
+    }
+    if (options.businessValue) {
+      lines.push(`  \u0427\u0442\u043E\u0431\u044B ${singleLine(options.businessValue)}`);
+    }
+    lines.push("");
+    lines.push("# \u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A: \u0441\u0432\u044F\u0436\u0438\u0442\u0435 \u0442\u0440\u0435\u0431\u043E\u0432\u0430\u043D\u0438\u044F \u0441 \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u043C\u0438 \u0448\u0430\u0433\u0430\u043C\u0438 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043D\u043E\u0439 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0438 Vanessa.");
+    if (options.contextUser) lines.push(`# \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C: ${options.contextUser.replace(/[\r\n]/g, " ")}`);
+    lines.push("");
+    for (const scenario of options.scenarios) {
+      lines.push(`  \u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439: ${singleLine(scenario.name)}`);
+      if (scenario.description) {
+        for (const line of scenario.description.split(/\r?\n/)) lines.push(`    # ${line}`);
+      }
+      if (!scenario.steps.length) lines.push("    # TODO: \u0434\u043E\u0431\u0430\u0432\u044C\u0442\u0435 \u043F\u0440\u0435\u0434\u0443\u0441\u043B\u043E\u0432\u0438\u044F, \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u043E\u0436\u0438\u0434\u0430\u0435\u043C\u043E\u0433\u043E \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430.");
+      for (const step of scenario.steps) {
+        if (!["\u0414\u0430\u043D\u043E", "\u041A\u043E\u0433\u0434\u0430", "\u0422\u043E\u0433\u0434\u0430", "\u0418", "\u041D\u043E"].includes(step.keyword)) throw new Error("\u041D\u0435\u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u043E\u0435 \u043A\u043B\u044E\u0447\u0435\u0432\u043E\u0435 \u0441\u043B\u043E\u0432\u043E \u0448\u0430\u0433\u0430 Gherkin.");
+        lines.push(`    ${step.keyword} ${singleLine(step.action)}`);
+        if (step.table && step.table.length > 0) {
+          const escapeCell = (v) => String(v).replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, "\\n");
+          const headers = step.table[0].map((c) => escapeCell(c.name));
+          lines.push(`      | ${headers.join(" | ")} |`);
+          for (const row of step.table) {
+            if (row.length !== headers.length || row.some((c, i) => c.name !== step.table[0][i].name)) throw new Error("\u041A\u043E\u043B\u043E\u043D\u043A\u0438 \u0442\u0430\u0431\u043B\u0438\u0446\u044B Gherkin \u0434\u043E\u043B\u0436\u043D\u044B \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0442\u044C \u0432\u043E \u0432\u0441\u0435\u0445 \u0441\u0442\u0440\u043E\u043A\u0430\u0445.");
+            const vals = row.map((c) => escapeCell(c.value));
+            lines.push(`      | ${vals.join(" | ")} |`);
+          }
+        }
+      }
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+  /** Local scaffold uses only supplied names. It does not invent UI steps or test data. */
+  static generateDocumentScenario(docName, tabularSection = "", registerName = "") {
+    if (!docName?.trim()) throw new Error("\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0435\u043C\u044B\u0439 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u0438\u043B\u0438 \u0442\u0440\u0435\u0431\u043E\u0432\u0430\u043D\u0438\u0435.");
+    const clean = (v) => v.replace(/[\r\n]/g, " ").trim();
+    return {
+      featureName: `\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 ${clean(docName)}`,
+      scenarios: [{
+        name: `\u041F\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435 ${clean(docName)}`,
+        description: [tabularSection && `\u0422\u0430\u0431\u043B\u0438\u0447\u043D\u0430\u044F \u0447\u0430\u0441\u0442\u044C: ${clean(tabularSection)}`, registerName && `\u0420\u0435\u0433\u0438\u0441\u0442\u0440: ${clean(registerName)}`].filter(Boolean).join("\n"),
+        steps: []
+      }]
+    };
+  }
+  /** Preserve the complete requirement in a draft; AI generation is a separate explicit action. */
+  static parseNaturalLanguageToFeature(prompt) {
+    if (!prompt?.trim()) throw new Error("\u041E\u043F\u0438\u0448\u0438\u0442\u0435 \u0442\u0440\u0435\u0431\u043E\u0432\u0430\u043D\u0438\u0435 \u0434\u043B\u044F \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u044F.");
+    return this.generateFeature({
+      featureName: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0442\u0440\u0435\u0431\u043E\u0432\u0430\u043D\u0438\u044F",
+      scenarios: [{ name: "\u041E\u0436\u0438\u0434\u0430\u0435\u043C\u043E\u0435 \u043F\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435", description: prompt.trim(), steps: [] }]
+    });
+  }
+};
+
+// src/entities/bdd/model/steps.ts
+function parseVanessaSteps(text) {
+  const steps = [];
+  const keywords = { \u0434\u0430\u043D\u043E: "\u0414\u0430\u043D\u043E", \u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C: "\u0414\u0430\u043D\u043E", \u043A\u043E\u0433\u0434\u0430: "\u041A\u043E\u0433\u0434\u0430", \u0442\u043E\u0433\u0434\u0430: "\u0422\u043E\u0433\u0434\u0430", \u0438: "\u0418", \u043D\u043E: "\u041D\u043E", given: "\u0414\u0430\u043D\u043E", when: "\u041A\u043E\u0433\u0434\u0430", then: "\u0422\u043E\u0433\u0434\u0430", and: "\u0418", but: "\u041D\u043E" };
+  let headers;
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    const value = line.trim();
+    if (!value || value.startsWith("#")) continue;
+    const match = value.match(/^(Дано|Допустим|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+(.+)$/i);
+    if (match) {
+      if (headers && !steps.at(-1)?.table?.length) throw new Error("\u0422\u0430\u0431\u043B\u0438\u0446\u0430 \u0448\u0430\u0433\u0430 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u0442 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0431\u0435\u0437 \u0441\u0442\u0440\u043E\u043A \u0434\u0430\u043D\u043D\u044B\u0445.");
+      steps.push({ keyword: keywords[match[1].toLowerCase()], action: match[2] });
+      headers = void 0;
+      continue;
+    }
+    if (value.startsWith("|") && value.endsWith("|") && steps.length) {
+      const cells = [];
+      let cell = "", escaped = false;
+      for (const ch of value.slice(1, -1)) {
+        if (escaped) {
+          cell += ch === "n" ? "\n" : ["|", "\\"].includes(ch) ? ch : "\\" + ch;
+          escaped = false;
+        } else if (ch === "\\") escaped = true;
+        else if (ch === "|") {
+          cells.push(cell.trim());
+          cell = "";
+        } else cell += ch;
+      }
+      if (escaped) throw new Error(`\u0428\u0430\u0433\u0438 Vanessa, \u0441\u0442\u0440\u043E\u043A\u0430 ${index + 1}: \u043D\u0435\u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D\u043D\u043E\u0435 \u044D\u043A\u0440\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u044F\u0447\u0435\u0439\u043A\u0438.`);
+      cells.push(cell.trim());
+      if (!headers) headers = cells;
+      else {
+        if (cells.length !== headers.length) throw new Error(`\u0428\u0430\u0433\u0438 Vanessa, \u0441\u0442\u0440\u043E\u043A\u0430 ${index + 1}: \u0447\u0438\u0441\u043B\u043E \u044F\u0447\u0435\u0435\u043A \u043D\u0435 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u043C.`);
+        const row = headers.map((name, i) => ({ name, value: cells[i] }));
+        (steps.at(-1).table ||= []).push(row);
+      }
+      continue;
+    }
+    throw new Error(`\u0428\u0430\u0433\u0438 Vanessa, \u0441\u0442\u0440\u043E\u043A\u0430 ${index + 1}: \u043E\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044F \u0414\u0430\u043D\u043E, \u041A\u043E\u0433\u0434\u0430, \u0422\u043E\u0433\u0434\u0430, \u0418 \u0438\u043B\u0438 \u0442\u0430\u0431\u043B\u0438\u0446\u0430 \u0448\u0430\u0433\u0430.`);
+  }
+  if (headers && !steps.at(-1)?.table?.length) throw new Error("\u0422\u0430\u0431\u043B\u0438\u0446\u0430 \u0448\u0430\u0433\u0430 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u0442 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0431\u0435\u0437 \u0441\u0442\u0440\u043E\u043A \u0434\u0430\u043D\u043D\u044B\u0445.");
+  return steps;
+}
+
 // src/metadataScanner.ts
 var fs = __toESM(require("fs"));
 var path = __toESM(require("path"));
 var MetadataScanner = class {
   static cache = /* @__PURE__ */ new Map();
+  static sourceRevision(rootPath) {
+    if (!rootPath) return "";
+    const candidates = ["metadata.json", "Configuration.xml", "src/cf/Configuration.xml", "src/Configuration.mdo", "cf/Configuration.xml"];
+    return candidates.map((relative) => {
+      try {
+        const stat = fs.statSync(path.join(rootPath, relative));
+        return `${relative}:${stat.mtimeMs}:${stat.size}`;
+      } catch {
+        return `${relative}:missing`;
+      }
+    }).join("|");
+  }
   static async scanWorkspace(rootPath) {
     const normalizedRoot = rootPath ? path.resolve(rootPath) : "";
-    if (this.cache.has(normalizedRoot)) {
-      return this.cache.get(normalizedRoot);
-    }
+    const revision = this.sourceRevision(normalizedRoot);
+    const cached = this.cache.get(normalizedRoot);
+    if (cached?.revision === revision) return cached.metadata;
+    this.cache.delete(normalizedRoot);
     const objects = [];
     let configName = "\u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044F 1\u0421";
-    let configVersion = "8.3";
-    let foundRealMetadata = false;
+    const configVersion = "";
     if (normalizedRoot && fs.existsSync(normalizedRoot)) {
+      const jsonFile = path.join(normalizedRoot, "metadata.json");
+      if (fs.existsSync(jsonFile)) {
+        const imported = this.readJsonMetadata(jsonFile, normalizedRoot);
+        this.cache.set(normalizedRoot, { revision, metadata: imported });
+        return imported;
+      }
       const configNameDetected = this.detectConfigurationName(normalizedRoot);
       if (configNameDetected) {
         configName = configNameDetected;
-        foundRealMetadata = true;
       }
       const candidates = [
         path.join(normalizedRoot, "src", "cf"),
@@ -1207,74 +1442,53 @@ var MetadataScanner = class {
           this.findMetadataInDir(dir, objects);
         }
       }
-      if (objects.length > 0) {
-        foundRealMetadata = true;
-      }
-    }
-    const isDemoFallback = !foundRealMetadata || objects.length === 0;
-    if (isDemoFallback) {
-      objects.push(
-        {
-          kind: "\u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A",
-          name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430",
-          synonym: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430",
-          fields: [{ name: "\u0410\u0440\u0442\u0438\u043A\u0443\u043B" }, { name: "\u0415\u0434\u0438\u043D\u0438\u0446\u0430\u0418\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u044F" }, { name: "\u0421\u0442\u0430\u0432\u043A\u0430\u041D\u0414\u0421" }]
-        },
-        {
-          kind: "\u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A",
-          name: "\u041A\u043E\u043D\u0442\u0440\u0430\u0433\u0435\u043D\u0442\u044B",
-          synonym: "\u041A\u043E\u043D\u0442\u0440\u0430\u0433\u0435\u043D\u0442\u044B",
-          fields: [{ name: "\u0418\u041D\u041D" }, { name: "\u041A\u041F\u041F" }, { name: "\u042E\u0440\u0438\u0434\u0438\u0447\u0435\u0441\u043A\u0438\u0439\u0410\u0434\u0440\u0435\u0441" }]
-        },
-        {
-          kind: "\u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A",
-          name: "\u0421\u043A\u043B\u0430\u0434\u044B",
-          synonym: "\u0421\u043A\u043B\u0430\u0434\u044B (\u041C\u0435\u0441\u0442\u0430 \u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F)"
-        },
-        {
-          kind: "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442",
-          name: "\u0417\u0430\u043A\u0430\u0437\u041A\u043B\u0438\u0435\u043D\u0442\u0430",
-          synonym: "\u0417\u0430\u043A\u0430\u0437 \u043A\u043B\u0438\u0435\u043D\u0442\u0430",
-          fields: [{ name: "\u041A\u043E\u043D\u0442\u0440\u0430\u0433\u0435\u043D\u0442" }, { name: "\u0414\u043E\u0433\u043E\u0432\u043E\u0440" }, { name: "\u0421\u0443\u043C\u043C\u0430\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430" }],
-          tabularSections: [{
-            name: "\u0422\u043E\u0432\u0430\u0440\u044B",
-            fields: [{ name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430" }, { name: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E" }, { name: "\u0426\u0435\u043D\u0430" }, { name: "\u0421\u0443\u043C\u043C\u0430" }]
-          }]
-        },
-        {
-          kind: "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442",
-          name: "\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433",
-          synonym: "\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u0442\u043E\u0432\u0430\u0440\u043E\u0432 \u0438 \u0443\u0441\u043B\u0443\u0433",
-          fields: [{ name: "\u041A\u043E\u043D\u0442\u0440\u0430\u0433\u0435\u043D\u0442" }, { name: "\u0421\u043A\u043B\u0430\u0434" }, { name: "\u0421\u0443\u043C\u043C\u0430\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430" }],
-          tabularSections: [{
-            name: "\u0422\u043E\u0432\u0430\u0440\u044B",
-            fields: [{ name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430" }, { name: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E" }, { name: "\u0426\u0435\u043D\u0430" }, { name: "\u0421\u0443\u043C\u043C\u0430" }]
-          }]
-        },
-        {
-          kind: "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F",
-          name: "\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445",
-          synonym: "\u0422\u043E\u0432\u0430\u0440\u044B \u043D\u0430 \u0441\u043A\u043B\u0430\u0434\u0430\u0445 (\u041E\u0441\u0442\u0430\u0442\u043A\u0438)",
-          fields: [{ name: "\u0421\u043A\u043B\u0430\u0434" }, { name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430" }, { name: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E" }]
-        },
-        {
-          kind: "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439",
-          name: "\u0426\u0435\u043D\u044B\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u044B",
-          synonym: "\u0426\u0435\u043D\u044B \u043D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u044B (\u041F\u0435\u0440\u0438\u043E\u0434\u0438\u0447\u0435\u0441\u043A\u0438\u0439)",
-          fields: [{ name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430" }, { name: "\u0412\u0438\u0434\u0426\u0435\u043D\u044B" }, { name: "\u0426\u0435\u043D\u0430" }]
-        }
-      );
     }
     const result = {
       name: configName,
       version: configVersion,
-      objects: objects.slice(0, 100),
-      // Keep context compact
-      isDemoFallback,
+      objects,
+      isDemoFallback: false,
       sourcePath: normalizedRoot
     };
-    this.cache.set(normalizedRoot, result);
+    this.cache.set(normalizedRoot, { revision, metadata: result });
     return result;
+  }
+  static readJsonMetadata(file, root) {
+    if (fs.statSync(file).size > 8 * 1024 * 1024) throw new Error("metadata.json \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 8 \u041C\u0411. \u0420\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0443.");
+    let input;
+    try {
+      input = JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, ""));
+    } catch {
+      throw new Error("metadata.json: \u043D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 JSON. \u0418\u0441\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u0444\u0430\u0439\u043B \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435 \u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435.");
+    }
+    if (!input || !Array.isArray(input.objects)) throw new Error("metadata.json \u0434\u043E\u043B\u0436\u0435\u043D \u0441\u043E\u0434\u0435\u0440\u0436\u0430\u0442\u044C \u043C\u0430\u0441\u0441\u0438\u0432 objects.");
+    const kinds = ["\u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A", "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442", "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F", "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439", "\u041F\u043B\u0430\u043D\u0412\u0438\u0434\u043E\u0432\u0425\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A", "\u041F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u0435\u043D\u0438\u0435"];
+    const validName = (v) => typeof v === "string" && /^[А-Яа-яЁёA-Za-z_][А-Яа-яЁёA-Za-z_0-9]*$/.test(v);
+    const fields = (list) => {
+      if (list === void 0) return void 0;
+      if (!Array.isArray(list) || list.some((f) => !f || !validName(f.name))) throw new Error("metadata.json: \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u043E\u0435 \u0438\u043C\u044F \u043F\u043E\u043B\u044F.");
+      return list.map((f) => ({ name: f.name, type: typeof f.type === "string" ? f.type.slice(0, 200) : void 0, role: ["attribute", "dimension", "resource"].includes(f.role) ? f.role : void 0 }));
+    };
+    const seen = /* @__PURE__ */ new Set();
+    const objects = input.objects.map((o) => {
+      if (!o || !kinds.includes(o.kind) || !validName(o.name)) throw new Error("metadata.json: \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0432\u0438\u0434 \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u043E\u0435 \u0438\u043C\u044F.");
+      const key = `${o.kind}.${o.name}`.toLowerCase();
+      if (seen.has(key)) throw new Error(`metadata.json: \u043F\u043E\u0432\u0442\u043E\u0440 \u043E\u0431\u044A\u0435\u043A\u0442\u0430 ${o.name}.`);
+      seen.add(key);
+      if (o.tabularSections !== void 0 && !Array.isArray(o.tabularSections)) throw new Error("metadata.json: tabularSections \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u043C\u0430\u0441\u0441\u0438\u0432\u043E\u043C.");
+      return {
+        kind: o.kind,
+        name: o.name,
+        registerType: ["\u041E\u0441\u0442\u0430\u0442\u043A\u0438", "\u041E\u0431\u043E\u0440\u043E\u0442\u044B"].includes(o.registerType) ? o.registerType : void 0,
+        synonym: typeof o.synonym === "string" ? o.synonym.slice(0, 200) : void 0,
+        fields: fields(o.fields),
+        tabularSections: o.tabularSections?.map((t) => {
+          if (!t || !validName(t.name)) throw new Error("metadata.json: \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u0430\u044F \u0447\u0430\u0441\u0442\u044C.");
+          return { name: t.name, fields: fields(t.fields) || [] };
+        })
+      };
+    });
+    return { name: typeof input.name === "string" ? input.name.slice(0, 200) : "\u041A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044F 1\u0421", version: typeof input.version === "string" ? input.version : void 0, objects, sourcePath: root, isDemoFallback: false };
   }
   static detectConfigurationName(rootPath) {
     const possibleConfigFiles = [
@@ -1312,6 +1526,10 @@ var MetadataScanner = class {
             this.extractObjectsFromFolder(fullPath, "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u041D\u0430\u043A\u043E\u043F\u043B\u0435\u043D\u0438\u044F", result);
           } else if (file === "InformationRegisters" || file === "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u044B\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439") {
             this.extractObjectsFromFolder(fullPath, "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0421\u0432\u0435\u0434\u0435\u043D\u0438\u0439", result);
+          } else if (file === "ChartsOfCharacteristicTypes") {
+            this.extractObjectsFromFolder(fullPath, "\u041F\u043B\u0430\u043D\u0412\u0438\u0434\u043E\u0432\u0425\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A", result);
+          } else if (file === "Enums") {
+            this.extractObjectsFromFolder(fullPath, "\u041F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u0435\u043D\u0438\u0435", result);
           }
         }
       }
@@ -1358,35 +1576,30 @@ var MetadataScanner = class {
     }
   }
   static enrichMetadataObjectFromXml(obj, content) {
-    const tsMatches = content.matchAll(/<(?:TabularSection|tabularSections)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
-    const tabularSections = [];
-    for (const match of tsMatches) {
-      const tsName = match[1].trim();
-      if (tsName && !tabularSections.some((t) => t.name === tsName)) {
-        tabularSections.push({ name: tsName, fields: [] });
-      }
-    }
-    if (tabularSections.length > 0) {
-      obj.tabularSections = tabularSections;
-    }
-    const attrMatches = content.matchAll(/<(?:Attribute|attributes)[^>]*>[\s\S]*?<(?:Name|name)>([^<]+)<\/(?:Name|name)>/gi);
-    const fields = [];
-    for (const match of attrMatches) {
-      const attrName = match[1].trim();
-      if (attrName && !fields.some((f) => f.name === attrName)) {
-        fields.push({ name: attrName });
-      }
-    }
-    if (fields.length > 0) {
-      obj.fields = fields.slice(0, 30);
-    }
-    const synMatch = content.match(/<Synonym[\s\S]*?<v8:content>([^<]+)<\/v8:content>/i);
-    if (synMatch && synMatch[1]) {
-      obj.synonym = synMatch[1].trim();
-    }
+    const parseFields = (xml) => [...xml.matchAll(/<(Attribute|Dimension|Resource|attributes|dimensions|resources)\b[^>]*>([\s\S]*?)<\/\1>/gi)].map((match) => {
+      const name = match[2].match(/<(?:Name|name)>([^<]+)<\/(?:Name|name)>/i)?.[1]?.trim();
+      const tag = match[1].toLowerCase();
+      const role = tag.startsWith("dimension") ? "dimension" : tag.startsWith("resource") ? "resource" : "attribute";
+      const type = match[2].match(/<(?:v8:Type|type)>([^<]+)<\/(?:v8:Type|type)>/i)?.[1]?.trim();
+      return name ? { name, role, type } : void 0;
+    }).filter((field) => !!field);
+    const sections = [...content.matchAll(/<(TabularSection|tabularSections)\b[^>]*>([\s\S]*?)<\/\1>/gi)];
+    if (sections.length) obj.tabularSections = sections.map((match) => {
+      const name = match[2].match(/<(?:Name|name)>([^<]+)<\/(?:Name|name)>/i)?.[1]?.trim() || "";
+      return { name, fields: parseFields(match[2]) };
+    }).filter((section) => !!section.name);
+    const withoutSections = content.replace(/<(TabularSection|tabularSections)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+    obj.fields = parseFields(withoutSections);
+    const registerType = content.match(/<(?:RegisterType|registerType)>([^<]+)<\/(?:RegisterType|registerType)>/i)?.[1];
+    if (registerType) obj.registerType = /Turnovers|Обороты/i.test(registerType) ? "\u041E\u0431\u043E\u0440\u043E\u0442\u044B" : /Balance|Остатки/i.test(registerType) ? "\u041E\u0441\u0442\u0430\u0442\u043A\u0438" : void 0;
+    const synonym = content.match(/<Synonym[\s\S]*?<v8:content>([^<]+)<\/v8:content>/i)?.[1];
+    if (synonym) obj.synonym = synonym.trim();
   }
   static formatForPrompt(metadata) {
-    const header = metadata.isDemoFallback ? `// \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 (\u0414\u0435\u043C\u043E-\u0441\u0445\u0435\u043C\u0430, \u0444\u0430\u0439\u043B\u044B \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B \u0432 \u0440\u0430\u0431\u043E\u0447\u0435\u0439 \u043E\u0431\u043B\u0430\u0441\u0442\u0438):` : `// \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 1\u0421 "${metadata.name}":`;
+    if (metadata.isDemoFallback || metadata.objects.length === 0) {
+      return "// \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B. \u0418\u043C\u0435\u043D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432 \u0438 \u043F\u043E\u043B\u0435\u0439 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F \u0443\u0442\u043E\u0447\u043D\u0438\u0442\u044C \u0443 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F.";
+    }
+    const header = `// \u041C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 1\u0421 "${metadata.name.replace(/[\r\n]/g, " ")}" (${metadata.objects.length} \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432):`;
     const lines = [header];
     const grouped = {};
     for (const obj of metadata.objects) {
@@ -1395,13 +1608,15 @@ var MetadataScanner = class {
       }
       let desc = obj.name;
       if (obj.tabularSections && obj.tabularSections.length > 0) {
-        const ts = obj.tabularSections.map((t) => t.name).join(", ");
+        const ts = obj.tabularSections.map((t) => `${t.name}[${t.fields.map((f) => f.name).join(", ")}]`).join(", ");
         desc += ` (\u0422\u0430\u0431\u043B\u0438\u0447\u043D\u044B\u0435 \u0447\u0430\u0441\u0442\u0438: ${ts})`;
       }
+      if (obj.fields?.length) desc += ` (\u041F\u043E\u043B\u044F: ${obj.fields.slice(0, 30).map((f) => f.name).join(", ")})`;
       grouped[obj.kind].push(desc);
     }
     for (const [kind, list] of Object.entries(grouped)) {
-      lines.push(`// ${kind}: ${list.slice(0, 15).join(", ")}`);
+      lines.push(`// ${kind}: ${list.slice(0, 30).join(", ")}`);
+      if (list.length > 30) lines.push(`// \u0415\u0449\u0451 ${list.length - 30} \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432 \u044D\u0442\u043E\u0433\u043E \u0432\u0438\u0434\u0430 \u043D\u0435 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u044B \u0432 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442.`);
     }
     return lines.join("\n");
   }
@@ -1412,183 +1627,6 @@ var MetadataScanner = class {
     } else {
       this.cache.clear();
     }
-  }
-};
-
-// src/bddGenerator.ts
-var BDDGenerator = class {
-  /**
-   * Generates a complete .feature file compliant with Vanessa-Automation.
-   */
-  static generateFeature(options) {
-    const lines = [];
-    lines.push("# language: ru");
-    lines.push("");
-    lines.push(`\u0424\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B: ${options.featureName}`);
-    if (options.role) {
-      lines.push(`  \u041A\u0430\u043A ${options.role}`);
-    }
-    if (options.objective) {
-      lines.push(`  \u042F \u0445\u043E\u0447\u0443 ${options.objective}`);
-    }
-    if (options.businessValue) {
-      lines.push(`  \u0427\u0442\u043E\u0431\u044B ${options.businessValue}`);
-    }
-    lines.push("");
-    lines.push("\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442:");
-    const user = options.contextUser || "\u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440";
-    lines.push(`  \u0414\u0430\u043D\u043E \u042F \u043E\u0442\u043A\u0440\u044B\u043B \u0441\u0435\u0430\u043D\u0441 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F "${user}"`);
-    lines.push("  \u0418 \u042F \u043E\u0442\u043A\u0440\u044B\u043B \u043D\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u043E\u043D\u043D\u0443\u044E \u043F\u0430\u043D\u0435\u043B\u044C");
-    lines.push("");
-    for (const scenario of options.scenarios) {
-      lines.push(`  \u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439: ${scenario.name}`);
-      if (scenario.description) {
-        lines.push(`    # ${scenario.description}`);
-      }
-      for (const step of scenario.steps) {
-        lines.push(`    ${step.keyword} ${step.action}`);
-        if (step.table && step.table.length > 0) {
-          const headers = step.table[0].map((c) => `'${c.name}'`);
-          lines.push(`      | ${headers.join(" | ")} |`);
-          for (const row of step.table) {
-            const vals = row.map((c) => `'${c.value}'`);
-            lines.push(`      | ${vals.join(" | ")} |`);
-          }
-        }
-      }
-      lines.push("");
-    }
-    return lines.join("\n");
-  }
-  /**
-   * Generates standard document posting BDD scenario
-   */
-  static generateDocumentScenario(docName, tabularSection = "\u0422\u043E\u0432\u0430\u0440\u044B", registerName = "\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445") {
-    return {
-      featureName: `\u041F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435 \u0438 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 "${docName}"`,
-      role: "\u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440 \u043F\u043E \u043F\u0440\u043E\u0434\u0430\u0436\u0430\u043C / \u041A\u043B\u0430\u0434\u043E\u0432\u0449\u0438\u043A",
-      objective: `\u0431\u044B\u0441\u0442\u0440\u043E \u0441\u043E\u0437\u0434\u0430\u0432\u0430\u0442\u044C \u0438 \u043F\u0440\u043E\u0432\u043E\u0434\u0438\u0442\u044C \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 "${docName}" \u0441 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u043E\u0439 \u043E\u0441\u0442\u0430\u0442\u043A\u043E\u0432`,
-      businessValue: "\u0438\u0441\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u043E\u0442\u0440\u0438\u0446\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043E\u0441\u0442\u0430\u0442\u043A\u0438 \u043D\u0430 \u0441\u043A\u043B\u0430\u0434\u0430\u0445 \u0438 \u0433\u0430\u0440\u0430\u043D\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0446\u0435\u043B\u043E\u0441\u0442\u043D\u043E\u0441\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0445",
-      contextUser: "\u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440",
-      scenarios: [
-        {
-          name: `\u0423\u0441\u043F\u0435\u0448\u043D\u043E\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u0438 \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 "${docName}"`,
-          steps: [
-            {
-              keyword: "\u041A\u043E\u0433\u0434\u0430",
-              action: `\u0432 \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u043C \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0435 \u044F \u0432\u044B\u0431\u0438\u0440\u0430\u044E "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" -> "${docName}"`
-            },
-            {
-              keyword: "\u0422\u043E\u0433\u0434\u0430",
-              action: `\u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C \u043E\u043A\u043D\u043E "${docName}"`
-            },
-            {
-              keyword: "\u0418",
-              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u0421\u043E\u0437\u0434\u0430\u0442\u044C"'
-            },
-            {
-              keyword: "\u0422\u043E\u0433\u0434\u0430",
-              action: `\u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C \u043E\u043A\u043D\u043E "${docName} (\u0441\u043E\u0437\u0434\u0430\u043D\u0438\u0435)"`
-            },
-            {
-              keyword: "\u0418",
-              action: '\u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442 "\u041E\u0440\u0433\u0430\u043D\u0438\u0437\u0430\u0446\u0438\u044F" \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u043C "\u041E\u0441\u043D\u043E\u0432\u043D\u0430\u044F \u043E\u0440\u0433\u0430\u043D\u0438\u0437\u0430\u0446\u0438\u044F"'
-            },
-            {
-              keyword: "\u0418",
-              action: '\u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442 "\u0421\u043A\u043B\u0430\u0434" \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u043C "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u043A\u043B\u0430\u0434"'
-            },
-            {
-              keyword: "\u0418",
-              action: `\u0432 \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 "${tabularSection}" \u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C"`
-            },
-            {
-              keyword: "\u0418",
-              action: `\u0432 \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 "${tabularSection}" \u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443:`,
-              table: [
-                [
-                  { name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", value: "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0442\u043E\u0432\u0430\u0440 \u0410" },
-                  { name: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E", value: 5 },
-                  { name: "\u0426\u0435\u043D\u0430", value: 1200 }
-                ]
-              ]
-            },
-            {
-              keyword: "\u0418",
-              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u041F\u0440\u043E\u0432\u0435\u0441\u0442\u0438 \u0438 \u0437\u0430\u043A\u0440\u044B\u0442\u044C"'
-            },
-            {
-              keyword: "\u0422\u043E\u0433\u0434\u0430",
-              action: `\u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C \u043E\u043A\u043D\u043E "${docName}"`
-            },
-            {
-              keyword: "\u0418",
-              action: `\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u044E \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u043F\u043E \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0443 "${registerName}"`
-            }
-          ]
-        },
-        {
-          name: `\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u043F\u0440\u0435\u0432\u044B\u0448\u0435\u043D\u0438\u044F \u043E\u0441\u0442\u0430\u0442\u043A\u0430 \u043F\u0440\u0438 \u043F\u0440\u043E\u0432\u0435\u0434\u0435\u043D\u0438\u0438 "${docName}"`,
-          steps: [
-            {
-              keyword: "\u041A\u043E\u0433\u0434\u0430",
-              action: `\u0432 \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u043C \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0435 \u044F \u0432\u044B\u0431\u0438\u0440\u0430\u044E "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" -> "${docName}"`
-            },
-            {
-              keyword: "\u0418",
-              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u0421\u043E\u0437\u0434\u0430\u0442\u044C"'
-            },
-            {
-              keyword: "\u0418",
-              action: `\u0432 \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 "${tabularSection}" \u044F \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u044E \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443:`,
-              table: [
-                [
-                  { name: "\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", value: "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0442\u043E\u0432\u0430\u0440 \u041D\u0435\u0434\u043E\u0441\u0442\u0430\u0447\u0430" },
-                  { name: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E", value: 999999 }
-                ]
-              ]
-            },
-            {
-              keyword: "\u0418",
-              action: '\u044F \u043D\u0430\u0436\u0438\u043C\u0430\u044E \u043A\u043D\u043E\u043F\u043A\u0443 "\u041F\u0440\u043E\u0432\u0435\u0441\u0442\u0438"'
-            },
-            {
-              keyword: "\u0422\u043E\u0433\u0434\u0430",
-              action: '\u044F \u0436\u0434\u0443 \u043F\u043E\u044F\u0432\u043B\u0435\u043D\u0438\u044F \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u043E\u0431 \u043E\u0448\u0438\u0431\u043A\u0435 "\u041D\u0435\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E \u0442\u043E\u0432\u0430\u0440\u0430 \u043D\u0430 \u0441\u043A\u043B\u0430\u0434\u0435"'
-            }
-          ]
-        }
-      ]
-    };
-  }
-  /**
-   * Parses freeform natural language intent into a structured BDD feature
-   */
-  static parseNaturalLanguageToFeature(prompt) {
-    const trimmed = prompt.trim();
-    let targetName = "";
-    const quotedMatch = trimmed.match(/["«']([а-яА-ЯёЁa-zA-Z0-9_]+)["»']/);
-    if (quotedMatch) {
-      targetName = quotedMatch[1];
-    }
-    if (!targetName) {
-      const keywordMatch = trimmed.match(/(?:документ[а-яё]*|справочник[а-яё]*|регистр[а-яё]*)\s+([а-яА-ЯёЁa-zA-Z0-9_]+)/i);
-      if (keywordMatch) {
-        targetName = keywordMatch[1];
-      }
-    }
-    if (!targetName) {
-      const words = trimmed.split(/\s+/);
-      const camelWord = words.find((w) => /^[А-ЯЁ][а-яё]+[А-ЯЁ][а-яёА-ЯЁ0-9_]*/.test(w));
-      if (camelWord) {
-        targetName = camelWord.replace(/[^А-ЯЁа-яё0-9_]/g, "");
-      }
-    }
-    if (!targetName) {
-      targetName = "\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433";
-    }
-    const featureOptions = this.generateDocumentScenario(targetName);
-    return this.generateFeature(featureOptions);
   }
 };
 
@@ -1605,8 +1643,7 @@ var TechLogAnalyzer = class {
       if (/^\d{2}:\d{2}\.\d{4,6}-\d+,\w+,\d+/.test(line.trim())) {
         if (currentEventText) {
           const parsed = this.parseSingleEvent(currentEventText);
-          if (parsed)
-            events.push(parsed);
+          if (parsed) events.push(parsed);
         }
         currentEventText = line.trim();
       } else if (currentEventText) {
@@ -1615,15 +1652,13 @@ var TechLogAnalyzer = class {
     }
     if (currentEventText) {
       const parsed = this.parseSingleEvent(currentEventText);
-      if (parsed)
-        events.push(parsed);
+      if (parsed) events.push(parsed);
     }
     return events;
   }
   static parseSingleEvent(eventText) {
     const headerMatch = eventText.match(/^(\d{2}:\d{2}\.\d{4,6})-(\d+),(\w+),(\d+),(.*)/s);
-    if (!headerMatch)
-      return null;
+    if (!headerMatch) return null;
     const timestamp = headerMatch[1];
     const durationMicrosec = parseInt(headerMatch[2], 10);
     const durationSec = durationMicrosec / 1e6;
@@ -1632,14 +1667,27 @@ var TechLogAnalyzer = class {
     const payload = headerMatch[5] || "";
     const eventType = ["TLOCK", "TDEADLOCK", "EXCP", "SDBL", "DBPOSTGR", "DBMSSQL"].includes(rawEvent) ? rawEvent : "OTHER";
     const properties = {};
-    const propRegex = /([a-zA-Z0-9_:]+)=(?:'([^']*)'|([^,]*))(?:,|$)/gs;
+    const propRegex = /([a-zA-Z0-9_:]+)=/g;
     let match;
-    while ((match = propRegex.exec(payload)) !== null) {
-      const key = match[1];
-      const val = match[2] !== void 0 ? match[2] : match[3];
-      if (key) {
-        properties[key] = val ? val.trim() : "";
+    while (match = propRegex.exec(payload)) {
+      let cursor = propRegex.lastIndex;
+      const quote = payload[cursor] === "'" || payload[cursor] === '"' ? payload[cursor++] : "";
+      let value = "";
+      while (cursor < payload.length) {
+        const char = payload[cursor++];
+        if (quote && char === quote) {
+          if (payload[cursor] === quote) {
+            value += quote;
+            cursor++;
+            continue;
+          }
+          break;
+        }
+        if (!quote && char === ",") break;
+        value += char;
       }
+      properties[match[1]] = value.trim();
+      propRegex.lastIndex = cursor;
     }
     const context = properties["Context"] || properties["context"] || "";
     let contextLocation;
@@ -1680,6 +1728,7 @@ var TechLogAnalyzer = class {
           const regions = ev.properties["Regions"] || ev.properties["regions"] || "\u041D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D\u044B";
           const waitConns = ev.properties["WaitConnections"] || ev.properties["waitConnections"] || "";
           const durationSec = ev.durationSec;
+          if (!waitConns && durationSec < 1) break;
           const isLongWait = durationSec >= 5;
           diagnoses.push({
             severity: isLongWait ? "critical" : "warning",
@@ -1726,7 +1775,7 @@ var TechLogAnalyzer = class {
           diagnoses.push({
             severity: "critical",
             category: "\u0418\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 / \u041E\u0448\u0438\u0431\u043A\u0430 (EXCP)",
-            title: "\u041D\u0435\u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043D\u043E\u0435 \u0441\u0438\u0441\u0442\u0435\u043C\u043D\u043E\u0435 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B 1\u0421",
+            title: "\u0421\u043E\u0431\u044B\u0442\u0438\u0435 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B 1\u0421",
             description: descr,
             affectedModule: ev.contextLocation?.module,
             affectedLine: ev.contextLocation?.line,
@@ -1744,12 +1793,13 @@ var TechLogAnalyzer = class {
         case "DBMSSQL": {
           const durationSec = ev.durationSec;
           const sql = ev.properties["Sql"] || ev.properties["sql"] || "";
+          if (durationSec < 1) break;
           const isVerySlow = durationSec >= 3;
           diagnoses.push({
             severity: isVerySlow ? "critical" : "warning",
             category: "\u041C\u0435\u0434\u043B\u0435\u043D\u043D\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u043A \u0421\u0423\u0411\u0414",
             title: `\u041C\u0435\u0434\u043B\u0435\u043D\u043D\u044B\u0439 SQL-\u0437\u0430\u043F\u0440\u043E\u0441 (${ev.event}): ${durationSec.toFixed(2)} \u0441\u0435\u043A.`,
-            description: `\u0417\u0430\u043F\u0440\u043E\u0441 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u043B\u0441\u044F ${durationSec.toFixed(2)} \u0441 \u043D\u0430 \u0443\u0440\u043E\u0432\u043D\u0435 \u0431\u0430\u0437\u044B \u0434\u0430\u043D\u043D\u044B\u0445. \u0412\u043E\u0437\u043C\u043E\u0436\u0435\u043D Scan \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0432\u043C\u0435\u0441\u0442\u043E Index Seek.`,
+            description: `\u0417\u0430\u043F\u0440\u043E\u0441 \u0432\u044B\u043F\u043E\u043B\u043D\u044F\u043B\u0441\u044F ${durationSec.toFixed(2)} \u0441 \u043D\u0430 \u0443\u0440\u043E\u0432\u043D\u0435 \u0431\u0430\u0437\u044B \u0434\u0430\u043D\u043D\u044B\u0445. \u0414\u043B\u044F \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u044F \u043F\u0440\u0438\u0447\u0438\u043D\u044B \u043D\u0443\u0436\u0435\u043D \u043F\u043B\u0430\u043D \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F.`,
             affectedModule: ev.contextLocation?.module,
             affectedLine: ev.contextLocation?.line,
             metrics: {
@@ -1773,14 +1823,13 @@ var TechLogAnalyzer = class {
   /**
    * Formats diagnostic results into a readable markdown report
    */
-  static formatReport(diagnoses) {
-    if (diagnoses.length === 0) {
-      return "\u2705 \u0421\u043E\u0431\u044B\u0442\u0438\u0439 \u0441 \u043A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u043C\u0438 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430\u043C\u0438 \u0438\u043B\u0438 \u043E\u0448\u0438\u0431\u043A\u0430\u043C\u0438 \u0432 \u043F\u0435\u0440\u0435\u0434\u0430\u043D\u043D\u043E\u043C \u043B\u043E\u0433\u0435 \u043D\u0435 \u043E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u043E.";
-    }
+  static formatReport(diagnoses, eventsCount = diagnoses.length) {
+    if (!eventsCount) return "\u0421\u043E\u0431\u044B\u0442\u0438\u044F \u0422\u0416 \u043D\u0435 \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u044B. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0444\u043E\u0440\u043C\u0430\u0442 MM:SS.microsec-duration,EVENT,level \u0438 \u043F\u043E\u043B\u043D\u043E\u0442\u0443 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430. \u0414\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0430 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0430.";
+    if (!diagnoses.length) return `\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043E \u0441\u043E\u0431\u044B\u0442\u0438\u0439: ${eventsCount}. \u0421\u043E\u0432\u043F\u0430\u0434\u0435\u043D\u0438\u0439 \u043F\u043E \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u043C \u043F\u0440\u0430\u0432\u0438\u043B\u0430\u043C \u043D\u0435\u0442 (\u043C\u0435\u0434\u043B\u0435\u043D\u043D\u044B\u0439 SQL: \u043E\u0442 1 \u0441). \u042D\u0442\u043E \u043D\u0435 \u0438\u0441\u043A\u043B\u044E\u0447\u0430\u0435\u0442 \u0434\u0440\u0443\u0433\u0438\u0445 \u043F\u0440\u043E\u0431\u043B\u0435\u043C.`;
     const lines = [];
     lines.push(`## \u{1F4CA} \u041E\u0442\u0447\u0435\u0442 \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0438 \u0422\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0416\u0443\u0440\u043D\u0430\u043B\u0430 1\u0421 (\u0422\u0416)
 `);
-    lines.push(`\u041E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u043E \u0438\u043D\u0446\u0438\u0434\u0435\u043D\u0442\u043E\u0432: **${diagnoses.length}**
+    lines.push(`\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043E \u0441\u043E\u0431\u044B\u0442\u0438\u0439: ${eventsCount}. \u0417\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u0439: **${diagnoses.length}**
 `);
     diagnoses.forEach((d, idx) => {
       const badge = d.severity === "critical" ? "\u{1F534} [\u041A\u0420\u0418\u0422\u0418\u0427\u041D\u041E]" : d.severity === "warning" ? "\u{1F7E1} [\u0412\u041D\u0418\u041C\u0410\u041D\u0418\u0415]" : "\u2139\uFE0F [\u0418\u041D\u0424\u041E]";
@@ -1797,7 +1846,7 @@ var TechLogAnalyzer = class {
         lines.push(`- **\u041E\u0431\u043B\u0430\u0441\u0442\u044C \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438:** \`${d.metrics.regions}\``);
       }
       lines.push(`
-**\u{1F4A1} \u0420\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u0438 \u044D\u043A\u0441\u043F\u0435\u0440\u0442\u0430 \u043F\u043E High-Load 1\u0421:**`);
+**\u{1F4A1} \u0427\u0442\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C:**`);
       for (const rec of d.recommendations) {
         lines.push(`  ${rec}`);
       }
@@ -1807,7 +1856,75 @@ var TechLogAnalyzer = class {
   }
 };
 
+// src/entities/toolbox/api/executeTool.ts
+async function executeTool(name, args) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("arguments \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u043C.");
+  const text = (key, required = true) => {
+    const value = args[key];
+    if (value === void 0 && !required) return "";
+    if (typeof value !== "string" || required && !value.trim()) throw new Error(`\u0423\u043A\u0430\u0436\u0438\u0442\u0435 ${key}.`);
+    if (value.length > 5e5) throw new Error(`${key}: \u043C\u0430\u043A\u0441\u0438\u043C\u0443\u043C 500000 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.`);
+    return value;
+  };
+  const strings = (key, required = false) => {
+    const value = args[key];
+    if (value === void 0 && !required) return [];
+    if (!Array.isArray(value) || value.some((v) => typeof v !== "string") || value.length > 100) throw new Error(`${key} \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u043C\u0430\u0441\u0441\u0438\u0432\u043E\u043C \u0441\u0442\u0440\u043E\u043A (\u0434\u043E 100).`);
+    return value;
+  };
+  const boolean = (key, fallback) => {
+    const value = args[key];
+    if (value === void 0) return fallback;
+    if (typeof value !== "boolean") throw new Error(`${key} \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u0438\u043C \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u043C.`);
+    return value;
+  };
+  switch (name) {
+    case "1c_audit_standards": {
+      const issues = StandardsChecker.auditCode(text("code"), { disabledRules: strings("disabledRules") });
+      return { issuesCount: issues.length, issues, report: StandardsChecker.formatAuditReport(issues) };
+    }
+    case "1c_build_batch_query": {
+      const root = text("workspacePath", false);
+      if (root) MetadataScanner.clearCache(root);
+      const metadata = root ? await MetadataScanner.scanWorkspace(root) : void 0;
+      return { queryCode: QueryBuilder.generateBatchQuery({ entityName: text("entityName"), tabularSection: text("tabularSection"), registerName: text("registerName"), fields: strings("fields", true), registerType: text("registerType", false) || "\u041E\u0441\u0442\u0430\u0442\u043A\u0438", includeScaffolding: boolean("includeScaffolding", true), sourceMode: text("sourceMode", false) || "document", metadata }) };
+    }
+    case "1c_inspect_query":
+      return QueryBuilder.inspectQuery(text("queryText"));
+    case "1c_refactor_query":
+      return QueryBuilder.refactorQuery(text("rawQuery"));
+    case "1c_generate_extension":
+      return { code: ExtensionGenerator.generateInterceptor({ targetMethod: text("targetMethod"), directive: text("directive"), moduleType: text("moduleType", false) || "\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430", isFunction: boolean("isFunction", false), parameters: strings("parameters"), customLogic: text("customLogic", false) || void 0 }) };
+    case "1c_bsp_search": {
+      const query = text("query", false).toLowerCase();
+      return { results: BSPHelper.STANDARD_MODULES.filter((m) => `${m.module} ${m.method} ${m.description}`.toLowerCase().includes(query)) };
+    }
+    case "1c_scan_metadata": {
+      const root = text("workspacePath");
+      MetadataScanner.clearCache(root);
+      const metadata = await MetadataScanner.scanWorkspace(root);
+      return { configName: metadata.name, version: metadata.version, objectsCount: metadata.objects.length, objects: metadata.objects, isDemoFallback: false, summary: MetadataScanner.formatForPrompt(metadata) };
+    }
+    case "1c_generate_bdd_feature": {
+      const entity = text("entityName", false), prompt = text("prompt", false);
+      const spec = BDDGenerator.generateDocumentScenario(entity || prompt, text("tabularSection", false), text("registerName", false));
+      if (prompt) spec.scenarios[0].description = [spec.scenarios[0].description, prompt].filter(Boolean).join("\n");
+      spec.scenarios[0].steps = parseVanessaSteps(text("stepsText", false));
+      const stepCount = spec.scenarios[0].steps.length;
+      return { feature: BDDGenerator.generateFeature(spec), draft: true, stepCount, executionVerified: false, status: stepCount ? "steps-unverified" : "requirements-only" };
+    }
+    case "1c_analyze_tech_log": {
+      const events = TechLogAnalyzer.parseLog(text("rawLog"));
+      const diagnoses = TechLogAnalyzer.diagnose(events);
+      return { eventsFound: events.length, diagnosesCount: diagnoses.length, diagnoses, report: TechLogAnalyzer.formatReport(diagnoses, events.length) };
+    }
+    default:
+      throw new Error(`\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442: ${name}`);
+  }
+}
+
 // src/mcp/server.ts
+var readline = __toESM(require("readline"));
 var McpServer1C = class {
   rl;
   constructor() {
@@ -1820,8 +1937,7 @@ var McpServer1C = class {
   start() {
     this.rl.on("line", (line) => {
       const trimmed = line.trim();
-      if (!trimmed)
-        return;
+      if (!trimmed) return;
       try {
         const request = JSON.parse(trimmed);
         this.handleRequest(request);
@@ -1831,6 +1947,15 @@ var McpServer1C = class {
     });
   }
   handleRequest(req) {
+    if (!req || typeof req !== "object" || Array.isArray(req) || req.jsonrpc !== "2.0" || typeof req.method !== "string" || req.id !== void 0 && req.id !== null && typeof req.id !== "string" && typeof req.id !== "number") {
+      this.sendError(null, -32600, "Invalid JSON-RPC request");
+      return;
+    }
+    if (req.id === void 0) return;
+    if (req.params !== void 0 && (!req.params || typeof req.params !== "object" || Array.isArray(req.params))) {
+      this.sendError(req.id, -32602, "MCP params must be an object");
+      return;
+    }
     switch (req.method) {
       case "initialize":
         this.sendResult(req.id, {
@@ -1840,7 +1965,7 @@ var McpServer1C = class {
           },
           serverInfo: {
             name: "1c-bsl-ai-copilot-mcp",
-            version: "1.0.0"
+            version: "1.0.8"
           }
         });
         break;
@@ -1868,21 +1993,22 @@ var McpServer1C = class {
     return [
       {
         name: "1c_audit_standards",
-        description: "\u0410\u0443\u0434\u0438\u0442 BSL-\u043A\u043E\u0434\u0430 \u043D\u0430 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438 \u0444\u0438\u0440\u043C\u044B \xAB1\u0421\xBB (\u0418\u0422\u0421) \u0438 \u0411\u0421\u041F: \u043F\u043E\u0438\u0441\u043A \u0432\u044B\u0437\u043E\u0432\u043E\u0432 \u0432 \u0446\u0438\u043A\u043B\u0430\u0445, \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u044F \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043E\u043A \u0434\u0430\u043D\u043D\u044B\u0445, \u043C\u0443\u0442\u0430\u0431\u0435\u043B\u044C\u043D\u044B\u0445 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0439 \u0438 \u0434\u0440.",
+        description: "\u0410\u0443\u0434\u0438\u0442 BSL-\u043A\u043E\u0434\u0430 \u043D\u0430 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438 \u0444\u0438\u0440\u043C\u044B \xAB1\u0421\xBB (\u0418\u0422\u0421) \u0438 \u0411\u0421\u041F: \u043F\u043E\u0438\u0441\u043A \u0432\u044B\u0437\u043E\u0432\u043E\u0432 \u0432 \u0446\u0438\u043A\u043B\u0430\u0445, \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u044F \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043E\u043A \u0434\u0430\u043D\u043D\u044B\u0445, \u043C\u043E\u0434\u0430\u043B\u044C\u043D\u044B\u0445 \u0432\u044B\u0437\u043E\u0432\u043E\u0432; \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u043D\u044B\u0439 \u043D\u0430\u0431\u043E\u0440 \u044D\u0432\u0440\u0438\u0441\u0442\u0438\u043A, \u0431\u0435\u0437 \u0433\u0430\u0440\u0430\u043D\u0442\u0438\u0438 \u043F\u043E\u043B\u043D\u043E\u0442\u044B \u0418\u0422\u0421.",
         inputSchema: {
           type: "object",
           properties: {
             code: {
               type: "string",
               description: "\u0418\u0441\u0445\u043E\u0434\u043D\u044B\u0439 \u043A\u043E\u0434 \u043D\u0430 \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u043E\u043C \u044F\u0437\u044B\u043A\u0435 1\u0421 (BSL)"
-            }
+            },
+            disabledRules: { type: "array", items: { type: "string" }, description: "\u041E\u0442\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u0435 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0430\u0443\u0434\u0438\u0442\u0430." }
           },
           required: ["code"]
         }
       },
       {
         name: "1c_build_batch_query",
-        description: "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u043F\u0440\u043E\u0444\u0435\u0441\u0441\u0438\u043E\u043D\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u043F\u0430\u043A\u0435\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 1\u0421 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421: \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B (\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C \u0412\u0422_), \u0438\u043D\u0434\u0435\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 (\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E), \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0441 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0430\u043C\u0438 \u0441\u0440\u0435\u0437\u0430 \u0438 \u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0412\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0445\u0422\u0430\u0431\u043B\u0438\u0446.",
+        description: "\u0428\u0430\u0431\u043B\u043E\u043D \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u0434\u0435\u0444\u0438\u0446\u0438\u0442\u0430 \u043F\u043E \u044F\u0432\u043D\u043E \u0437\u0430\u0434\u0430\u043D\u043D\u044B\u043C \u043F\u043E\u043B\u044F\u043C: \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B (\u041F\u041E\u041C\u0415\u0421\u0422\u0418\u0422\u042C \u0412\u0422_), \u0438\u043D\u0434\u0435\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 (\u0418\u041D\u0414\u0415\u041A\u0421\u0418\u0420\u041E\u0412\u0410\u0422\u042C \u041F\u041E), \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0441 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0430\u043C\u0438 \u0441\u0440\u0435\u0437\u0430 \u0438 \u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0412\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0445\u0422\u0430\u0431\u043B\u0438\u0446.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1900,20 +2026,23 @@ var McpServer1C = class {
             },
             registerType: {
               type: "string",
-              enum: ["\u041E\u0441\u0442\u0430\u0442\u043A\u0438", "\u041E\u0431\u043E\u0440\u043E\u0442\u044B", "\u0421\u0440\u0435\u0437\u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0445"],
+              enum: ["\u041E\u0441\u0442\u0430\u0442\u043A\u0438"],
               description: "\u0422\u0438\u043F \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u043E\u0439 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430"
             },
+            fields: { type: "array", minItems: 2, items: { type: "string" }, description: "\u0412\u0441\u0435 \u0438\u0437\u043C\u0435\u0440\u0435\u043D\u0438\u044F \u0438 \u043E\u0434\u0438\u043D \u0447\u0438\u0441\u043B\u043E\u0432\u043E\u0439 \u0440\u0435\u0441\u0443\u0440\u0441 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u043C. \u0421\u043E\u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u0438\u044F: \u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430=\u0422\u043E\u0432\u0430\u0440, \u0421\u043A\u043B\u0430\u0434=@\u0421\u043A\u043B\u0430\u0434\u0428\u0430\u043F\u043A\u0438, \u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E=\u0412\u0435\u0441." },
+            sourceMode: { type: "string", enum: ["document", "table"], description: "document: \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u0441\u0442\u0440\u043E\u043A\u0438 \u0431\u0430\u0437\u044B; table: \u0442\u0435\u043A\u0443\u0449\u0430\u044F \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u0430\u044F \u0447\u0430\u0441\u0442\u044C \u043C\u043E\u0434\u0443\u043B\u044F \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435." },
+            workspacePath: { type: "string", description: "\u041F\u0443\u0442\u044C \u043A \u043F\u0440\u043E\u0435\u043A\u0442\u0443 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u0438\u043C\u0451\u043D \u043F\u043E\u043B\u0435\u0439 \u043F\u043E \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u043C \u043C\u0435\u0442\u0430\u0434\u0430\u043D\u043D\u044B\u043C." },
             includeScaffolding: {
               type: "boolean",
               description: "\u0412\u043A\u043B\u044E\u0447\u0430\u0442\u044C \u043B\u0438 BSL-\u043A\u043E\u0434 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u043E\u0431\u044A\u0435\u043A\u0442\u0430 \u0417\u0430\u043F\u0440\u043E\u0441 \u0438 \u043E\u0431\u0445\u043E\u0434\u0430 \u0432\u044B\u0431\u043E\u0440\u043A\u0438"
             }
           },
-          required: ["entityName", "tabularSection", "registerName"]
+          required: ["entityName", "tabularSection", "registerName", "fields"]
         }
       },
       {
         name: "1c_inspect_query",
-        description: "\u0421\u0442\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u0442\u0435\u043A\u0441\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421 \u043D\u0430 \u0430\u043D\u0442\u0438\u043F\u0430\u0442\u0442\u0435\u0440\u043D\u044B \u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u0438 \u0421\u0423\u0411\u0414 (\u043F\u0440\u044F\u043C\u044B\u0435 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u044F \u0441 \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u043C\u0438 \u0442\u0430\u0431\u043B\u0438\u0446\u0430\u043C\u0438, \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u0435 \u0438\u043D\u0434\u0435\u043A\u0441\u043E\u0432 \u043D\u0430 \u0412\u0422, \u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u043D\u044B\u0439 \u0415\u0421\u0422\u042CNULL).",
+        description: "\u041B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u0435 \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043D\u044B\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u0438 \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 \u043F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u0438 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421. syntaxChecked=false, isValid=null \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0430\u0435\u0442 \u0441\u0438\u043D\u0442\u0430\u043A\u0441\u0438\u0441; false \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 \u043D\u0430\u0439\u0434\u0435\u043D\u043D\u0443\u044E \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043D\u0443\u044E \u043E\u0448\u0438\u0431\u043A\u0443.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1927,7 +2056,7 @@ var McpServer1C = class {
       },
       {
         name: "1c_generate_extension",
-        description: "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0431\u0435\u0437\u043E\u043F\u0430\u0441\u043D\u043E\u0433\u043E \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442\u0430 \u043C\u0435\u0442\u043E\u0434\u0430 \u0434\u043B\u044F \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 (cfe) \u0431\u0435\u0437 \u0441\u043D\u044F\u0442\u0438\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 \u0441 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0438 (&\u0412\u043C\u0435\u0441\u0442\u043E, &\u041F\u0435\u0440\u0435\u0434, &\u041F\u043E\u0441\u043B\u0435, &\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C).",
+        description: "BSL-\u0448\u0430\u0431\u043B\u043E\u043D \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442\u0430 \u043C\u0435\u0442\u043E\u0434\u0430 \u0434\u043B\u044F \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 (cfe) \u0431\u0435\u0437 \u0441\u043D\u044F\u0442\u0438\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438 \u0441 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0438 (&\u0412\u043C\u0435\u0441\u0442\u043E, &\u041F\u0435\u0440\u0435\u0434, &\u041F\u043E\u0441\u043B\u0435).",
         inputSchema: {
           type: "object",
           properties: {
@@ -1937,8 +2066,13 @@ var McpServer1C = class {
             },
             directive: {
               type: "string",
-              enum: ["\u0412\u043C\u0435\u0441\u0442\u043E", "\u041F\u0435\u0440\u0435\u0434", "\u041F\u043E\u0441\u043B\u0435", "\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435\u0418\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C"],
+              enum: ["\u0412\u043C\u0435\u0441\u0442\u043E", "\u041F\u0435\u0440\u0435\u0434", "\u041F\u043E\u0441\u043B\u0435"],
               description: "\u0414\u0438\u0440\u0435\u043A\u0442\u0438\u0432\u0430 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u044F 1\u0421"
+            },
+            moduleType: {
+              type: "string",
+              enum: ["\u041E\u0431\u0449\u0438\u0439\u041C\u043E\u0434\u0443\u043B\u044C", "\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430", "\u041C\u043E\u0434\u0443\u043B\u044C\u041C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0430", "\u041C\u043E\u0434\u0443\u043B\u044C\u0424\u043E\u0440\u043C\u044B"],
+              description: "\u0422\u0438\u043F \u043C\u043E\u0434\u0443\u043B\u044F; \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u044F\u0435\u0442 \u043F\u0440\u0438\u043C\u0435\u043D\u0438\u043C\u043E\u0441\u0442\u044C \u0441\u0438\u0433\u043D\u0430\u0442\u0443\u0440\u044B \u0441\u043E\u0431\u044B\u0442\u0438\u044F. \u041F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430."
             },
             isFunction: {
               type: "boolean",
@@ -1986,7 +2120,7 @@ var McpServer1C = class {
       },
       {
         name: "1c_generate_bdd_feature",
-        description: "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F BDD-\u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0435\u0432 Vanessa-Automation (.feature) \u043D\u0430 \u0440\u0443\u0441\u0441\u043A\u043E\u043C \u044F\u0437\u044B\u043A\u0435 (Gherkin) \u0434\u043B\u044F \u0442\u0435\u0441\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u043E\u0432, \u0441\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u0438 \u0431\u0438\u0437\u043D\u0435\u0441-\u043F\u0440\u043E\u0446\u0435\u0441\u0441\u043E\u0432 1\u0421.",
+        description: "\u041E\u0444\u043E\u0440\u043C\u043B\u0435\u043D\u0438\u0435 .feature \u0441 \u043F\u043E\u043B\u043D\u044B\u043C \u0442\u0440\u0435\u0431\u043E\u0432\u0430\u043D\u0438\u0435\u043C \u0438 \u044F\u0432\u043D\u044B\u043C\u0438 \u0448\u0430\u0433\u0430\u043C\u0438 \u0438\u0437 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0438 Vanessa. stepCount \u0438 executionVerified \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u044E\u0442 \u0441\u043E\u0441\u0442\u0430\u0432 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A\u0430; \u0438\u0441\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0430\u0435\u0442\u0441\u044F.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1996,11 +2130,15 @@ var McpServer1C = class {
             },
             tabularSection: {
               type: "string",
-              description: "\u0418\u043C\u044F \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: \u0422\u043E\u0432\u0430\u0440\u044B)"
+              description: "\u0418\u043C\u044F \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u043E\u0439 \u0447\u0430\u0441\u0442\u0438, \u0435\u0441\u043B\u0438 \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E"
             },
             registerName: {
               type: "string",
-              description: "\u0418\u043C\u044F \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430 \u0434\u043B\u044F \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438 \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u0439 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: \u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445)"
+              description: "\u0418\u043C\u044F \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430, \u0435\u0441\u043B\u0438 \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E"
+            },
+            stepsText: {
+              type: "string",
+              description: "\u0420\u0435\u0430\u043B\u044C\u043D\u044B\u0435 \u0448\u0430\u0433\u0438 \u0414\u0430\u043D\u043E/\u041A\u043E\u0433\u0434\u0430/\u0422\u043E\u0433\u0434\u0430 \u0438\u043B\u0438 Given/When/Then \u0441 \u0442\u0430\u0431\u043B\u0438\u0446\u0430\u043C\u0438 \u0438\u0437 \u0432\u0430\u0448\u0435\u0439 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0438 Vanessa."
             },
             prompt: {
               type: "string",
@@ -2011,7 +2149,7 @@ var McpServer1C = class {
       },
       {
         name: "1c_analyze_tech_log",
-        description: "\u0413\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u044D\u043A\u0441\u043F\u0435\u0440\u0442\u043D\u044B\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u043E\u0432 \u0422\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0416\u0443\u0440\u043D\u0430\u043B\u0430 1\u0421 (\u0422\u0416): \u0441\u043E\u0431\u044B\u0442\u0438\u044F TLOCK, TDEADLOCK, EXCP, SDBL/DBPOSTGR/DBMSSQL \u0441 \u043B\u043E\u043A\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0435\u0439 \u0432 \u043A\u043E\u0434\u0435 BSL \u0438 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u043D\u044B\u043C\u0438 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F\u043C\u0438 High-Load.",
+        description: "\u041B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u0439 \u0440\u0430\u0437\u0431\u043E\u0440 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u0445 \u0441\u043E\u0431\u044B\u0442\u0438\u0439 \u0422\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0416\u0443\u0440\u043D\u0430\u043B\u0430 1\u0421 (\u0422\u0416): \u0441\u043E\u0431\u044B\u0442\u0438\u044F TLOCK, TDEADLOCK, EXCP, SDBL/DBPOSTGR/DBMSSQL \u0441 \u043B\u043E\u043A\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0435\u0439 \u0432 \u043A\u043E\u0434\u0435 BSL \u0438 \u0430\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u0443\u0440\u043D\u044B\u043C\u0438 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0430\u0446\u0438\u044F\u043C\u0438 High-Load.",
         inputSchema: {
           type: "object",
           properties: {
@@ -2025,7 +2163,7 @@ var McpServer1C = class {
       },
       {
         name: "1c_refactor_query",
-        description: "\u0418\u043D\u0442\u0435\u043B\u043B\u0435\u043A\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u0439 \u0440\u0435\u0444\u0430\u043A\u0442\u043E\u0440\u0438\u043D\u0433 \u0442\u0435\u043A\u0441\u0442\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430 1\u0421 \u043F\u043E \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u0430\u043C \u0418\u0422\u0421: \u0432\u044B\u043D\u0435\u0441\u0435\u043D\u0438\u0435 \u043F\u0440\u044F\u043C\u044B\u0445 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0439 \u0441 \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u043C\u0438 \u0442\u0430\u0431\u043B\u0438\u0446\u0430\u043C\u0438 \u0432\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u0442\u0430\u0431\u043B\u0438\u0446\u044B \u0441 \u0438\u043D\u0434\u0435\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435\u043C, \u043E\u0431\u043E\u0440\u0430\u0447\u0438\u0432\u0430\u043D\u0438\u0435 \u043F\u043E\u043B\u0435\u0439 \u0432 \u0415\u0421\u0422\u042CNULL \u0438 \u0443\u043D\u0438\u0447\u0442\u043E\u0436\u0435\u043D\u0438\u0435 \u0412\u0422.",
+        description: "\u041F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u043A\u0430 \u043F\u0430\u043A\u0435\u0442\u0430 \u0438\u0437 \u043E\u0434\u043D\u043E\u0433\u043E SELECT \u0441 \u043E\u0434\u043D\u0438\u043C \u0432\u0438\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u043C JOIN. \u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u0438\u043C\u0435\u043D\u0430 \u043F\u043E\u043B\u0435\u0439 \u0438 \u0441\u0435\u043C\u0430\u043D\u0442\u0438\u043A\u0443 NULL; \u043D\u0435\u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u0439 \u0432\u0445\u043E\u0434 \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439 \u0441 reason. \u0412\u044B\u0431\u043E\u0440\u043A\u0430 \u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0432\u0442\u043E\u0440\u044B\u043C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u043E\u043C \u043F\u0430\u043A\u0435\u0442\u0430.",
         inputSchema: {
           type: "object",
           properties: {
@@ -2044,112 +2182,10 @@ var McpServer1C = class {
       this.sendError(id, -32602, "Missing tool name in params");
       return;
     }
-    const args = params.arguments || {};
+    const args = params.arguments === void 0 ? {} : params.arguments;
     try {
-      switch (params.name) {
-        case "1c_audit_standards": {
-          const code = args.code || "";
-          const issues = StandardsChecker.auditCode(code);
-          const report = StandardsChecker.formatAuditReport(issues);
-          this.sendToolResponse(id, {
-            issuesCount: issues.length,
-            issues,
-            report
-          });
-          break;
-        }
-        case "1c_build_batch_query": {
-          const generated = QueryBuilder.generateBatchQuery({
-            entityName: args.entityName,
-            tabularSection: args.tabularSection,
-            registerName: args.registerName,
-            registerType: args.registerType || "\u041E\u0441\u0442\u0430\u0442\u043A\u0438",
-            fields: args.fields || ["\u041D\u043E\u043C\u0435\u043D\u043A\u043B\u0430\u0442\u0443\u0440\u0430", "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E"],
-            includeScaffolding: args.includeScaffolding !== false
-          });
-          this.sendToolResponse(id, { queryCode: generated });
-          break;
-        }
-        case "1c_inspect_query": {
-          const queryText = args.queryText || "";
-          const result = QueryBuilder.inspectQuery(queryText);
-          this.sendToolResponse(id, result);
-          break;
-        }
-        case "1c_refactor_query": {
-          const rawQuery = args.rawQuery || "";
-          const result = QueryBuilder.refactorQuery(rawQuery);
-          this.sendToolResponse(id, result);
-          break;
-        }
-        case "1c_generate_extension": {
-          const interceptor = ExtensionGenerator.generateInterceptor({
-            targetMethod: args.targetMethod,
-            directive: args.directive,
-            moduleType: args.moduleType || "\u041C\u043E\u0434\u0443\u043B\u044C\u041E\u0431\u044A\u0435\u043A\u0442\u0430",
-            isFunction: Boolean(args.isFunction),
-            parameters: args.parameters || [],
-            customLogic: args.customLogic
-          });
-          this.sendToolResponse(id, { code: interceptor });
-          break;
-        }
-        case "1c_bsp_search": {
-          const q = (args.query || "").toLowerCase();
-          const filtered = BSPHelper.STANDARD_MODULES.filter(
-            (m) => !q || m.module.toLowerCase().includes(q) || m.method.toLowerCase().includes(q) || m.description.toLowerCase().includes(q)
-          );
-          this.sendToolResponse(id, {
-            results: filtered
-          });
-          break;
-        }
-        case "1c_scan_metadata": {
-          const wsPath = args.workspacePath || "";
-          const metadata = await MetadataScanner.scanWorkspace(wsPath);
-          const summary = MetadataScanner.formatForPrompt(metadata);
-          this.sendToolResponse(id, {
-            configName: metadata.name,
-            version: metadata.version,
-            objectsCount: metadata.objects.length,
-            isDemoFallback: metadata.isDemoFallback,
-            summary
-          });
-          break;
-        }
-        case "1c_generate_bdd_feature": {
-          let featureContent = "";
-          if (args.prompt) {
-            featureContent = BDDGenerator.parseNaturalLanguageToFeature(args.prompt);
-          } else {
-            const entityName = args.entityName || "\u0420\u0435\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F\u0422\u043E\u0432\u0430\u0440\u043E\u0432\u0423\u0441\u043B\u0443\u0433";
-            const spec = BDDGenerator.generateDocumentScenario(
-              entityName,
-              args.tabularSection || "\u0422\u043E\u0432\u0430\u0440\u044B",
-              args.registerName || "\u0422\u043E\u0432\u0430\u0440\u044B\u041D\u0430\u0421\u043A\u043B\u0430\u0434\u0430\u0445"
-            );
-            featureContent = BDDGenerator.generateFeature(spec);
-          }
-          this.sendToolResponse(id, { feature: featureContent });
-          break;
-        }
-        case "1c_analyze_tech_log": {
-          const rawLog = args.rawLog || "";
-          const parsedEvents = TechLogAnalyzer.parseLog(rawLog);
-          const diagnoses = TechLogAnalyzer.diagnose(parsedEvents);
-          const report = TechLogAnalyzer.formatReport(diagnoses);
-          this.sendToolResponse(id, {
-            eventsFound: parsedEvents.length,
-            diagnosesCount: diagnoses.length,
-            diagnoses,
-            report
-          });
-          break;
-        }
-        default:
-          this.sendError(id, -32601, `Unknown tool: ${params.name}`);
-          break;
-      }
+      const result = await executeTool(params.name, args);
+      this.sendToolResponse(id, result);
     } catch (err) {
       this.sendToolResponse(id, { error: err.message }, true);
     }

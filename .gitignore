@@ -5,3 +5,7 @@ dist/test-suite.js
 __pycache__/
 *.pyc
 out/
+.codex/artifacts/
+.private/
+tests/evidence/
+*.vsix

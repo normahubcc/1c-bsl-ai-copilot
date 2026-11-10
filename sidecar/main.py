@@ -28,20 +28,22 @@ def main():
 
     # query
     query_parser = subparsers.add_parser("query", help="Generate compliant 1C batch query")
-    query_parser.add_argument("--entity", default="РеализацияТоваровУслуг", help="Document or Catalog name")
-    query_parser.add_argument("--tabular", default="Товары", help="Tabular section name")
-    query_parser.add_argument("--register", default="ТоварыНаСкладах", help="Accumulation register name")
+    query_parser.add_argument("--entity", required=True, help="Document or Catalog name")
+    query_parser.add_argument("--tabular", required=True, help="Tabular section name")
+    query_parser.add_argument("--register", required=True, help="Accumulation register name")
+
+    query_parser.add_argument("--fields", nargs="+", required=True, help="Dimensions followed by one numeric resource")
 
     # extension
     ext_parser = subparsers.add_parser("extension", help="Generate 1C extension interceptor")
     ext_parser.add_argument("method", help="Target method name")
-    ext_parser.add_argument("--directive", default="Вместо", choices=["Вместо", "Перед", "После", "ИзменениеИКонтроль"])
+    ext_parser.add_argument("--directive", default="Вместо", choices=["Вместо", "Перед", "После"])
 
     # bdd
     bdd_parser = subparsers.add_parser("bdd", help="Generate Vanessa-Automation .feature scenario")
-    bdd_parser.add_argument("--entity", default="РеализацияТоваровУслуг", help="Document name")
-    bdd_parser.add_argument("--tabular", default="Товары", help="Tabular section name")
-    bdd_parser.add_argument("--register", default="ТоварыНаСкладах", help="Accumulation register name")
+    bdd_parser.add_argument("--entity", required=True, help="Document name")
+    bdd_parser.add_argument("--tabular", default="", help="Tabular section name")
+    bdd_parser.add_argument("--register", default="", help="Accumulation register name")
 
     # techlog
     techlog_parser = subparsers.add_parser("techlog", help="Analyze 1C Technological Log (ТЖ) events")
@@ -88,7 +90,7 @@ def main():
                 print(f"  Решение: {iss['suggestion']}\n")
 
     elif args.command == "query":
-        query_code = SidecarCore.build_batch_query(args.entity, args.tabular, args.register)
+        query_code = SidecarCore.build_batch_query(args.entity, args.tabular, args.register, fields=args.fields)
         print(query_code)
 
     elif args.command == "extension":

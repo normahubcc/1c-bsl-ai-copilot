@@ -1,3 +1,5 @@
+import { BSLToken, BSLTokenizer, BSLTokenType } from './bslTokenizer';
+import { maskedText } from './shared/bsl/text';
 /**
  * BSP (Библиотека Стандартных Подсистем 1C) Helper & Intelligence Engine.
  * 
@@ -15,6 +17,7 @@ export interface BSPMethod {
 }
 
 export interface BSPSuggestion {
+    line?: number;
     originalCodeSnippet: string;
     recommendedCall: string;
     explanation: string;
@@ -367,42 +370,29 @@ export class BSPHelper {
     /**
      * Detects manual reinvented wheels in BSL code and suggests standard BSP replacements.
      */
-    public static analyzeForBSPOptimization(code: string): BSPSuggestion[] {
+    public static analyzeForBSPOptimization(code: string, tokens: BSLToken[] = BSLTokenizer.tokenize(code)): BSPSuggestion[] {
         const suggestions: BSPSuggestion[] = [];
-        const lines = code.split('\n');
+        const executable = maskedText(code, tokens.filter(t => [BSLTokenType.COMMENT,BSLTokenType.STRING_LITERAL].includes(t.type)));
+        const original = code.split('\n');
+        const lines = executable.split('\n');
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
 
             // 1. Anti-pattern: Object creation just to read an attribute: Ссылка.ПолучитьОбъект().Реквизит
-            if (/\.ПолучитьОбъект\s*\(\s*\)\.[\w\u0400-\u04FF]+/i.test(line)) {
+            const access = line.match(/\.ПолучитьОбъект\s*\(\s*\)\.[\w\u0400-\u04FF]+(?:\.[\w\u0400-\u04FF]+)*/i);
+            if (access && !/^\s*(?:=|\(|\[)/.test(line.slice(access.index! + access[0].length))) {
                 suggestions.push({
-                    originalCodeSnippet: line,
+                    originalCodeSnippet: original[i].trim(), line: i + 1,
                     recommendedCall: 'ОбщегоНазначения.ЗначениеРеквизитаОбъекта(Ссылка, "ИмяРеквизита")',
-                    explanation: 'Получение объекта через ПолучитьОбъект() считывает всю сущность в память и блокирует ее. Используйте легковесный метод БСП.',
+                    explanation: 'Получение объекта через ПолучитьОбъект() считывает всю сущность в память. Проверьте доступность и сигнатуру альтернативы в вашей версии БСП. Используйте легковесный метод БСП.',
                     moduleName: 'ОбщегоНазначения'
                 });
             }
 
-            // 2. Anti-pattern: Manual loop to split string with Найти / Подстрока
-            if (/Найти\s*\(.*,\s*["',;]/i.test(line) && lines.slice(Math.max(0, i - 3), i + 4).some(l => /Пока|Цикл/i.test(l))) {
-                suggestions.push({
-                    originalCodeSnippet: line,
-                    recommendedCall: 'СтроковыеФункцииКлиентСервер.РазложитьСтрокуВМассивПодстрок(Строка, Разделитель)',
-                    explanation: 'Ручной разбор строки в цикле подвержен ошибкам смещения индекса. Замените на стандартный метод БСП.',
-                    moduleName: 'СтроковыеФункцииКлиентСервер'
-                });
-            }
+            // Попытка + a dotted expression does not establish a missing structure property.
+            // Keep this suggestion out until receiver type and property access can be proven.
 
-            // 3. Anti-pattern: Direct check if structure has property via Попытка ... Исключение
-            if (/Попытка/i.test(line) && lines.slice(i, i + 3).some(l => /\[\s*".*"\s*\]|\.[\w\u0400-\u04FF]+/i.test(l))) {
-                suggestions.push({
-                    originalCodeSnippet: line,
-                    recommendedCall: 'ОбщегоНазначенияКлиентСервер.Свойство(Структура, "Ключ", ЗначениеПоУмолчанию)',
-                    explanation: 'Перехват отсутствующих свойств через Попытка-Исключение снижает производительность отладчика и платформы. Используйте метод БСП.',
-                    moduleName: 'ОбщегоНазначенияКлиентСервер'
-                });
-            }
         }
 
         return suggestions;
@@ -412,11 +402,11 @@ export class BSPHelper {
      * Formats summary of BSP knowledge for LLM Prompt injection.
      */
     public static getBSPPromptInjection(): string {
-        return `Стандарты разработки с использованием Библиотеки Стандартных Подсистем (БСП):
-1. Чтение реквизитов объектов: Всегда использовать "ОбщегоНазначения.ЗначениеРеквизитаОбъекта(Ссылка, "Реквизит")" или "ОбщегоНазначения.ЗначенияРеквизитовОбъектов()", запрещено вызывать "Ссылка.ПолучитьОбъект().Реквизит".
-2. Работа со строками: Использовать "СтроковыеФункцииКлиентСервер.РазложитьСтрокуВМассивПодстрок" и "ВставитьПараметрыВСтроку".
-3. Безопасная работа со структурами: Использовать "ОбщегоНазначенияКлиентСервер.Свойство(Структура, Ключ, ЗначениеПоУмолчанию)".
-4. Длительные процессы: Выносить в фон через "ДлительныеОперации.ЗапуститьВыполнениеВФоне".
-5. Пользователи: Текущего пользователя получать через "Пользователи.АвторизованныйПользователь()".`;
+        return `Контекст Библиотеки Стандартных Подсистем (БСП):
+Используйте только методы, наличие и сигнатуры которых подтверждены модулями текущей конфигурации.
+Статический каталог примеров не доказывает наличие метода в установленной версии БСП.
+Для чтения одного реквизита рассмотрите специализированный API проекта вместо загрузки всего объекта.
+Для строк и структур используйте доступные методы платформы; тяжёлые задачи отделяйте от клиентского UI.
+Если сигнатура неизвестна, запросите уточнение вместо выдуманного вызова.`;
     }
 }

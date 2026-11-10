@@ -1,0 +1,51 @@
+// Real provider handlers with a controlled editor/storage boundary; no gateway calls.
+const assert=require('node:assert/strict'),Module=require('node:module');
+const settings=new Map(),messages=[],disposable={dispose(){}};
+let receive,failSave=false;
+const api={env:{language:'en',clipboard:{writeText:async()=>{}}},workspace:{isTrusted:true,textDocuments:[],workspaceFolders:[],getConfiguration:()=>({get:(_key,fallback)=>fallback})},
+ window:{onDidChangeActiveTextEditor:()=>disposable,onDidChangeTextEditorSelection:()=>disposable},commands:{executeCommand:async()=>{}}};
+const load=Module._load;Module._load=function(name,...args){return name==='vscode'?api:load.call(this,name,...args);};
+const {NormaHub1CSidebarProvider:Sidebar}=require('../out/sidebarProvider');
+const {NormaHubClient}=require('../out/normahubClient');
+const {MetadataScanner}=require('../out/metadataScanner');
+const {preferredUiLanguage,UI_LANGUAGE_KEY}=require('../out/features/ui-language/model/preferences');
+const {translateText,localizeHostMessage}=require('../out/shared/i18n/translator');
+const {BSPHelper}=require('../out/bspHelper');
+const {BSP_DESCRIPTIONS_EN}=require('../out/shared/i18n/bsp.en');
+Module._load=load;
+const context={subscriptions:[],secrets:{get:async()=>''},globalState:{get:key=>settings.get(key),update:async(key,value)=>{if(failSave)throw Error('Storage unavailable');settings.set(key,value);}}};
+const last=type=>messages.filter(message=>message.type===type).at(-1);
+async function run(){
+ assert.equal(preferredUiLanguage(context),'en');api.env.language='ru-RU';assert.equal(preferredUiLanguage(context),'ru');
+ settings.set(UI_LANGUAGE_KEY,'en');assert.equal(preferredUiLanguage(context),'en');
+ settings.set(UI_LANGUAGE_KEY,'invalid');assert.equal(preferredUiLanguage(context),'ru');
+ api.env.language='en';settings.delete(UI_LANGUAGE_KEY);
+ NormaHubClient.getApiKey=async()=>'';MetadataScanner.scanWorkspace=async()=>({name:'Test',objects:[],isDemoFallback:false});
+ const view={webview:{html:'',postMessage:message=>{messages.push(message);return Promise.resolve(true);},onDidReceiveMessage:handler=>{receive=handler;return disposable;}}};
+ const sidebar=new Sidebar({},context);await sidebar.resolveWebviewView(view,{},{});
+ assert.ok(view.webview.html.includes('<html lang="en">'));
+ await receive({type:'webviewReady'});assert.equal(last('sidebarStatus').gatewayStatusLabel,'API key not configured');
+ await receive({type:'setUiLanguage',language:'ru'});assert.equal(settings.get(UI_LANGUAGE_KEY),'ru');assert.equal(last('uiLanguageChanged').language,'ru');
+ assert.equal(last('sidebarStatus').metadataLabel,'Метаданные не найдены');
+ failSave=true;await receive({type:'setUiLanguage',language:'en'});failSave=false;
+ assert.equal(last('uiLanguageChanged').language,'ru');assert.ok(last('uiLanguageChanged').error);
+ await receive({type:'setUiLanguage',language:'en'});assert.equal(settings.get(UI_LANGUAGE_KEY),'en');
+ await receive({type:'setUiLanguage',language:'<img src=x>'});assert.equal(settings.get(UI_LANGUAGE_KEY),'en');assert.equal(last('uiLanguageChanged').language,'en');
+ await receive({type:'auditCodeSnippet',code:'Для Каждого Стр Из Таблица Цикл\n Результат = Запрос.Выполнить();\nКонецЦикла;'});
+ assert.ok(last('auditResult').issues.some(issue=>issue.message.includes('Query execution inside a loop')));
+ await receive({type:'generateQuery',intent:'Test'});assert.equal(last('queryResult').error,'API key is not set. Add it in Connection settings.');
+ await receive({type:'analyzeTechLog',rawLog:'00:01.000000-1500000,TLOCK,1,Regions=AccumRg.Товары,WaitConnections=42'});
+ assert.ok(last('techLogResult').report.includes('Managed lock wait: 1.50 s.'));
+ assert.ok(last('techLogResult').report.includes('AccumRg.Товары'));
+ const code='Сообщить("Сохранить ключ");\nПроцедура';
+ sidebar._sendCode('queryResult',code);assert.equal(last('queryResult').code,code);
+ assert.equal(localizeHostMessage({type:'explainResult',report:code},'en').report,code);
+ assert.equal(localizeHostMessage({type:'bddResult',feature:code},'en').feature,code);
+ assert.equal(translateText('Метаданные: 12 объектов','en'),'Metadata: 12 objects');
+ assert.equal(translateText('Применить в Модуль.bsl','en'),'Apply to Модуль.bsl');
+ assert.equal(translateText('constructor','en'),'constructor');assert.equal(translateText('__proto__','en'),'__proto__');
+ for(const method of BSPHelper.STANDARD_MODULES)assert.ok(BSP_DESCRIPTIONS_EN[method.method],method.method);
+ const reopened=new Sidebar({},context);assert.ok(reopened._getHtmlForWebview('',undefined,'gpt-6-sol').includes('<html lang="en">'));
+ console.log('UI language host: IDE default, persistent preference, switching/rollback/validation, translated errors and diagnostics, BSP coverage and exact code preservation passed.');
+}
+run().catch(error=>{console.error(error);process.exitCode=1;});

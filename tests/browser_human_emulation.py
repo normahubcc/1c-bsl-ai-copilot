@@ -465,8 +465,8 @@ def run_test():
                 print(f"    • {opt}")
             print("  ---------------------------------------")
 
-            assert any("deepseek-v4.1-flash" in opt.lower() for opt in options), \
-                "Expected DeepSeek v4.1 Flash to be present in model options"
+            assert any("deepseek-v4.1-flash-1017" in opt.lower() for opt in options), \
+                "Expected DeepSeek v4.1 Flash 1017 to be present in model options"
             assert any("gpt-6.1-sol" in opt.lower() or "gpt-6-sol" in opt.lower() for opt in options), \
                 "Expected GPT-6 Sol models to be present in model options"
             assert not any("claude-sonnet-5-5" in opt.lower() or "sonnet 5.5" in opt.lower() for opt in options), \
@@ -478,16 +478,16 @@ def run_test():
             print("  ✓ Confirmed trimmed model matrix in Settings")
 
             # Change model
-            page.select_option("#modelSelector", "deepseek-v4.1-flash")
+            page.select_option("#modelSelector", "deepseek-v4.1-flash-1017")
             page.wait_for_timeout(200)
             assert "show" in page.locator("#toast").get_attribute("class")
-            print("  ✓ Selected DeepSeek v4.1 Flash, toast feedback confirmed")
+            print("  ✓ Selected DeepSeek v4.1 Flash 1017, toast feedback confirmed")
 
             # Wait for toast fade-out
             page.wait_for_timeout(1600)
 
             # Save API key
-            page.fill("#apiKeyInput", "nr_hub_live_enterprise_secret_key_123")
+            page.fill("#apiKeyInput", "FAKE_TEST_KEY_NEVER_USE")
             page.locator("button[onclick='saveKey()']").click()
             page.wait_for_timeout(200)
             assert "show" in page.locator("#toast").get_attribute("class")

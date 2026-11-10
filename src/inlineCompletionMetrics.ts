@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CompletionCancelledError } from './normahubClient';
+import { CompletionCancelledError, CompletionTruncatedError } from './normahubClient';
 
 /**
  * Internal diagnostics for inline completion (Prompt 5).
@@ -17,6 +17,7 @@ export type CompletionErrorClass =
     | 'rate-limited'
     | 'gateway'
     | 'parse'
+    | 'truncated'
     | 'context'
     | 'unknown';
 
@@ -33,6 +34,10 @@ export interface CompletionMetrics {
     /** Not observable via InlineCompletionItemProvider API — always undefined for now. */
     accepted?: boolean;
     errorClass?: string;
+    finishReason?: 'stop' | 'length' | 'other' | 'missing';
+    promptTokens?: number;
+    completionTokens?: number;
+    reasoningTokens?: number;
 }
 
 /**
@@ -44,6 +49,7 @@ export const MAX_ACTIVE_COMPLETION_REQUESTS = 1;
 const RING_LIMIT = 200;
 
 export function classifyCompletionError(err: unknown): CompletionErrorClass {
+    if (err instanceof CompletionTruncatedError) return 'truncated';
     if (
         err instanceof CompletionCancelledError ||
         (err instanceof Error && err.name === 'AbortError')
@@ -156,6 +162,8 @@ export function formatMetricsLine(m: CompletionMetrics): string {
         `debounce=${m.debounceWaitMs}ms ctx=${m.contextBuildMs}ms ` +
         `net=${m.networkMs !== undefined ? `${m.networkMs}ms` : '-'} ` +
         `cancelled=${m.cancelled} empty=${m.empty} normalized=${m.normalized} ` +
+        `finish=${m.finishReason ?? '-'} promptTokens=${m.promptTokens ?? '-'} ` +
+        `completionTokens=${m.completionTokens ?? '-'} reasoningTokens=${m.reasoningTokens ?? '-'} ` +
         `err=${m.errorClass ?? '-'}`
     );
 }

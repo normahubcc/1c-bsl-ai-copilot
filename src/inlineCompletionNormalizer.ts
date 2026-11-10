@@ -296,12 +296,19 @@ export function normalizeInlineCompletion(
         return null; // JSON or bracketed data, never BSL ghost text
     }
 
+    // A complete quoted literal is valid in an argument position, even without a semicolon.
+    // Keep standalone quoted prose rejected outside an already-open call argument.
+    const prefixStateForLiteral = prefixDepth(input.prefix);
+    const allowQuotedArgument = prefixStateForLiteral.paren > 0 && !prefixStateForLiteral.inString
+        && /[(,]\s*$/.test(input.currentLineBeforeCursor);
+    const quotedArgument = allowQuotedArgument && lines.length === 1 && /^"(?:[^"\r\n]|"")*"$/.test(lines[0].trim());
+
     // 4. Every remaining non-blank line must read as BSL.
     for (const line of lines) {
         if (line.trim() === '') {
             continue;
         }
-        if (!isCodeLikeLine(line)) {
+        if (!isCodeLikeLine(line) && !quotedArgument) {
             return null;
         }
     }

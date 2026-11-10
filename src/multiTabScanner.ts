@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { exportedSignatures, moduleIdentity } from './shared/bsl/moduleContext';
 
 export interface OpenModuleSummary {
     fileName: string;
@@ -18,6 +19,12 @@ export class MultiTabScanner {
             if (activeDocument && doc.uri.toString() === activeDocument.uri.toString()) {
                 return false;
             }
+            const folders = vscode.workspace.workspaceFolders || [];
+            const activeRoot = (activeDocument && vscode.workspace.getWorkspaceFolder?.(activeDocument.uri)) || (activeDocument?.uri.scheme !== 'file' && folders.length === 1 ? folders[0] : undefined);
+            if (folders.length > 1 && !activeRoot) return false;
+            const neighborRoot = vscode.workspace.getWorkspaceFolder?.(doc.uri);
+            if (activeDocument?.uri.scheme === 'file' && !activeRoot) return false;
+            if (activeRoot && neighborRoot?.uri.toString() !== activeRoot.uri.toString()) return false;
             return (
                 (doc.fileName.endsWith('.bsl') || doc.fileName.endsWith('.os')) &&
                 !doc.isClosed &&
@@ -33,30 +40,13 @@ export class MultiTabScanner {
 
         // Sample up to 6 most relevant open documents
         for (const doc of openDocs.slice(0, 6)) {
-            const baseName = path.basename(doc.fileName, path.extname(doc.fileName));
-            const text = doc.getText();
-            const exportedMethods: string[] = [];
-
-            // Fast regex to capture exported procedures and functions in 1C BSL
-            const regex = /(?:Процедура|Функция)\s+([A-Za-zА-Яа-я0-9_]+)\s*\(([^)]*)\)\s*(?:Экспорт|Export)/gi;
-            let match;
-            while ((match = regex.exec(text)) !== null) {
-                const name = match[1];
-                const rawParams = match[2].trim();
-                const cleanParams = rawParams ? rawParams.replace(/\s+/g, ' ') : '';
-                exportedMethods.push(`${name}(${cleanParams})`);
-                if (exportedMethods.length >= 8) {
-                    break;
-                }
-            }
-
+            const identity = moduleIdentity(doc.fileName);
+            const exportedMethods = exportedSignatures(doc.getText(), 8);
             summaries.push({
                 fileName: path.basename(doc.fileName),
-                moduleName: baseName,
+                moduleName: identity.moduleName,
                 exportedMethods,
-                isCommonModule: baseName.toLowerCase().includes('клиент') ||
-                                baseName.toLowerCase().includes('сервер') ||
-                                baseName.toLowerCase().includes('общ')
+                isCommonModule: identity.isCommonModule
             });
         }
 

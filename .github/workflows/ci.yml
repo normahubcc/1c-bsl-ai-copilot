@@ -43,6 +43,9 @@ jobs:
       - name: Package VSIX
         run: python3 build_vsix.py
 
+      - name: Release QA
+        run: python3 tests/release_qa.py
+
       - name: Resolve exact VSIX artifact
         run: |
           VSIX="$(node -p "require('./package.json').name + '-' + require('./package.json').version + '.vsix'")"

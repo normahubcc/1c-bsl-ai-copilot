@@ -43,16 +43,15 @@ class TestSidecarCore(unittest.TestCase):
         self.assertEqual(len(issues), 0)
 
     def test_build_batch_query(self):
-        query = SidecarCore.build_batch_query("ЗаказКлиента", "Товары", "ТоварыНаСкладах")
+        query = SidecarCore.build_batch_query("ЗаказКлиента", "Товары", "ТоварыНаСкладах", fields=["Номенклатура", "Количество"])
         self.assertIn("ПОМЕСТИТЬ ВТ_Товары", query)
         self.assertIn("ИНДЕКСИРОВАТЬ ПО", query)
         self.assertIn("УНИЧТОЖИТЬ ВТ_Товары", query)
         self.assertIn("МенеджерВременныхТаблиц", query)
 
     def test_build_batch_query_srez_poslednih(self):
-        query = SidecarCore.build_batch_query("УстановкаЦен", "Товары", "ЦеныНоменклатуры", register_type="СрезПоследних")
-        self.assertIn("РегистрСведений.ЦеныНоменклатуры.СрезПоследних", query)
-        self.assertNotIn("РегистрНакопления.ЦеныНоменклатуры", query)
+        with self.assertRaises(ValueError):
+            SidecarCore.build_batch_query("УстановкаЦен", "Товары", "ЦеныНоменклатуры", register_type="СрезПоследних", fields=["Номенклатура", "Цена"])
 
     def test_call_normahub_llm_rejects_untrusted_host(self):
         with self.assertRaises(ValueError) as ctx:
@@ -86,17 +85,17 @@ class TestSidecarCore(unittest.TestCase):
         self.assertIn("ПОМЕСТИТЬ ВТ_Остатки", res["refactoredQuery"])
         self.assertIn("ИНДЕКСИРОВАТЬ ПО", res["refactoredQuery"])
         self.assertIn("УНИЧТОЖИТЬ ВТ_Остатки", res["refactoredQuery"])
-        self.assertIn("ЕСТЬNULL", res["refactoredQuery"])
-        self.assertGreaterEqual(len(res["appliedOptimizations"]), 3)
+        self.assertNotIn("ЕСТЬNULL", res["refactoredQuery"])
+        self.assertIn("КоличествоОстаток КАК КоличествоОстаток", res["refactoredQuery"])
+        self.assertGreaterEqual(len(res["appliedOptimizations"]), 2)
 
     def test_generate_extension_method(self):
         ext_vmesto = SidecarCore.generate_extension_method("ОбработкаПроведения", "Вместо")
         self.assertIn('&Вместо("ОбработкаПроведения")', ext_vmesto)
         self.assertIn("ПродолжитьВызов(", ext_vmesto)
 
-        ext_control = SidecarCore.generate_extension_method("ПроверитьЗаполнение", "ИзменениеИКонтроль")
-        self.assertIn('&ИзменениеИКонтроль("ПроверитьЗаполнение")', ext_control)
-        self.assertIn("#Вставка", ext_control)
+        with self.assertRaises(ValueError):
+            SidecarCore.generate_extension_method("ПроверитьЗаполнение", "ИзменениеИКонтроль")
 
     def test_clipboard_processor_intents(self):
         config = SidecarConfig()
@@ -108,7 +107,7 @@ class TestSidecarCore(unittest.TestCase):
         self.assertIn('&Вместо("ОбработкаПроведения")', res_ext)
 
         # 2. Query intent
-        res_query = watcher.process_text("// запрос остатки")
+        res_query = watcher.process_text('// запрос {"entity":"ЗаказКлиента","tabular":"Товары","register":"ТоварыНаСкладах","fields":["Номенклатура","Количество"]}')
         self.assertIsNotNone(res_query)
         self.assertIn("ПОМЕСТИТЬ ВТ_Товары", res_query)
 
@@ -120,7 +119,7 @@ class TestSidecarCore(unittest.TestCase):
         # 4. Vanessa BDD intent
         res_bdd = watcher.process_text("// ванесса ЗаказКлиента")
         self.assertIsNotNone(res_bdd)
-        self.assertIn("Функционал: Проведение и валидация документа \"ЗаказКлиента\"", res_bdd)
+        self.assertIn("Функционал: Проверка ЗаказКлиента", res_bdd)
 
         # 5. Tech Log intent
         tlog_snippet = "14:20.123000-8000000,TLOCK,2,process=rphost,Context=Док : 10 : Заблокировать(),Regions=Товары,WaitConnections=10"
@@ -131,9 +130,9 @@ class TestSidecarCore(unittest.TestCase):
     def test_generate_bdd_feature(self):
         feat = SidecarCore.generate_bdd_feature("РеализацияТоваровУслуг", "Товары", "ТоварыНаСкладах")
         self.assertIn("# language: ru", feat)
-        self.assertIn("Функционал: Проведение и валидация документа \"РеализацияТоваровУслуг\"", feat)
-        self.assertIn("Сценарий: Успешное создание и проведение документа", feat)
-        self.assertIn("Сценарий: Контроль превышения остатка", feat)
+        self.assertIn("Функционал: Проверка РеализацияТоваровУслуг", feat)
+        self.assertIn("TODO", feat)
+        self.assertNotIn("Тестовый товар", feat)
 
     def test_analyze_tech_log(self):
         log_sample = """
@@ -146,7 +145,7 @@ class TestSidecarCore(unittest.TestCase):
         cats = [d["category"] for d in diag["diagnoses"]]
         self.assertIn("Транзакционные блокировки (TLOCK)", cats)
         self.assertIn("Взаимные блокировки (TDEADLOCK)", cats)
-        self.assertIn("Рекомендации", diag["report"])
+        self.assertIn("Что проверить", diag["report"])
 
 
 class TestSidecarHTTPServer(unittest.TestCase):
@@ -189,7 +188,7 @@ class TestSidecarHTTPServer(unittest.TestCase):
 
     def test_query_endpoint(self):
         url = f"http://127.0.0.1:{self.port}/v1/query"
-        payload = json.dumps({"entity": "ЗаказКлиента", "tabular": "Товары", "register": "ТоварыНаСкладах"}).encode("utf-8")
+        payload = json.dumps({"entity": "ЗаказКлиента", "tabular": "Товары", "register": "ТоварыНаСкладах", "fields": ["Номенклатура", "Количество"]}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req) as resp:
             self.assertEqual(resp.status, 200)
@@ -221,12 +220,12 @@ class TestSidecarHTTPServer(unittest.TestCase):
 
     def test_bdd_endpoint(self):
         url = f"http://127.0.0.1:{self.port}/v1/bdd"
-        payload = json.dumps({"entity": "ЗаказКлиента", "tabular": "Товары", "register": "ТоварыНаСкладах"}).encode("utf-8")
+        payload = json.dumps({"entity": "ЗаказКлиента", "tabular": "Товары", "register": "ТоварыНаСкладах", "fields": ["Номенклатура", "Количество"]}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode("utf-8"))
-            self.assertIn("Функционал: Проведение и валидация документа \"ЗаказКлиента\"", data["feature"])
+            self.assertIn("Функционал: Проверка ЗаказКлиента", data["feature"])
 
     def test_techlog_endpoint(self):
         url = f"http://127.0.0.1:{self.port}/v1/techlog"
@@ -274,6 +273,27 @@ class TestSidecarHTTPServer(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(req)
         self.assertEqual(ctx.exception.code, 413)
+
+    def test_invalid_query_arguments_return_400(self):
+        url = f"http://127.0.0.1:{self.port}/v1/query"
+        for body in ({}, [], {"entity": "Заказ", "tabular": "Товары", "register": "Остатки"}):
+            req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST")
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(req)
+            self.assertEqual(error.exception.code, 400)
+
+    def test_untrusted_browser_origin_is_rejected(self):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/v1/audit", data=b'{"code":"x"}', headers={"Content-Type":"application/json", "Origin":"http://localhost.evil.example"}, method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(req)
+        self.assertEqual(error.exception.code, 403)
+
+    def test_unrecognized_and_fast_logs_are_not_incidents(self):
+        for text in ("not a log", "00:01.000000-1,DBPOSTGR,1,Sql=SELECT 1"):
+            result = SidecarCore.analyze_tech_log(text)
+            self.assertEqual(result["diagnoses_count"], 0)
+            self.assertNotIn("✅", result["report"])
+
 
 
 if __name__ == "__main__":

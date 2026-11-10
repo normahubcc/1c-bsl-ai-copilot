@@ -6,12 +6,14 @@ export interface MetadataField {
     name: string;
     synonym?: string;
     type?: string;
+    role?: 'attribute' | 'dimension' | 'resource';
 }
 
 export interface MetadataObject {
     kind: 'Справочник' | 'Документ' | 'РегистрНакопления' | 'РегистрСведений' | 'ПланВидовХарактеристик' | 'Перечисление';
     name: string;
     synonym?: string;
+    registerType?: 'Остатки' | 'Обороты';
     tabularSections?: {
         name: string;
         fields: MetadataField[];

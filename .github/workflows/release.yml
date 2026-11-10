@@ -4,20 +4,39 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      promote:
+        description: 'Publish the existing draft VSIX to both registries and open the GitHub release'
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+
+      - name: Check exact release tag and package version
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          EXPECTED="v$(node -p "require('./package.json').version")"
+          test "$GITHUB_REF_NAME" = "$EXPECTED"
+          test -f "docs/releases/$EXPECTED.md"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -27,45 +46,79 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Python lint dependency
+        run: pip install "ruff==0.15.19"
+
+      - name: Lint
+        run: npm run lint
+
       - name: Run Test Suite
         run: npm test
 
       - name: Build Extension Bundles
         run: npm run build
 
-      - name: Package VSIX
-        run: python3 build_vsix.py
-
-      - name: Release QA
-        run: python3 tests/release_qa.py
-
       - name: Resolve exact release artifact
         run: |
           VSIX="$(node -p "require('./package.json').name + '-' + require('./package.json').version + '.vsix'")"
           echo "RELEASE_VSIX=$VSIX" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      - name: Package VSIX for draft
+        if: github.event_name == 'push'
+        run: python3 build_vsix.py
+
+      - name: Write draft checksum
+        if: github.event_name == 'push'
+        run: sha256sum "$RELEASE_VSIX" > SHA256SUMS
+
+      - name: Download the reviewed draft VSIX
+        if: github.event_name == 'workflow_dispatch' && inputs.promote
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern "$RELEASE_VSIX" --repo "$GITHUB_REPOSITORY"
+          gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --repo "$GITHUB_REPOSITORY"
+          sha256sum -c SHA256SUMS
+
+      - name: Release QA
+        if: github.event_name == 'push' || inputs.promote
+        run: python3 tests/release_qa.py
+
+      - name: Record artifact digest
+        if: github.event_name == 'push' || inputs.promote
+        run: sha256sum "$RELEASE_VSIX"
+
+      - name: Create draft GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ env.RELEASE_VSIX }}
-            epf/NormaHubCopilot_Module.bsl
-            epf/NormaHubCopilot_Form.bsl
-            turboconf/normahub_copilot.os
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+            SHA256SUMS
+          draft: true
+          prerelease: true
+          body_path: docs/releases/${{ github.ref_name }}.md
 
-      - name: Publish to Open-VSX (Cursor, VSCodium)
-        if: env.OVSX_PAT != ''
+      - name: Require Open VSX credential for promotion
+        if: github.event_name == 'workflow_dispatch' && inputs.promote
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: test -n "$OVSX_PAT"
+
+      - name: Publish to Open-VSX
+        if: github.event_name == 'workflow_dispatch' && inputs.promote
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          npx --yes ovsx publish "${RELEASE_VSIX}" --pat "$OVSX_PAT"
+          npx --yes ovsx@1.3.0 publish "$RELEASE_VSIX"
 
       - name: Publish to Visual Studio Marketplace (VS Code)
-        if: env.VSCE_PAT != ''
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        if: github.event_name == 'workflow_dispatch' && inputs.promote
         run: |
-          npx --yes @vscode/vsce@2.24.0 publish -p "$VSCE_PAT" --packagePath "${RELEASE_VSIX}"
+          npx --yes @vscode/vsce@4.1.0 publish --oidc --packagePath "$RELEASE_VSIX"
+
+      - name: Open the GitHub prerelease after both uploads
+        if: github.event_name == 'workflow_dispatch' && inputs.promote
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease

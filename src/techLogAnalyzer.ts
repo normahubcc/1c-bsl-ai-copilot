@@ -85,16 +85,25 @@ export class TechLogAnalyzer {
             ? rawEvent
             : 'OTHER') as TechLogEvent['event'];
 
-        // Parse key-value properties: key=value or key='value'
         const properties: Record<string, string> = {};
-        const propRegex = /([a-zA-Z0-9_:]+)=(?:'([^']*)'|([^,]*))(?:,|$)/gs;
-        let match;
-        while ((match = propRegex.exec(payload)) !== null) {
-            const key = match[1];
-            const val = match[2] !== undefined ? match[2] : match[3];
-            if (key) {
-                properties[key] = val ? val.trim() : '';
+        // Values may contain commas, newlines, SQL quotes and doubled quote escapes.
+        const propRegex = /([a-zA-Z0-9_:]+)=/g;
+        let match: RegExpExecArray | null;
+        while ((match = propRegex.exec(payload))) {
+            let cursor = propRegex.lastIndex;
+            const quote = payload[cursor] === "'" || payload[cursor] === '"' ? payload[cursor++] : '';
+            let value = '';
+            while (cursor < payload.length) {
+                const char = payload[cursor++];
+                if (quote && char === quote) {
+                    if (payload[cursor] === quote) { value += quote; cursor++; continue; }
+                    break;
+                }
+                if (!quote && char === ',') break;
+                value += char;
             }
+            properties[match[1]] = value.trim();
+            propRegex.lastIndex = cursor;
         }
 
         const context = properties['Context'] || properties['context'] || '';
@@ -141,6 +150,7 @@ export class TechLogAnalyzer {
                     const regions = ev.properties['Regions'] || ev.properties['regions'] || 'Не указаны';
                     const waitConns = ev.properties['WaitConnections'] || ev.properties['waitConnections'] || '';
                     const durationSec = ev.durationSec;
+                    if (!waitConns && durationSec < 1) break;
                     const isLongWait = durationSec >= 5;
 
                     diagnoses.push({
@@ -190,7 +200,7 @@ export class TechLogAnalyzer {
                     diagnoses.push({
                         severity: 'critical',
                         category: 'Исключение / Ошибка (EXCP)',
-                        title: 'Необработанное системное исключение платформы 1С',
+                        title: 'Событие исключения платформы 1С',
                         description: descr,
                         affectedModule: ev.contextLocation?.module,
                         affectedLine: ev.contextLocation?.line,
@@ -209,13 +219,14 @@ export class TechLogAnalyzer {
                 case 'DBMSSQL': {
                     const durationSec = ev.durationSec;
                     const sql = ev.properties['Sql'] || ev.properties['sql'] || '';
+                    if (durationSec < 1) break;
                     const isVerySlow = durationSec >= 3;
 
                     diagnoses.push({
                         severity: isVerySlow ? 'critical' : 'warning',
                         category: 'Медленный запрос к СУБД',
                         title: `Медленный SQL-запрос (${ev.event}): ${durationSec.toFixed(2)} сек.`,
-                        description: `Запрос выполнялся ${durationSec.toFixed(2)} с на уровне базы данных. Возможен Scan таблицы вместо Index Seek.`,
+                        description: `Запрос выполнялся ${durationSec.toFixed(2)} с на уровне базы данных. Для определения причины нужен план выполнения.`,
                         affectedModule: ev.contextLocation?.module,
                         affectedLine: ev.contextLocation?.line,
                         metrics: {
@@ -242,14 +253,13 @@ export class TechLogAnalyzer {
     /**
      * Formats diagnostic results into a readable markdown report
      */
-    public static formatReport(diagnoses: TechLogDiagnosis[]): string {
-        if (diagnoses.length === 0) {
-            return '✅ Событий с критическими блокировками или ошибками в переданном логе не обнаружено.';
-        }
+    public static formatReport(diagnoses: TechLogDiagnosis[], eventsCount = diagnoses.length): string {
+        if (!eventsCount) return 'События ТЖ не распознаны. Проверьте формат MM:SS.microsec-duration,EVENT,level и полноту фрагмента. Диагностика не выполнена.';
+        if (!diagnoses.length) return `Распознано событий: ${eventsCount}. Совпадений по поддерживаемым правилам нет (медленный SQL: от 1 с). Это не исключает других проблем.`;
 
         const lines: string[] = [];
         lines.push(`## 📊 Отчет диагностики Технологического Журнала 1С (ТЖ)\n`);
-        lines.push(`Обнаружено инцидентов: **${diagnoses.length}**\n`);
+        lines.push(`Распознано событий: ${eventsCount}. Замечаний: **${diagnoses.length}**\n`);
 
         diagnoses.forEach((d, idx) => {
             const badge = d.severity === 'critical' ? '🔴 [КРИТИЧНО]' : d.severity === 'warning' ? '🟡 [ВНИМАНИЕ]' : 'ℹ️ [ИНФО]';
@@ -267,7 +277,7 @@ export class TechLogAnalyzer {
                 lines.push(`- **Область блокировки:** \`${d.metrics.regions}\``);
             }
 
-            lines.push(`\n**💡 Рекомендации эксперта по High-Load 1С:**`);
+            lines.push(`\n**💡 Что проверить:**`);
             for (const rec of d.recommendations) {
                 lines.push(`  ${rec}`);
             }
