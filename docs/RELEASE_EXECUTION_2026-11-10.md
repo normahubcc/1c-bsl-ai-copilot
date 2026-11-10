@@ -1,0 +1,21 @@
+# Выполнение этапов 1–6 для 1.0.12
+
+Срез: 2026-11-10. Этот файл фиксирует действия после [технической проверки кандидата](RELEASE_CANDIDATE_1.0.12.md). Статус выпуска — **draft prerelease, без публикации в каталогах и без медиа-анонса**.
+
+| Этап | Выполнено | Открыто |
+| --- | --- | --- |
+| 1. Freeze исходника | Review по составу, поиск ключевых литералов, отсутствие приватных evidence/VSIX в коммите; кандидат `9356a47`, live harness `dd73a8c`, doc correction на `main` отдельно. Пользовательский изменённый `1.0.3.vsix` оставлен локально. | Не считать `main` с новым doc commit идентичным tag source: `v1.0.12` указывает на `dd73a8c`. |
+| 2. Пакет и обещания | README/CHANGELOG помечают beta и ограничения; 1.0.12 VSIX создан, локальный SHA-256 `251c699ca7a3e14afdfed5aa641a9715d11ea1102b56b664fb465439a8bc0a50`; npm audit = 0 известных moderate+ уязвимостей. | Упаковщик использует файловые mtime: SHA CI VSIX может отличаться от локального при одинаковом payload. Считать CI draft каноническим для публикации. |
+| 3. Exact local package | `npm test`, `pnpm build`, `pnpm lint`, `release_qa.py`; installed VS Code/Cursor smoke 4/4 и physical Tab/Escape 5/5 в каждом; собственная учебная 1С: 7 SELECT, 3 preflight refusals, 1 tamper refusal. | Эти испытания не измеряют качество новой генерации NormaHub, произвольную ERP, формы и `.cfe`. |
+| 4. Live AI | Harness привязан к текущему VSIX и сохраняет его SHA, корпус 30 собственных задач и критерии заранее заданы. | **not_run:** отсутствует ротированный ключ в `.private/normahub-live-key` и подтверждённый бюджет. Старые ключи из переписки не применять. |
+| 5. GitHub и каталоги | `v1.0.12` отправлен на GitHub; [tag workflow](https://github.com/normahubcc/1c-bsl-ai-copilot/actions/runs/42868144842) завершился `success`, включая package QA и шаг Create draft GitHub Release; `./publish.sh --check` прошёл в чистом worktree exact tag. | Доступ к самому draft VSIX и его SHA через анонимный API отсутствует. До promotion: скачать draft под владельцем, сверить SHA256SUMS и установить; настроить Marketplace Trusted Publishing policy и ротированный `OVSX_PAT` в GitHub Secrets. Open VSX API всё ещё показывал 1.0.3; Marketplace показывал старый README. |
+| 6. Медиа | [Редакционные тексты](media/launch_copy_1.0.12.md) и [канальный план](RELEASE_AND_GROWTH_2026-11-10.md) готовы как черновики. | Реальные ссылки на опубликованные каталоги, видео/скриншоты из опубликованного пакета, предметное и юридическое ревью; до этого материалы не размещать. |
+
+## Следующая точная последовательность
+
+1. Владелец перевыпускает раскрытые ранее NormaHub/Open VSX ключи. Новый NormaHub key кладёт **без отправки в чат** в `.private/normahub-live-key` (mode 0600), сообщает бюджет до 30 вызовов. Агент запускает canary, затем оставшийся frozen corpus и анализирует долю полезных результатов, p95 и стоимость.
+2. Владелец входит в GitHub Release draft `v1.0.12`, скачивает VSIX и `SHA256SUMS` или предоставляет агенту подключённый GitHub доступ. Проверить hash, запустить installed smoke на этих байтах. Если CI artifact имеет иной hash, это ожидаемо до сравнения payload: не подменять его локальным файлом.
+3. Владелец создаёт Marketplace Trusted Publishing policy: owner `normahubcc`, repo `1c-bsl-ai-copilot`, workflow `release.yml`, environment пустой; сохраняет **ротированный** `OVSX_PAT` в GitHub Secrets. После завершения gate 4 и проверки draft запускает `gh workflow run release.yml --ref v1.0.12 -f promote=true` через авторизованный GitHub CLI/API. Следить за двумя upload steps и открытием prerelease.
+4. После появления 1.0.12 в обоих каталогах скачать пакеты, сверить версию/состав и выполнить установку в чистые VS Code/Cursor. Лишь затем подставить ссылки и фактические кадры в тексты, провести ревью разработчиком 1С и отправить анонс/Инфостарт/Habr по очереди. Product Hunt и MCP directories — отдельные запуски после собственных gates.
+
+Не делать вывод «100% production» по успешному CI: B2B/Team GA требует самостоятельных доказательств для tenant isolation, прав, SLA, стоимости, ERP и Windows-контуров.
