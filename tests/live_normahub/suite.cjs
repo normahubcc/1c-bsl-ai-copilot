@@ -3,16 +3,20 @@ const {execFile}=require('node:child_process'),{promisify}=require('node:util');
 exports.run=async function(){
  const root=process.env.LIVE_REPOSITORY,out=process.env.LIVE_EVIDENCE;
  const {cases:allCases}=JSON.parse(fs.readFileSync(path.join(out,'corpus-before-run.json'),'utf8'));
- const selectedFamilies=(process.env.LIVE_FAMILIES??'').split(',').filter(Boolean);const cases=allCases.filter(c=>!selectedFamilies.length||selectedFamilies.includes(c.kind));
+ const selectedFamilies=(process.env.LIVE_FAMILIES??'').split(',').filter(Boolean),selectedCaseIds=(process.env.LIVE_CASE_IDS??'').split(',').filter(Boolean);
+ const cases=allCases.filter(c=>(!selectedFamilies.length||selectedFamilies.includes(c.kind))&&(!selectedCaseIds.length||selectedCaseIds.includes(c.id)));
+ const maxHttpRequests=Number(process.env.LIVE_MAX_HTTP_REQUESTS??cases.length);
+ if(!Number.isInteger(maxHttpRequests)||maxHttpRequests<1||maxHttpRequests>cases.length)throw Error('Invalid live HTTP request cap');
  let key=await new Promise((resolve,reject)=>{let data='';const c=net.connect(process.env.LIVE_CREDENTIAL_SOCKET);c.on('data',b=>data+=b);c.on('end',()=>{try{resolve(JSON.parse(data).key)}catch(e){reject(e)}});c.on('error',reject);});
  const safe=s=>(key?String(s).split(key).join('[REDACTED]'):String(s)).replace(/nr_hub_[A-Za-z0-9_-]+/g,'[REDACTED]');
  const save=(name,value)=>{fs.writeFileSync(path.join(out,name),safe(JSON.stringify(value,null,2)),{mode:0o600});};
  const results=[],network=[];let activeCase='setup';
- const write=completed=>save('results.json',{completed,app:vscode.env.appName,version:vscode.version,source:root,packagedVsix:false,plannedCases:cases.length,entireCorpusCases:allCases.length,selectedFamilies,unrunCaseIds:cases.filter(c=>!results.some(r=>r.id===c.id)).map(c=>c.id),transport:'real NormaHub HTTPS; requested 1017; no response replacement',credential:'in-memory secret port via single-use private Unix socket; not saved',primaryModelAttestation:'gateway reports base model ID; provider version not independently attested',results,network});
+ const write=completed=>save('results.json',{completed,app:vscode.env.appName,version:vscode.version,source:root,packagedVsix:false,plannedCases:cases.length,maxHttpRequests,entireCorpusCases:allCases.length,selectedFamilies,selectedCaseIds:cases.map(c=>c.id),unrunCaseIds:cases.filter(c=>!results.some(r=>r.id===c.id)).map(c=>c.id),transport:'real NormaHub HTTPS; requested 1017; no response replacement',credential:'in-memory secret port via single-use private Unix socket; not saved',primaryModelAttestation:'gateway reports base model ID; provider version not independently attested',results,network});
  const originalRequest=https.request;
  https.request=function(url,options,callback){
   let host;try{host=new URL(url).hostname;}catch{return originalRequest.call(this,url,options,callback);}
   if(host!=='api.normahub.cc')return originalRequest.call(this,url,options,callback);
+  if(network.length>=maxHttpRequests)throw Error('Live HTTPS request cap reached');
   const record={caseId:activeCase,startedAt:new Date().toISOString(),startedMs:Date.now()};network.push(record);
   const req=originalRequest.call(this,url,options,res=>{
    record.httpStatus=res.statusCode;record.requestId=res.headers['x-request-id']??null;let data='';res.on('data',b=>{if(data.length<2*1024*1024)data+=b});res.on('end',()=>{
