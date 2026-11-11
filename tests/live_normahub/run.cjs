@@ -1,5 +1,5 @@
 // Explicit paid run: credential on non-echo stdin only, single-use local broker, never env/files/argv.
-const fs=require('node:fs'),path=require('node:path'),net=require('node:net'),crypto=require('node:crypto');
+const fs=require('node:fs'),path=require('node:path'),net=require('node:net'),crypto=require('node:crypto'),os=require('node:os');
 const {spawn,spawnSync}=require('node:child_process'),readline=require('node:readline');
 const root=path.resolve(__dirname,'../..'),output=path.resolve(process.argv[2]||'');
 if(!process.argv[2]||fs.existsSync(output))throw Error('Pass a new evidence directory.');
@@ -31,7 +31,10 @@ fs.writeFileSync(path.join(output,'install.log'),(installation.stdout??'')+(inst
 if(installation.status!==0)throw Error('Isolated primary extension installation failed');
 const rl=readline.createInterface({input:process.stdin,terminal:false});console.log(`Prepared ${selectedCases.length}-case run. Waiting for credential on stdin.`);
 rl.once('line',key=>{rl.close();process.stdin.pause();if(!key.startsWith('nr_hub_'))throw Error('Invalid credential format');
- const socket=path.join(output,'credential.sock');let served=false;
+ const socketDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'normahub-live-'));
+ fs.chmodSync(socketDirectory,0o700);
+ process.once('exit',()=>fs.rmSync(socketDirectory,{recursive:true,force:true}));
+ const socket=path.join(socketDirectory,'credential.sock');let served=false;
  const broker=net.createServer(client=>{if(served){client.destroy();return;}served=true;client.end(JSON.stringify({key})+'\n');broker.close();});
  broker.listen(socket,()=>{fs.chmodSync(socket,0o600);
   const keep=['PATH','HOME','USER','LOGNAME','SHELL','LANG','LC_ALL','DISPLAY','WAYLAND_DISPLAY','XAUTHORITY','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','TMPDIR'];

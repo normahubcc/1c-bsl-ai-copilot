@@ -33,12 +33,21 @@ exports.run=async function(){
  const {queryChoices}=require(path.join(root,'out/features/create-validation-plan/model/queryChoices'));
  const {createUserPlan}=require(path.join(root,'out/features/create-validation-plan/model/createPlan'));
  const {requestFromHostPlan,runnerRequestInput}=require(path.join(root,'out/entities/runner/model/preparedJob'));
+ const {additionalParameterNames}=require(path.join(root,'out/entities/runner/model/parameters'));
  const {BSLInlineCompletionProvider}=require(path.join(root,'out/inlineCompletionProvider'));
  const {localScopeHash}=require(path.join(root,'out/entities/editor-snapshot/model/snapshot'));
  const context={subscriptions:[],secrets:{get:async()=>key}};
  const folder=vscode.workspace.workspaceFolders[0],uri=vscode.Uri.joinPath(folder.uri,'Module.bsl');
  const operatorBase=path.join(require('node:os').homedir(),'.local/share/normahub-copilot-lab/signed-import-20261030');
- const profile={...JSON.parse(fs.readFileSync(path.join(operatorBase,'worker-v2/profile.json'),'utf8')),projectId:localScopeHash(folder.uri.toString(),uri.toString())};
+ const profile={...JSON.parse(fs.readFileSync(path.join(require('node:os').homedir(),'.local/share/normahub-copilot-lab/parameters-20261102-fixture-v2b/profile.json'),'utf8')),projectId:localScopeHash(folder.uri.toString(),uri.toString())};
+ if(profile.schemaVersion!==2||profile.kind!=='query_text_fixture_v2')throw Error('Own parameter runner profile v2 is required');
+ // Values below are declared from the frozen own-fixture task, never inferred from a model answer.
+ const parameterPlan={
+  q04:{склад:{type:'string',value:'W1'}},
+  q07:{склад:{type:'string',value:'W1'},товар:{type:'string',value:'B'},номенклатура:{type:'string',value:'B'}},
+  q08:{склад:{type:'string',value:'W2'}},
+  q19:{порог:{type:'number',value:'10'}}
+ };
  const profileFile=path.join(out,'operator-profile.json');save('operator-profile.json',profile);
  const store=new PreviewStore();let consecutiveFailures=0,lastKind=null;const stoppedFamilies=new Set(),stopReasons=[];
  const setBuffer=async text=>{const doc=await vscode.workspace.openTextDocument(uri);const editor=await vscode.window.showTextDocument(doc,{preview:false});await editor.edit(e=>e.replace(new vscode.Range(doc.positionAt(0),doc.positionAt(doc.getText().length)),text));return editor;};
@@ -96,7 +105,13 @@ exports.run=async function(){
       const artifact=store.captureQueryArtifact(preview.previewId),choices=queryChoices(generated.code);record.queryChoices=choices.length;
       if(choices.length!==1){record.status='unsupported_candidate_shape';}
       else{
-       const plan=createUserPlan(artifact,profile,choices[0],{requirement:tc.intent,reference:'own-live-corpus/'+tc.id,preconditions:['Own fixture only: A/W1 rows 6+6, stock 10; no other records.'],assumptions:[],mode:tc.mode,expected:tc.expected});
+       const required=additionalParameterNames(choices[0].query);
+       const values=parameterPlan[tc.id]??{};
+       const unknown=required.filter(name=>!values[name.toLowerCase()]);
+       if(unknown.length){record.status='unbound_model_parameter';record.unboundParameterNames=unknown;}
+       else{
+       const parameters=required.map(name=>({name,value:values[name.toLowerCase()]}));
+       const plan=createUserPlan(artifact,profile,choices[0],{requirement:tc.intent,reference:'own-live-corpus/'+tc.id,preconditions:['Own fixture only: A/W1 rows 6+6, stock 10; no other records.'],assumptions:[],mode:tc.mode,expected:tc.expected,parameters});
        const request=runnerRequestInput(requestFromHostPlan(artifact,plan,profile)),requestFile=path.join(out,tc.id+'-request.json');save(tc.id+'-request.json',request);
        const destination=path.join(out,tc.id+'-engine');
        let cli;try{cli=await promisify(execFile)(process.env.LIVE_NODE,[path.join(root,'dist/runner-cli.js'),'run','--profile',profileFile,'--request',requestFile,'--private-key',path.join(operatorBase,'key/private.pem'),'--output',destination],{timeout:150000,maxBuffer:1024*1024});}
@@ -105,6 +120,7 @@ exports.run=async function(){
        const a=path.join(destination,'assessment.json');
        if(fs.existsSync(a)){const assessment=JSON.parse(fs.readFileSync(a,'utf8'));record.assessment=assessment;record.engine=assessment.queryExecutionVerified?'executed':'failed_or_unsupported';record.status=assessment.queryExecutionVerified&&assessment.comparison?.status==='equal'?'query_rows_match':assessment.queryExecutionVerified?'query_rows_differ':'engine_failed';}
        else{record.status='runner_failed';const failure=path.join(destination,'failure.json');if(fs.existsSync(failure))record.runnerFailure=JSON.parse(fs.readFileSync(failure,'utf8'));}
+       }
       }
      }else{record.status='response_needs_expert_review';record.rubric=tc.rubric;}
     }

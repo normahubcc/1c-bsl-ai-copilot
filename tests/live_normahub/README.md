@@ -26,6 +26,8 @@ stty echo
 
 `runAiTask` и inline provider читают ключ через in-memory secret port; completion transport не подменяется. HTTPS observer сохраняет только request body собственных fixtures, response content/usage/ID/model/finish reason; Authorization не записывается. Не сохраняет reasoning_content. Код модели не выполняется как BSL на host: выбирается ровно один полный SELECT literal и передаётся внешнему ограниченному operator runner. Full BSL/approval/apply остаются false/not_run.
 
+Для запросов используется собственный runner profile v2 с типизированными параметрами. Значения параметров заданы стендом заранее только для известных сценариев (`q04`, `q07`, `q08`, `q19`); имя, придуманное моделью сверх этого плана, фиксируется как `unbound_model_parameter` и не запускается в 1С. Это отделяет пригодность AI-кода от ошибки тестового профиля v1.
+
 Inline: реальный provider получает реальный ответ gateway и нормализует его. Полученный item показывается через one-shot native presentation adapter и принимается native `inlineSuggest.commit`, без ручного editor insertion. Physical Tab binding и полный shipping-provider registration timing этой методикой не подтверждаются. Успешное принятие ещё не доказывает полезность или синтаксис всего BSL.
 
 ## Результаты
